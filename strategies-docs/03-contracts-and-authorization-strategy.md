@@ -1,0 +1,172 @@
+# Contracts and authorization strategy
+
+## Authorization hierarchy
+
+DebtShift uses two borrower signatures.
+
+### Refinance intent
+
+The intent expresses durable user policy:
+
+- Borrower address and account type.
+- Source chain, protocol, market, collateral, and debt asset.
+- Allowed destination chains and markets.
+- Maximum source debt to repay.
+- Minimum source collateral to release.
+- Maximum total fee and slippage bounds.
+- Protocol-specific minimum safety policy.
+- Intent expiry and intent nonce.
+
+The intent does not authorize an arbitrary future transport recipient or solver.
+
+### Execution plan
+
+The short-lived execution plan binds exact execution details:
+
+- Intent hash and immutable migration ID.
+- Exact source and destination deployments.
+- Exact token contract addresses and decimals.
+- Source repayment cap and collateral minimum.
+- Committed transport quote hash and deposit address.
+- Destination receiver and refund receiver.
+- Minimum destination amount.
+- Funding provider and reservation hash.
+- Payout chain, asset, receiver, principal cap, and fee cap.
+- Execution deadline and execution nonce.
+
+Both structures use canonical EIP-712 encoding. Contract-wallet signatures must support EIP-1271.
+
+## Source adapter
+
+### Responsibilities
+
+- Validate chain/domain, intent hash, execution-plan signature, nonce, and deadline.
+- Validate allowlisted lending deployment, debt asset, collateral asset, and receivers.
+- Draw no more than the authorized test-vault principal.
+- Repay no more than the source debt cap.
+- Release no less than the authorized collateral minimum.
+- Assign released collateral to the migration escrow or exact transport receiver.
+- Return unused debt asset to the vault.
+- Emit a single canonical source-close event.
+- Revert atomically if any postcondition fails.
+
+### Source ownership proof gate
+
+The preferred EOA path is provisional until a pinned Aave fork proves it:
+
+1. Borrower grants a bounded allowance over the relevant aToken.
+2. Adapter receives test-vault debt asset.
+3. Adapter repays Aave debt on behalf of the borrower.
+4. Adapter pulls the exact authorized aToken amount after repayment.
+5. Adapter withdraws the underlying collateral to migration escrow.
+6. The whole transaction reverts if allowance, repayment, transfer, withdrawal, or post-state validation fails.
+
+If this cannot be made safe for the chosen reserve, select one documented alternative:
+
+- A borrower-controlled smart account that owns the lending position and executes the batch.
+- A borrower-submitted source transaction followed by verified coordination.
+
+No solver-funded arbitrary-EOA path may proceed without an atomic or enforceable collateral claim.
+
+## Destination adapter
+
+### Responsibilities
+
+- Accept only the expected migration, token, amount range, and receiver.
+- Verify finalized destination funding before lending actions are requested.
+- Supply measured collateral on behalf of the borrower.
+- Borrow no more than the signed target debt cap.
+- Enforce Morpho market parameters and the application LTV buffer.
+- Transfer no more than principal plus signed fee to the exact payout receiver.
+- Return residual collateral and debt asset to the borrower.
+- Emit one canonical target-open event and one settlement event.
+
+### Morpho authorization
+
+- Discover requirements using the current SDK and fresh position data.
+- Bind the exact Morpho market parameters: loan token, collateral token, oracle, IRM, and LLTV.
+- Use bounded, deadline-aware authorization.
+- Verify target state directly after the transaction.
+- Preserve the native Morpho LTV/LLTV values in evidence.
+
+## Migration escrow
+
+- Store balances by migration, chain, and token.
+- Accept deposits only from configured adapters or expected transport delivery.
+- Prevent cross-migration balance consumption.
+- Restrict withdrawals to signed borrower, transport, payout, or refund receivers.
+- Support deadline-bound recovery actions.
+- Emit balance-assignment and release events.
+- Expose read methods needed for reconciliation.
+- Prohibit administrator sweeping of active migration balances.
+
+## Test liquidity vault
+
+- Hold only allowlisted test debt assets.
+- Reserve principal by migration and expiry.
+- Permit one bounded draw by the authorized source adapter.
+- Track principal and fee separately.
+- Release unused reservation after verified cancellation or terminal outcome.
+- Accept destination repayment and record shortfall explicitly.
+- Disallow arbitrary external borrowers.
+
+This vault demonstrates temporary financing mechanics; it is not presented as a production credit agreement.
+
+## Contract-wide controls
+
+- Checks-effects-interactions ordering.
+- Reentrancy guards on asset-moving entry points.
+- Safe ERC-20 handling with balance-delta verification.
+- Exact chain and deployment allowlists.
+- Per-migration consumed nonces.
+- Narrow pause roles for creating or advancing migrations.
+- Separate configuration, pauser, verifier, and treasury roles.
+- No upgrade mechanism in the first test release unless a concrete requirement emerges.
+- No fee-on-transfer or rebasing token support.
+- Residual asset return on every successful terminal path.
+
+## Mainnet 1Click canary boundary
+
+The live canary is an application-level transport proof and does not use the DebtShift lending contracts.
+
+- The sending wallet manually authorizes and submits the exact deposit transaction.
+- No source adapter, destination adapter, migration escrow, or liquidity vault is called.
+- Recipient and refund addresses are team-controlled and statically allowlisted for the canary environment.
+- The input cap is configured in origin-token base units.
+- The canary record uses a distinct identifier namespace and cannot be referenced as proof for a refinance migration.
+- A successful canary demonstrates genuine 1Click transport integration only.
+
+## Canonical EVM events
+
+- `MigrationAuthorized`
+- `LiquidityReserved`
+- `SourceClosed`
+- `CollateralAssigned`
+- `RouteDispatched`
+- `DestinationOpened`
+- `LiquiditySettled`
+- `MigrationRecoveryOpened`
+- `MigrationCompleted`
+
+Each event must include the migration ID and enough indexed identity fields for unambiguous reconciliation. Events supplement transaction state; they do not replace post-transaction reads.
+
+## NEAR registry
+
+### Stored records
+
+- Agreement ID.
+- Intent hash.
+- Execution-plan hash.
+- Borrower and provider identities as typed strings with network identifiers.
+- Supported source and destination networks.
+- Ordered attestations containing verifier, scheme, evidence reference, state, and timestamp.
+- Immutable final receipt-bundle hash.
+- Final terminal status.
+
+### Trust model
+
+- Only configured verifiers append attestations.
+- The registry records which verification scheme produced each claim.
+- The registry does not claim to validate EVM consensus or 1Click independently.
+- Duplicate finalization with a different hash is rejected.
+- Administrative changes are logged and tested.

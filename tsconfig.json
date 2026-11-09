@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/domain" },
+    { "path": "./packages/database" },
+    { "path": "./packages/optimizer" },
+    { "path": "./packages/agent" },
+    { "path": "./packages/protocols" },
+    { "path": "./packages/intents" },
+    { "path": "./packages/sdk" },
+    { "path": "./apps/api" },
+    { "path": "./apps/worker" }
+  ]
+}

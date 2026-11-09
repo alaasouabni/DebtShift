@@ -1,0 +1,55 @@
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  evm-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.9.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run check:evm
+      - run: npm run test --workspace @debtshift/api
+      - run: npm run test --workspace @debtshift/worker
+      - run: npm run demo:happy
+      - run: npm run demo:recovery
+
+  near-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - run: sudo apt-get update && sudo apt-get install -y nasm
+      - run: cargo install cargo-near --version 0.23.0 --locked
+      - run: npm run check:near

@@ -1,0 +1,256 @@
+import {
+  encodeAbiParameters,
+  hashTypedData,
+  keccak256,
+  parseAbiParameters,
+  stringToHex,
+} from 'viem';
+import type { Address, Hex } from 'viem';
+
+import type { MarketReference, PositionReference, Protocol, TokenReference } from './assets.js';
+import type { ExecutionPlan, RefinanceIntent, SafetyPolicy } from './authorization.js';
+
+const protocolIds: Readonly<Record<Protocol, Hex>> = Object.freeze({
+  AAVE_V3: keccak256(stringToHex('debtshift.protocol.aave-v3.v1')),
+  MORPHO_BLUE: keccak256(stringToHex('debtshift.protocol.morpho-blue.v1')),
+  LOCAL_AAVE_MOCK: keccak256(stringToHex('debtshift.protocol.local-aave-mock.v1')),
+  LOCAL_MORPHO_MOCK: keccak256(stringToHex('debtshift.protocol.local-morpho-mock.v1')),
+});
+
+const safetyPolicyIds = Object.freeze({
+  MIN_HEALTH_FACTOR_WAD: keccak256(stringToHex('debtshift.safety.min-health-factor-wad.v1')),
+  MAX_LTV_BPS: keccak256(stringToHex('debtshift.safety.max-ltv-bps.v1')),
+});
+
+export const refinanceIntentTypes = {
+  RefinanceIntent: [
+    { name: 'borrower', type: 'address' },
+    { name: 'sourcePositionId', type: 'bytes32' },
+    { name: 'allowedTargetsHash', type: 'bytes32' },
+    { name: 'feeAssetHash', type: 'bytes32' },
+    { name: 'maxSourceDebt', type: 'uint256' },
+    { name: 'minSourceCollateral', type: 'uint256' },
+    { name: 'maxTotalFee', type: 'uint256' },
+    { name: 'maxSlippageBps', type: 'uint32' },
+    { name: 'minAprReductionBps', type: 'uint32' },
+    { name: 'safetyPolicyHash', type: 'bytes32' },
+    { name: 'maxDurationSeconds', type: 'uint32' },
+    { name: 'expiration', type: 'uint64' },
+    { name: 'nonce', type: 'uint256' },
+  ],
+} as const;
+
+export const executionPlanTypes = {
+  ExecutionPlan: [
+    { name: 'intentHash', type: 'bytes32' },
+    { name: 'migrationId', type: 'bytes32' },
+    { name: 'borrower', type: 'address' },
+    { name: 'sourcePositionId', type: 'bytes32' },
+    { name: 'routeHash', type: 'bytes32' },
+    { name: 'transportQuoteHash', type: 'bytes32' },
+    { name: 'sourceRepaymentMax', type: 'uint256' },
+    { name: 'sourceCollateralMin', type: 'uint256' },
+    { name: 'targetDebtMax', type: 'uint256' },
+    { name: 'minDestinationCollateral', type: 'uint256' },
+    { name: 'principalMax', type: 'uint256' },
+    { name: 'feeMax', type: 'uint256' },
+    { name: 'destinationReceiver', type: 'address' },
+    { name: 'refundReceiver', type: 'address' },
+    { name: 'payoutReceiver', type: 'address' },
+    { name: 'deadline', type: 'uint64' },
+    { name: 'nonce', type: 'uint256' },
+  ],
+} as const;
+
+function debtShiftDomain(chainId: number, verifyingContract: Address) {
+  return {
+    name: 'DebtShift',
+    version: '1',
+    chainId,
+    verifyingContract,
+  } as const;
+}
+
+export function protocolId(protocol: Protocol): Hex {
+  return protocolIds[protocol];
+}
+
+export function hashCanonicalText(value: string): Hex {
+  return keccak256(stringToHex(value.normalize('NFC')));
+}
+
+export function hashMarketReference(market: MarketReference): Hex {
+  return keccak256(
+    encodeAbiParameters(parseAbiParameters('uint256, bytes32, address, bytes32'), [
+      BigInt(market.chainId),
+      protocolId(market.protocol),
+      market.deployment,
+      market.marketId,
+    ]),
+  );
+}
+
+export function hashTokenReference(asset: TokenReference): Hex {
+  return keccak256(
+    encodeAbiParameters(parseAbiParameters('uint256, address, uint8'), [
+      BigInt(asset.chainId),
+      asset.address,
+      asset.decimals,
+    ]),
+  );
+}
+
+export function hashSourcePosition(position: PositionReference): Hex {
+  return keccak256(
+    encodeAbiParameters(parseAbiParameters('bytes32, address, bytes32, bytes32'), [
+      hashMarketReference(position.market),
+      position.borrower,
+      hashTokenReference(position.collateralAsset),
+      hashTokenReference(position.debtAsset),
+    ]),
+  );
+}
+
+export function hashSafetyPolicy(policy: SafetyPolicy): Hex {
+  if (policy.kind === 'MIN_HEALTH_FACTOR_WAD') {
+    return keccak256(
+      encodeAbiParameters(parseAbiParameters('bytes32, uint256, uint256'), [
+        safetyPolicyIds.MIN_HEALTH_FACTOR_WAD,
+        BigInt(policy.minimumWad),
+        BigInt(policy.stressMinimumWad),
+      ]),
+    );
+  }
+
+  return keccak256(
+    encodeAbiParameters(parseAbiParameters('bytes32, uint256, uint256'), [
+      safetyPolicyIds.MAX_LTV_BPS,
+      BigInt(policy.maximumLtvBps),
+      BigInt(policy.stressMaximumLtvBps),
+    ]),
+  );
+}
+
+export function hashAllowedTargets(targets: readonly MarketReference[]): Hex {
+  const targetHashes = targets.map(hashMarketReference).sort();
+  return keccak256(encodeAbiParameters(parseAbiParameters('bytes32[]'), [targetHashes]));
+}
+
+export function getRefinanceIntentTypedData(intent: RefinanceIntent, verifyingContract: Address) {
+  return {
+    domain: debtShiftDomain(intent.sourcePosition.market.chainId, verifyingContract),
+    primaryType: 'RefinanceIntent',
+    types: refinanceIntentTypes,
+    message: {
+      borrower: intent.borrower,
+      sourcePositionId: hashSourcePosition(intent.sourcePosition),
+      allowedTargetsHash: hashAllowedTargets(intent.allowedTargets),
+      feeAssetHash: hashTokenReference(intent.feeAsset),
+      maxSourceDebt: BigInt(intent.maxSourceDebtUnits),
+      minSourceCollateral: BigInt(intent.minSourceCollateralUnits),
+      maxTotalFee: BigInt(intent.maxTotalFeeUnits),
+      maxSlippageBps: intent.maxSlippageBps,
+      minAprReductionBps: intent.minAprReductionBps,
+      safetyPolicyHash: hashSafetyPolicy(intent.safetyPolicy),
+      maxDurationSeconds: intent.maxDurationSeconds,
+      expiration: BigInt(intent.expiration),
+      nonce: BigInt(intent.nonce),
+    },
+  } as const;
+}
+
+export function hashRefinanceIntent(intent: RefinanceIntent, verifyingContract: Address): Hex {
+  return hashTypedData(getRefinanceIntentTypedData(intent, verifyingContract));
+}
+
+export function computeMigrationId(intentHash: Hex, transportQuoteHash: Hex, nonce: bigint): Hex {
+  return keccak256(
+    encodeAbiParameters(parseAbiParameters('bytes32, bytes32, uint256'), [
+      intentHash,
+      transportQuoteHash,
+      nonce,
+    ]),
+  );
+}
+
+export function computeRouteHash(plan: ExecutionPlan): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      parseAbiParameters(
+        'bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, uint256, uint256, uint256, uint256, bytes32, bytes32, bytes32, address, address, address, bytes32, bytes32, address, uint256, uint256, uint64',
+      ),
+      [
+        plan.sourcePositionId,
+        hashMarketReference(plan.sourceMarket),
+        hashMarketReference(plan.targetMarket),
+        hashTokenReference(plan.sourceDebtAsset),
+        hashTokenReference(plan.sourceCollateralAsset),
+        hashTokenReference(plan.destinationDebtAsset),
+        hashTokenReference(plan.destinationCollateralAsset),
+        BigInt(plan.sourceRepaymentMaxUnits),
+        BigInt(plan.sourceCollateralMinUnits),
+        BigInt(plan.targetDebtMaxUnits),
+        BigInt(plan.minDestinationCollateralUnits),
+        hashCanonicalText(plan.transportProvider),
+        plan.transportQuoteHash,
+        hashCanonicalText(plan.transportDepositAddress),
+        plan.destinationReceiver,
+        plan.refundReceiver,
+        plan.fundingProvider,
+        plan.reservationHash,
+        hashTokenReference(plan.payoutAsset),
+        plan.payoutReceiver,
+        BigInt(plan.principalMaxUnits),
+        BigInt(plan.feeMaxUnits),
+        BigInt(plan.deadline),
+      ],
+    ),
+  );
+}
+
+export function getExecutionPlanTypedData(plan: ExecutionPlan, verifyingContract: Address) {
+  return {
+    domain: debtShiftDomain(plan.sourceMarket.chainId, verifyingContract),
+    primaryType: 'ExecutionPlan',
+    types: executionPlanTypes,
+    message: {
+      intentHash: plan.intentHash,
+      migrationId: plan.migrationId,
+      borrower: plan.borrower,
+      sourcePositionId: plan.sourcePositionId,
+      routeHash: plan.routeHash,
+      transportQuoteHash: plan.transportQuoteHash,
+      sourceRepaymentMax: BigInt(plan.sourceRepaymentMaxUnits),
+      sourceCollateralMin: BigInt(plan.sourceCollateralMinUnits),
+      targetDebtMax: BigInt(plan.targetDebtMaxUnits),
+      minDestinationCollateral: BigInt(plan.minDestinationCollateralUnits),
+      principalMax: BigInt(plan.principalMaxUnits),
+      feeMax: BigInt(plan.feeMaxUnits),
+      destinationReceiver: plan.destinationReceiver,
+      refundReceiver: plan.refundReceiver,
+      payoutReceiver: plan.payoutReceiver,
+      deadline: BigInt(plan.deadline),
+      nonce: BigInt(plan.nonce),
+    },
+  } as const;
+}
+
+export function hashExecutionPlan(plan: ExecutionPlan, verifyingContract: Address): Hex {
+  return hashTypedData(getExecutionPlanTypedData(plan, verifyingContract));
+}
+
+export function assertExecutionPlanIntegrity(plan: ExecutionPlan): void {
+  const expectedMigrationId = computeMigrationId(
+    plan.intentHash,
+    plan.transportQuoteHash,
+    BigInt(plan.nonce),
+  );
+  if (plan.migrationId !== expectedMigrationId) {
+    throw new Error('Execution plan migration ID does not match its signed inputs.');
+  }
+
+  const expectedRouteHash = computeRouteHash(plan);
+  if (plan.routeHash !== expectedRouteHash) {
+    throw new Error('Execution plan route hash does not match its exact route fields.');
+  }
+}

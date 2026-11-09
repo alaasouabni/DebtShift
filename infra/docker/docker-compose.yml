@@ -1,0 +1,37 @@
+name: debtshift
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-debtshift}
+      POSTGRES_USER: ${POSTGRES_USER:-debtshift}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-debtshift_local}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - debtshift_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-debtshift} -d ${POSTGRES_DB:-debtshift}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2.2-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - debtshift_redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  debtshift_postgres:
+  debtshift_redis:

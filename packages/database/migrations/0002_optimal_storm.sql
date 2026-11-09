@@ -1,0 +1,2 @@
+ALTER TABLE "transport_legs" ADD COLUMN "observed_output_units" numeric(78, 0);--> statement-breakpoint
+ALTER TABLE "transport_legs" ADD CONSTRAINT "transport_legs_observed_output_nonnegative" CHECK ("transport_legs"."observed_output_units" IS NULL OR "transport_legs"."observed_output_units" >= 0);

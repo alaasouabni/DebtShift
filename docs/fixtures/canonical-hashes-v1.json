@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "encoding": "EVM ABI encoding with Keccak-256; EIP-712 domain DebtShift/1",
+  "domain": {
+    "name": "DebtShift",
+    "version": "1",
+    "chainId": "31337",
+    "verifyingContract": "0x9000000000000000000000000000000000000009"
+  },
+  "identity": {
+    "borrower": "0xa1d79dfa76e98D5e8A776114d9524c4B6E888daa",
+    "sourceProtocolCanonicalName": "debtshift.protocol.local-aave-mock.v1",
+    "targetProtocolCanonicalName": "debtshift.protocol.local-morpho-mock.v1",
+    "sourceMarketId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "targetMarketId": "0x2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "migration": {
+    "transportQuoteHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "reservationHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "intentNonce": "7",
+    "planNonce": "9"
+  },
+  "outputs": {
+    "sourcePositionId": "0xc0552755e1b8638016061a1864011b9be643b108a402cd4fee6be1086fe0b229",
+    "intentHash": "0x1512eaf38eaa112d95de0046d6c7471a9b3409f20a6afa6b20e3517a90ac3100",
+    "migrationId": "0x67c5975085073b2512ada4bfe6296d62b485f963078bb88c104d68958287d692",
+    "routeHash": "0x8ac99583375d02c0c9e0fb1c6d1d7f8468441058a7d2d8d1ca47be98891d2eeb",
+    "executionPlanHash": "0xb1ba7e63357fd3c3acbc768e76acb7dd650b4cde6268c3a5aeb04ec9a79043cb"
+  }
+}

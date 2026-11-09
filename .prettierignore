@@ -1,0 +1,10 @@
+.next
+apps/web/next-env.d.ts
+.turbo
+coverage
+dist
+node_modules
+out
+target
+tmp
+package-lock.json

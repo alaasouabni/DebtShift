@@ -1,0 +1,33 @@
+{
+  "name": "@debtshift/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "dev": "tsx watch src/main.ts",
+    "lint": "eslint src",
+    "start": "node dist/main.js",
+    "test": "vitest run --dir src --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@debtshift/database": "0.1.0",
+    "@debtshift/domain": "0.1.0",
+    "@debtshift/intents": "0.1.0",
+    "@debtshift/protocols": "0.1.0",
+    "@nestjs/common": "12.4.0",
+    "@nestjs/core": "12.4.0",
+    "bullmq": "6.7.2",
+    "ioredis": "6.0.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "viem": "2.57.17"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
+    "drizzle-orm": "0.45.4",
+    "tsx": "4.23.15"
+  }
+}
