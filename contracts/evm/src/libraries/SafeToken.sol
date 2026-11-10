@@ -38,6 +38,13 @@ library SafeToken {
         if (delta != amount) revert UnexpectedBalanceDelta(address(token), amount, delta);
     }
 
+    function transferWithExactDelta(IERC20 token, address recipient, uint256 amount) internal {
+        uint256 beforeBalance = token.balanceOf(recipient);
+        safeTransfer(token, recipient, amount);
+        uint256 delta = token.balanceOf(recipient) - beforeBalance;
+        if (delta != amount) revert UnexpectedBalanceDelta(address(token), amount, delta);
+    }
+
     function _call(IERC20 token, bytes memory data) private {
         (bool success, bytes memory returnData) = address(token).call(data);
         if (!success || (returnData.length != 0 && !abi.decode(returnData, (bool)))) {

@@ -63,6 +63,18 @@ interface FinancingRevalidation extends Readonly<Record<string, unknown>> {
   readonly fundingShortfallUnits: string;
 }
 
+interface EscrowFundingRecord {
+  readonly evidenceHash: Hex;
+  readonly chainId: bigint;
+  readonly token: Address;
+  readonly depositor: Address;
+  readonly refundReceiver: Address;
+  readonly amountUnits: bigint;
+  readonly authorizedUseHash: Hex;
+  readonly deadline: bigint;
+  readonly status: number;
+}
+
 const eventTopics = {
   liquidityReserved: eventTopic(
     'LiquidityReserved(bytes32,address,address,uint256,uint256,uint64)',
@@ -70,7 +82,7 @@ const eventTopics = {
   sourceClosed: eventTopic('SourceClosed(bytes32,address,uint256,uint256)'),
   balanceReleased: eventTopic('BalanceReleased(bytes32,address,address,uint256)'),
   collateralAssigned: eventTopic('CollateralAssigned(bytes32,address,address,uint256)'),
-  destinationOpened: eventTopic('DestinationOpened(bytes32,address,uint256,uint256)'),
+  destinationOpened: eventTopic('DestinationOpened(bytes32,address,bytes32,uint256,uint256)'),
   liquiditySettled: eventTopic('LiquiditySettled(bytes32,uint256,uint256)'),
 } as const;
 
@@ -375,7 +387,17 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       artifacts,
       'BEFORE_TARGET_BORROW',
     );
+    const proof = await this.#recordDestinationFeasibility(
+      context,
+      artifacts,
+      financingRevalidation,
+    );
     const borrowUnits = BigInt(plan.financing.requiredDestinationBorrowUnits);
+    const authorization = getExecutionPlanTypedData(
+      plan,
+      this.#environment.EIP712_VERIFYING_CONTRACT,
+    ).message;
+    const fundingEvidenceHash = this.#fundingEvidenceHash(context);
     return this.#writeAction(
       this.#destinationWallet,
       this.#destinationPublic,
@@ -384,15 +406,19 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       this.#environment.DESTINATION_ADAPTER_ADDRESS,
       'openDestination',
       [
+        authorization,
+        context.signedPlan.signature,
         {
-          migrationId,
-          borrower: plan.borrower,
-          payoutReceiver: plan.payoutReceiver,
+          sourceChainId: this.#environment.SOURCE_CHAIN_ID,
+          sourceAdapter: this.#environment.SOURCE_ADAPTER_ADDRESS,
           collateralUnits: BigInt(context.transportLeg.observedOutputUnits),
-          minimumCollateralUnits: BigInt(plan.minDestinationCollateralUnits),
           borrowUnits,
-          maximumDebtUnits: BigInt(plan.targetDebtMaxUnits),
-          deadline: BigInt(plan.deadline),
+          feasibilityHash: proof.feasibilityHash,
+          fundingEvidenceHash,
+          solverPrincipalUnits: BigInt(plan.financing.solverPrincipalUnits),
+          solverFeeUnits: BigInt(plan.financing.solverFeeUnits),
+          capitalizedCostUnits: BigInt(plan.financing.capitalizedCostUnits),
+          capitalizedCostReceiver: '0x0000000000000000000000000000000000000000',
         },
       ],
       {
@@ -400,6 +426,9 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         borrower: plan.borrower,
         collateralUnits: context.transportLeg.observedOutputUnits,
         borrowUnits: borrowUnits.toString(),
+        feasibilityHash: proof.feasibilityHash,
+        feasibilityTransactionHash: proof.transactionHash,
+        fundingEvidenceHash,
         financingRevalidation,
       },
     );
@@ -603,6 +632,11 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     if (plan.financing.fundingShortfallUnits !== '0') {
       throw new Error('The authorized financing structure has a non-zero funding shortfall.');
     }
+    if (BigInt(plan.financing.capitalizedCostUnits) !== 0n) {
+      throw new Error(
+        'The local destination contract requires signed capitalized-cost recipients; none are present in this plan.',
+      );
+    }
     if (BigInt(plan.financing.validUntil) < BigInt(plan.deadline)) {
       throw new Error('Financing evidence expires before the execution plan.');
     }
@@ -646,39 +680,57 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       throw new Error(`Source position changed before checkpoint ${checkpoint}.`);
     }
 
-    let escrowFunding = 0n;
-    if (BigInt(financing.confirmedExternalFundingUnits) > 0n) {
-      for (const funding of financing.externalFunding) {
-        if (
-          !sameAddress(funding.escrow, this.#environment.DESTINATION_ESCROW_ADDRESS) ||
-          !sameAddress(funding.asset.address, this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS)
-        ) {
-          throw new Error(
-            'Supplementary funding is not assigned to the configured settlement escrow.',
-          );
-        }
-        if (nowSeconds > BigInt(funding.expiresAt)) {
-          throw new Error(`Supplementary funding ${funding.fundingId} expired.`);
-        }
-      }
-      escrowFunding = await this.#readBigInt(
-        this.#destinationPublic,
-        artifacts.escrow,
-        this.#environment.DESTINATION_ESCROW_ADDRESS,
-        'balances',
-        [context.migration.migrationId, this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS],
-      );
-      if (escrowFunding < BigInt(financing.confirmedExternalFundingUnits)) {
-        throw new Error(
-          'Finalized supplementary funding is no longer present in settlement escrow.',
-        );
-      }
-    }
-
     const targetAlreadyOpen =
       checkpoint === 'AFTER_TARGET_BORROW' ||
       checkpoint === 'BEFORE_SETTLEMENT' ||
       checkpoint === 'AFTER_SETTLEMENT';
+    let escrowFunding = 0n;
+    const expectedExternalFunding = BigInt(financing.confirmedExternalFundingUnits);
+    if (expectedExternalFunding > 0n) {
+      const funding = this.#singleExternalFunding(context);
+      if (
+        !sameAddress(funding.escrow, this.#environment.DESTINATION_ESCROW_ADDRESS) ||
+        !sameAddress(funding.asset.address, this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS)
+      ) {
+        throw new Error(
+          'Supplementary funding is not assigned to the configured settlement escrow.',
+        );
+      }
+      if (nowSeconds > BigInt(funding.expiresAt)) {
+        throw new Error(`Supplementary funding ${funding.fundingId} expired.`);
+      }
+      const record = await this.#readFundingRecord(
+        artifacts.escrow,
+        context.migration.migrationId as Hex,
+      );
+      if (
+        record.evidenceHash.toLowerCase() !== funding.evidenceId.toLowerCase() ||
+        record.chainId !== BigInt(this.#environment.DESTINATION_CHAIN_ID) ||
+        !sameAddress(record.token, this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS) ||
+        !sameAddress(record.refundReceiver, funding.refundReceiver) ||
+        record.amountUnits !== expectedExternalFunding ||
+        record.authorizedUseHash.toLowerCase() !== funding.authorizedUse.toLowerCase() ||
+        record.deadline !== BigInt(funding.expiresAt) ||
+        record.status !== (targetAlreadyOpen ? 2 : 1)
+      ) {
+        throw new Error('Supplementary funding escrow evidence does not match the signed plan.');
+      }
+      if (!targetAlreadyOpen) {
+        const activeBalance = await this.#readBigInt(
+          this.#destinationPublic,
+          artifacts.escrow,
+          this.#environment.DESTINATION_ESCROW_ADDRESS,
+          'balances',
+          [context.migration.migrationId, this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS],
+        );
+        if (activeBalance < expectedExternalFunding) {
+          throw new Error(
+            'Finalized supplementary funding is no longer present in settlement escrow.',
+          );
+        }
+      }
+      escrowFunding = expectedExternalFunding;
+    }
     const targetPosition = await this.#readPosition(
       this.#destinationPublic,
       artifacts.targetLending,
@@ -772,8 +824,8 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         'balanceOf',
         [plan.payoutReceiver],
       );
-      if (payoutBalance + escrowFunding < totalRequired) {
-        throw new Error('Settlement sources cannot cover the signed total repayment obligation.');
+      if (payoutBalance < totalRequired) {
+        throw new Error('Settlement payout does not cover the signed total repayment obligation.');
       }
     }
 
@@ -802,10 +854,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
   ): Promise<{ readonly feasibilityHash: Hex; readonly transactionHash: Hex }> {
     const plan = context.signedPlan.plan;
     const financing = plan.financing;
-    const externalFundingEvidenceHash =
-      BigInt(revalidation.confirmedExternalFundingUnits) === 0n
-        ? (`0x${'00'.repeat(32)}` as Hex)
-        : keccak256(stringToHex(JSON.stringify(financing.externalFunding)));
+    const externalFundingEvidenceHash = this.#fundingEvidenceHash(context);
     const sequence =
       (await this.#readBigInt(
         this.#sourcePublic,
@@ -814,6 +863,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         'latestFeasibilitySequence',
         [context.migration.migrationId],
       )) + 1n;
+    const evaluatedAt = (await this.#sourcePublic.getBlock()).timestamp;
     const evidence = {
       planHash: context.signedPlan.planHash,
       analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
@@ -824,13 +874,11 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       capitalizedCostUnits: BigInt(financing.capitalizedCostUnits),
       totalRequiredUnits: BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
       confirmedExternalFundingUnits: BigInt(revalidation.confirmedExternalFundingUnits),
-      maximumSafeBorrowingCapacityUnits: BigInt(
-        revalidation.maximumSafeBorrowingCapacityUnits,
-      ),
+      maximumSafeBorrowingCapacityUnits: BigInt(revalidation.maximumSafeBorrowingCapacityUnits),
       requiredDestinationBorrowUnits: BigInt(revalidation.requiredDestinationBorrowUnits),
       fundingShortfallUnits: BigInt(revalidation.fundingShortfallUnits),
       sequence,
-      evaluatedAt: BigInt(Math.floor(Date.parse(revalidation.observedAt) / 1_000)),
+      evaluatedAt,
       validUntil: BigInt(financing.validUntil),
     } as const;
     const transactionHash = await this.#writeHash(
@@ -849,6 +897,130 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       [context.migration.migrationId],
     );
     return { feasibilityHash, transactionHash };
+  }
+
+  async #recordDestinationFeasibility(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    revalidation: FinancingRevalidation,
+  ): Promise<{ readonly feasibilityHash: Hex; readonly transactionHash: Hex }> {
+    const financing = context.signedPlan.plan.financing;
+    const sequence =
+      (await this.#readBigInt(
+        this.#destinationPublic,
+        artifacts.destinationAdapter,
+        this.#environment.DESTINATION_ADAPTER_ADDRESS,
+        'latestFeasibilitySequence',
+        [context.migration.migrationId],
+      )) + 1n;
+    const evaluatedAt = (await this.#destinationPublic.getBlock()).timestamp;
+    const evidence = {
+      planHash: context.signedPlan.planHash,
+      analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
+      externalFundingEvidenceHash: this.#fundingEvidenceHash(context),
+      settlementAsset: this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS,
+      solverPrincipalUnits: BigInt(financing.solverPrincipalUnits),
+      solverFeeUnits: BigInt(financing.solverFeeUnits),
+      capitalizedCostUnits: BigInt(financing.capitalizedCostUnits),
+      totalRequiredUnits: BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
+      confirmedExternalFundingUnits: BigInt(revalidation.confirmedExternalFundingUnits),
+      maximumSafeBorrowingCapacityUnits: BigInt(revalidation.maximumSafeBorrowingCapacityUnits),
+      requiredDestinationBorrowUnits: BigInt(revalidation.requiredDestinationBorrowUnits),
+      fundingShortfallUnits: BigInt(revalidation.fundingShortfallUnits),
+      sequence,
+      evaluatedAt,
+      validUntil: BigInt(financing.validUntil),
+    } as const;
+    const transactionHash = await this.#writeHash(
+      this.#destinationWallet,
+      this.#destinationPublic,
+      artifacts.destinationAdapter,
+      this.#environment.DESTINATION_ADAPTER_ADDRESS,
+      'recordFeasibility',
+      [context.migration.migrationId, evidence],
+    );
+    const feasibilityHash = await this.#readHex(
+      this.#destinationPublic,
+      artifacts.destinationAdapter,
+      this.#environment.DESTINATION_ADAPTER_ADDRESS,
+      'latestFeasibilityHash',
+      [context.migration.migrationId],
+    );
+    return { feasibilityHash, transactionHash };
+  }
+
+  #fundingEvidenceHash(context: MigrationExecutionContext): Hex {
+    const financing = context.signedPlan.plan.financing;
+    if (BigInt(financing.confirmedExternalFundingUnits) === 0n) {
+      if (financing.externalFunding.length !== 0) {
+        throw new Error('Zero external funding cannot include funding evidence.');
+      }
+      return `0x${'00'.repeat(32)}` as Hex;
+    }
+    return this.#singleExternalFunding(context).evidenceId as Hex;
+  }
+
+  #singleExternalFunding(context: MigrationExecutionContext) {
+    const funding = context.signedPlan.plan.financing.externalFunding;
+    if (funding.length !== 1 || funding[0] === undefined) {
+      throw new Error(
+        'The destination escrow currently requires exactly one signed supplementary-funding commitment.',
+      );
+    }
+    return funding[0];
+  }
+
+  async #readFundingRecord(
+    artifact: FoundryArtifact,
+    migrationId: Hex,
+  ): Promise<EscrowFundingRecord> {
+    const result = await this.#destinationPublic.readContract({
+      address: this.#environment.DESTINATION_ESCROW_ADDRESS,
+      abi: artifact.abi,
+      functionName: 'fundingRecord',
+      args: [migrationId],
+    });
+    const record = Array.isArray(result)
+      ? {
+          evidenceHash: result[0],
+          chainId: result[1],
+          token: result[2],
+          depositor: result[3],
+          refundReceiver: result[4],
+          amountUnits: result[5],
+          authorizedUseHash: result[6],
+          deadline: result[7],
+          status: result[8],
+        }
+      : result;
+    if (!isRecord(record)) {
+      throw new Error('Unexpected supplementary-funding record response.');
+    }
+    const status = record.status;
+    if (
+      typeof record.evidenceHash !== 'string' ||
+      typeof record.chainId !== 'bigint' ||
+      typeof record.token !== 'string' ||
+      typeof record.depositor !== 'string' ||
+      typeof record.refundReceiver !== 'string' ||
+      typeof record.amountUnits !== 'bigint' ||
+      typeof record.authorizedUseHash !== 'string' ||
+      typeof record.deadline !== 'bigint' ||
+      (typeof status !== 'number' && typeof status !== 'bigint')
+    ) {
+      throw new Error('Malformed supplementary-funding record response.');
+    }
+    return {
+      evidenceHash: record.evidenceHash as Hex,
+      chainId: record.chainId,
+      token: record.token as Address,
+      depositor: record.depositor as Address,
+      refundReceiver: record.refundReceiver as Address,
+      amountUnits: record.amountUnits,
+      authorizedUseHash: record.authorizedUseHash as Hex,
+      deadline: record.deadline,
+      status: Number(status),
+    };
   }
 
   async #readPosition(
@@ -1039,6 +1211,10 @@ function addressTopic(address: Address): Hex {
 
 function sameAddress(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function minBigInt(first: bigint, ...rest: readonly bigint[]): bigint {

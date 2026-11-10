@@ -4,27 +4,27 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Milestone tracker
 
-| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                    |
-| ----------------------------------- | ----------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-10 | Twelve implementation documents plus this tracker created and cross-checked, including financing and production-provider boundaries.                                |
-| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                             |
-| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.       |
-| M2 Simulated vertical slice         | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real PostgreSQL/Redis smoke evidence.              |
-| M3 EVM adapters and fork validation | IN_PROGRESS | 2026-11-09 | -          | Direct Aave/Morpho/Chainlink adapters and identity/freshness tests exist; pinned public-fork validation remains.                                                    |
-| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks. |
-| M5 Orchestration and recovery       | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
-| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
-| M7 NEAR registry                    | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
-| M8 Live read-only integrations      | IN_PROGRESS | 2026-11-10 | -          | Live registry/provider wiring and authenticated 1Click dry-only client implemented; external smoke and catalog/cache work remain.                                   |
-| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
-| M10 Reproducible release            | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
+| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                    |
+| ----------------------------------- | ----------- | ---------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-10 | Thirteen implementation documents plus this tracker created and cross-checked, including financing, production-provider boundaries, and the frontend handoff.                                                                       |
+| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                             |
+| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                       |
+| M2 Simulated vertical slice         | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real PostgreSQL/Redis smoke evidence.                                                                              |
+| M3 EVM adapters and fork validation | IN_PROGRESS | 2026-11-09 | -          | Source/destination plan authorization, plan-bound feasibility, segregated escrow funding, exact settlement, and direct protocol readers are implemented; fuzz/invariant coverage and repeatable public-fork execution gates remain. |
+| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                 |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, four financing checkpoints, refund and timeout recovery, and exact destination settlement are implemented; reorg and post-source deterioration branches remain.           |
+| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                   |
+| M7 NEAR registry                    | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                   |
+| M8 Live read-only integrations      | IN_PROGRESS | 2026-11-10 | -          | Live registry/provider wiring, authenticated 1Click dry-only client, bounded catalog cache, retry, rate limit, and circuit breaker are implemented; credentialed external smoke and the manually authorized canary remain.          |
+| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                   |
+| M10 Reproducible release            | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                   |
 
 ## Current active task
 
-- **Task:** M3/M4 - harden real protocol adapters and implement deterministic market intelligence.
+- **Task:** M3/M5 - finish bounded contract execution and durable recovery invariants.
 - **Status:** IN_PROGRESS
-- **Next verification:** Validate configured Aave V3 and Morpho Blue reads on pinned public forks,
-  then add live catalog caching, retry, rate-limit, and circuit-breaker behavior.
+- **Next verification:** Finish the pinned Aave source-ownership decision and implement the
+  post-source capacity-deterioration recovery branch with custody and exposure evidence.
 
 ## Decision log
 
@@ -174,6 +174,26 @@ This file is updated throughout implementation. It is the first place to inspect
 - **Release consequence:** Live lending routes remain analysis-only and are marked adapter-unapproved
   until pinned forks, audits, execution authorization, and future mainnet gates are satisfied.
 
+### ADR-018 - Reuse the allowlisted source-domain execution-plan signature at destination
+
+- **Status:** APPROVED
+- **Date:** 2026-11-10
+- **Decision:** The destination adapter recomputes the borrower's execution-plan digest using the
+  explicitly allowlisted source chain ID and source-adapter address, then verifies the original EOA
+  or EIP-1271 authorization before opening the target position. It does not accept a looser executor-
+  supplied destination instruction or require a third borrower authorization type.
+- **Settlement consequence:** A destination verifier must additionally append a current feasibility
+  attestation for the same plan hash. The adapter enforces the attested required borrow, settlement
+  asset, solver principal, exact fee, capitalized cost, supplementary-funding evidence, safe capacity,
+  zero shortfall, and expiry before lending or payout.
+- **Escrow consequence:** Transported collateral, destination loan proceeds, supplementary funding,
+  and solver repayment are separate migration/token balance classes. Supplementary funding is bound
+  to chain, escrow, token, depositor, amount, exact-use hash, refund receiver, and deadline and can
+  move only through the atomic signed settlement path or the post-deadline refund path.
+- **Reason:** The existing execution plan is already the borrower's exact authorization. Verifying
+  its original domain on the destination chain retains one canonical plan while preventing a local
+  executor from substituting borrowers, receivers, amounts, funding evidence, or source domains.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                                      |
@@ -185,6 +205,38 @@ This file is updated throughout implementation. It is the first place to inspect
 | D-07 | Future production upgrade policy          | Future mainnet phase | Decide after audit and governance requirements exist.                                  |
 
 ## Implementation journal
+
+### 2026-11-10 - Plan-bound destination settlement and supplementary funding
+
+- Replaced the destination adapter's executor-only amount tuple with verification of the canonical
+  borrower-signed execution plan against an allowlisted source chain/adapter EIP-712 domain, including
+  nonce, deadline, migration ID, collateral minimum, target-debt cap, principal cap, fee cap, escrow,
+  payout receiver, and refund receiver.
+- Added append-only, sequence-ordered destination feasibility attestations. A newer failed proof
+  supersedes an older passing proof, and target borrowing requires the latest exact plan, settlement
+  asset, required borrow, funding evidence, zero shortfall, capacity, and validity window.
+- Split migration escrow accounting into transported collateral, destination loan proceeds,
+  supplementary funding, and solver repayment. Added exact-delta token transfers and removed the
+  ability for the generic collateral-release path to consume supplementary or loan balances.
+- Added migration-specific supplementary-funding commitments bound to the destination chain, escrow,
+  asset, depositor, exact amount, authorized settlement use, refund receiver, and deadline. Funding is
+  consumed atomically with loan proceeds or refunded permissionlessly to the signed receiver only
+  after expiry; administrators have no active-balance sweep function.
+- Destination borrowing now sends proceeds into settlement escrow, combines only the attested funding,
+  pays exact solver principal and fee, pays an explicitly bounded capitalized-cost recipient when
+  configured, and returns any residual to the signed refund receiver.
+- The test vault now distinguishes authorized principal from the actual receivable after unused draw
+  return and requires the exact attested fee at settlement.
+- Updated local deployment, both demo paths, and the dual-Anvil worker to configure source-plan
+  domains, record destination proofs from chain timestamps, execute the signed settlement, and verify
+  locked/consumed funding records at every financing checkpoint.
+- Added three stateful escrow invariant properties covering 49,152 randomized handler calls per
+  full invariant run: total token custody always equals all migration categories, funding status
+  always matches spendable supplementary balances, and neither collateral, loan proceeds, nor
+  funding can cross-consume the other migration's balance.
+- Verification passed: 14 Solidity unit tests, three stateful invariant properties, 15 worker tests
+  including a complete externally funded fee route, the repository format/lint/type/test/build gate,
+  and both happy and recovery demo commands.
 
 ### 2026-11-10 - Simulator/production boundary and live read-only providers
 

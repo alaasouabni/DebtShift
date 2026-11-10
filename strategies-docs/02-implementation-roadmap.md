@@ -82,20 +82,20 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 - [ ] Implement the source adapter and exact authorization checks.
 - [ ] Implement the destination adapter and post-state checks.
-- [ ] Implement per-migration escrow accounting.
-- [ ] Implement the test liquidity vault with principal and fee separation.
-- [ ] Implement migration-specific supplementary-funding and settlement escrow with exact use and
+- [x] Implement per-migration escrow accounting.
+- [x] Implement the test liquidity vault with principal and fee separation.
+- [x] Implement migration-specific supplementary-funding and settlement escrow with exact use and
       refund authorization.
-- [ ] Make liquidity reservation require a fresh, plan-bound, zero-shortfall feasibility proof.
-- [ ] Add consumed nonces, deadline checks, allowlists, pause scopes, and residual refunds.
-- [ ] Add reentrancy protection and safe token handling.
+- [x] Make liquidity reservation require a fresh, plan-bound, zero-shortfall feasibility proof.
+- [x] Add consumed nonces, deadline checks, allowlists, pause scopes, and residual refunds.
+- [x] Add reentrancy protection and safe token handling.
 - [ ] Emit the canonical migration events.
 - [ ] Implement Aave V3 position reads and source transaction construction.
 - [ ] Implement Morpho Blue market identity, position reads, authorization requirements, and target transaction construction.
 - [ ] Prove or reject the bounded aToken-allowance source-close mechanism on a pinned Aave fork.
 - [ ] If rejected, implement the documented smart-account or borrower-transaction alternative.
 - [ ] Add pinned Morpho destination fork tests.
-- [ ] Add contract invariants proving confirmed borrower funding is isolated and `SETTLED` requires
+- [x] Add contract invariants proving confirmed borrower funding is isolated and `SETTLED` requires
       exact solver repayment rather than a ledger receivable.
 
 ### Exit criteria
@@ -117,32 +117,32 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Normalize rates without losing native units or calculation provenance.
 - [x] Calculate target rate impact after the requested borrow.
 - [x] Add gas, approval, transport, slippage, funding, and protocol costs.
-- [ ] Add exclusive financing-component classification and reject omitted or double-counted costs.
-- [ ] Calculate source payoff, solver principal and fee, capitalized costs, separately paid costs,
+- [x] Add exclusive financing-component classification and reject omitted or double-counted costs.
+- [x] Calculate source payoff, solver principal and fee, capitalized costs, separately paid costs,
       borrower debt prepayment, and confirmed external funding as one reconciled analysis.
-- [ ] Calculate protocol capacity, DebtShift policy capacity, safe market liquidity, signed capacity,
+- [x] Calculate protocol capacity, DebtShift policy capacity, safe market liquidity, signed capacity,
       required destination borrowing, and exact funding shortfall.
-- [ ] Implement borrower-funded fees, safe fee capitalization, partial debt prepayment, and fail-closed
+- [x] Implement borrower-funded fees, safe fee capitalization, partial debt prepayment, and fail-closed
       rejection as the only supported shortfall outcomes.
 - [x] Add break-even, scenario, and net-benefit calculations.
 - [x] Add Aave health-factor and Morpho LTV/LLTV safety policies.
 - [x] Add oracle freshness and liquidity requirements.
 - [x] Add adverse collateral-price and rate-drift scenarios.
-- [ ] Add golden fixtures rejecting the `10,000 USDC` capacity / `10,100 USDC` obligation case and
+- [x] Add golden fixtures rejecting the `10,000 USDC` capacity / `10,100 USDC` obligation case and
       accepting it only with `100 USDC` of finalized supplementary funding or additional safe
       capacity.
 - [x] Return human-readable rejection reasons for ineligible routes.
 - [x] Add golden fixtures reproducing the specification’s example economics.
 - [x] Implement the deterministic Route/Risk Agent and its read-only tool contracts.
 - [x] Implement agent modes `DETERMINISTIC`, `LOCAL_AI`, and `USER_API`, with `DETERMINISTIC` as the default.
-- [ ] Implement an optional Ollama explanation provider using the pinned local model.
+- [x] Implement an optional Ollama explanation provider using the pinned local model.
 - [x] Implement an optional user-supplied API provider through a provider-neutral interface.
 - [x] Add UI settings for provider preset, model, API key, and optional compatible endpoint.
 - [x] Keep user API keys in memory for the active request/session only; never store them in PostgreSQL, browser storage, logs, traces, or analytics.
 - [x] Add URL validation, provider allowlists, redaction, timeouts, response-size limits, and SSRF protections.
 - [x] Implement deterministic explanation templates for machines without Ollama.
 - [x] Prove that agent and model components cannot call execution, signing, reservation, or transfer code.
-- [ ] Add cache, retry, rate-limit, and fallback policies from the data-source strategy.
+- [x] Add cache, retry, rate-limit, and fallback policies from the data-source strategy.
 
 ### Exit criteria
 
@@ -161,8 +161,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 ### Tasks
 
-- [ ] Implement command handlers for reserve, source close, route, destination verification, target open, settlement, and final receipt.
-- [ ] Add feasibility evidence and revalidation checkpoints before reservation, source close, target
+- [x] Implement command handlers for reserve, source close, route, destination verification, target open, settlement, and final receipt.
+- [x] Add feasibility evidence and revalidation checkpoints before reservation, source close, target
       borrow, and settlement.
 - [ ] Implement provisional, confirmed, finalized, and retracted evidence states.
 - [ ] Persist financing analyses, exclusive component classifications, funding contributions,

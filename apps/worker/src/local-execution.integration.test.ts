@@ -19,10 +19,11 @@ import {
   loadFoundryArtifact,
   resolveAnvilPath,
   startAnvil,
+  write,
   type LocalAnvilChain,
   type LocalDebtShiftDeployment,
 } from '@debtshift/protocols';
-import type { Abi, Address, Hex } from 'viem';
+import { createWalletClient, http, type Abi, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
@@ -145,6 +146,53 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => 
       'REFUNDED',
     );
   }, 60_000);
+
+  it('uses finalized supplementary fee funding to reduce the destination borrow', async () => {
+    await withDeployment(
+      async ({ source, destination, deployment, execution, context, simulator }) => {
+        await execution.reserve(context);
+        await execution.closeSource(context);
+        const dispatch = await execution.dispatchTransport(context);
+        await simulator.submitOrigin({
+          quoteHash: context.quote.quoteHash as `0x${string}`,
+          originTransactionHash: dispatch.transactionHash,
+        });
+        const observation = await simulator.getStatus(context.quote.quoteId);
+        await execution.deliverDestination(context, observation);
+        const fundedContext = observedContext(context, observation);
+        await execution.openTarget(fundedContext);
+        await execution.settleLiquidity(fundedContext);
+
+        const destinationPosition = await readTuple(
+          destination,
+          'MockTargetLending',
+          deployment.destination.lending,
+          'positions',
+          [deployment.borrower],
+        );
+        const payout = await readBigInt(
+          destination,
+          'TestToken',
+          deployment.destination.debtToken,
+          'balanceOf',
+          [deployment.deployer],
+        );
+        const receivable = await readBigInt(
+          source,
+          'TestLiquidityVault',
+          deployment.source.vault,
+          'principalReceivable',
+          [deployment.source.debtToken],
+        );
+
+        expect(destinationPosition).toEqual([9_900_000_000_000_000_000n, BORROW_UNITS]);
+        expect(payout).toBe(BORROW_UNITS + FEE_UNITS);
+        expect(receivable).toBe(0n);
+      },
+      'SUCCESS',
+      true,
+    );
+  }, 60_000);
 });
 
 interface DeploymentFixture {
@@ -159,6 +207,7 @@ interface DeploymentFixture {
 async function withDeployment(
   test: (fixture: DeploymentFixture) => Promise<void>,
   outcome: 'SUCCESS' | 'REFUNDED' = 'SUCCESS',
+  supplementaryFunding = false,
 ): Promise<void> {
   const source = await startAnvil({ chainId: 31_337, port: 19_545, anvilPath: ANVIL_PATH });
   const destination = await startAnvil({ chainId: 31_338, port: 19_546, anvilPath: ANVIL_PATH });
@@ -189,7 +238,11 @@ async function withDeployment(
       processingPolls: 0,
       outcome,
     });
-    const context = await buildContext(deployment, simulator);
+    const context = await buildContext(
+      deployment,
+      simulator,
+      supplementaryFunding ? destination : undefined,
+    );
     await test({
       source,
       destination,
@@ -206,6 +259,7 @@ async function withDeployment(
 async function buildContext(
   deployment: LocalDebtShiftDeployment,
   simulator: DeterministicTransportSimulator,
+  fundingChain?: LocalAnvilChain,
 ): Promise<MigrationExecutionContext> {
   const quote = await simulator.getQuote(
     transportQuoteRequestSchema.parse({
@@ -232,6 +286,9 @@ async function buildContext(
   const migrationId = computeMigrationId(intentHash, quote.quoteHash as Hex, planNonce);
   const now = new Date();
   const deadline = Math.floor(Date.now() / 1000) + 3_600;
+  const externalFunding = fundingChain
+    ? await secureSupplementaryFee(deployment, fundingChain, migrationId, deadline)
+    : undefined;
   const plan = {
     intentHash,
     migrationId,
@@ -266,14 +323,20 @@ async function buildContext(
       liquidityBufferBps: 1000,
       stressCollateralDropBps: 1000,
       fundingShortfallUnits: '0',
-      confirmedExternalFundingUnits: '0',
-      externalFunding: [],
+      confirmedExternalFundingUnits: externalFunding === undefined ? '0' : FEE_UNITS.toString(),
+      externalFunding: externalFunding === undefined ? [] : [externalFunding],
       solverPrincipalUnits: BORROW_UNITS.toString(),
       solverFeeUnits: FEE_UNITS.toString(),
       capitalizedCostUnits: '0',
       totalRequiredRepaymentAndFinancedCostUnits: (BORROW_UNITS + FEE_UNITS).toString(),
-      signedBorrowCapacityUnits: '10100000000',
-      requiredDestinationBorrowUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      signedBorrowCapacityUnits:
+        externalFunding === undefined
+          ? (BORROW_UNITS + FEE_UNITS).toString()
+          : BORROW_UNITS.toString(),
+      requiredDestinationBorrowUnits:
+        externalFunding === undefined
+          ? (BORROW_UNITS + FEE_UNITS).toString()
+          : BORROW_UNITS.toString(),
     },
     destinationReceiver: deployment.destination.escrow,
     refundReceiver: deployment.borrower,
@@ -339,6 +402,104 @@ async function buildContext(
       createdAt: now,
       updatedAt: now,
     },
+  };
+}
+
+async function secureSupplementaryFee(
+  deployment: LocalDebtShiftDeployment,
+  destination: LocalAnvilChain,
+  migrationId: Hex,
+  deadline: number,
+) {
+  const [escrow, token] = await Promise.all([
+    loadFoundryArtifact('MigrationEscrow'),
+    loadFoundryArtifact('TestToken'),
+  ]);
+  const account = privateKeyToAccount(DEFAULT_ANVIL_DEPLOYER_KEY);
+  const wallet = createWalletClient({
+    account,
+    chain: destination.chain,
+    transport: http(destination.rpcUrl),
+  });
+  const settlementTerms = {
+    migrationId,
+    token: deployment.destination.debtToken,
+    fundingEvidenceHash: `0x${'00'.repeat(32)}`,
+    solverPayoutReceiver: deployment.deployer,
+    capitalizedCostReceiver: '0x0000000000000000000000000000000000000000',
+    residualReceiver: deployment.borrower,
+    solverPrincipalUnits: BORROW_UNITS,
+    solverFeeUnits: FEE_UNITS,
+    capitalizedCostUnits: 0n,
+  } as const;
+  const authorizedUse = await destination.publicClient.readContract({
+    address: deployment.destination.escrow,
+    abi: escrow.abi,
+    functionName: 'computeAuthorizedUseHash',
+    args: [settlementTerms],
+  });
+  if (typeof authorizedUse !== 'string') {
+    throw new Error('Unexpected authorized-use hash response.');
+  }
+  const commitment = {
+    migrationId,
+    chainId: BigInt(destination.chain.id),
+    token: deployment.destination.debtToken,
+    depositor: deployment.deployer,
+    refundReceiver: deployment.borrower,
+    amountUnits: FEE_UNITS,
+    authorizedUseHash: authorizedUse,
+    deadline: BigInt(deadline),
+  } as const;
+  const evidenceId = await destination.publicClient.readContract({
+    address: deployment.destination.escrow,
+    abi: escrow.abi,
+    functionName: 'computeFundingEvidenceHash',
+    args: [commitment],
+  });
+  if (typeof evidenceId !== 'string') {
+    throw new Error('Unexpected funding-evidence hash response.');
+  }
+  await write(
+    wallet,
+    destination.publicClient,
+    token.abi,
+    deployment.destination.debtToken,
+    'mint',
+    [deployment.deployer, FEE_UNITS],
+  );
+  await write(
+    wallet,
+    destination.publicClient,
+    token.abi,
+    deployment.destination.debtToken,
+    'approve',
+    [deployment.destination.escrow, FEE_UNITS],
+  );
+  await write(
+    wallet,
+    destination.publicClient,
+    escrow.abi,
+    deployment.destination.escrow,
+    'secureSupplementaryFunding',
+    [commitment],
+  );
+
+  return {
+    fundingId: `escrow:${migrationId}:supplementary-fee`,
+    evidenceId: evidenceId as Hex,
+    asset: {
+      chainId: destination.chain.id,
+      address: deployment.destination.debtToken,
+      decimals: 6,
+      symbol: 'dUSDC',
+    },
+    amountUnits: FEE_UNITS.toString(),
+    escrow: deployment.destination.escrow,
+    refundReceiver: deployment.borrower,
+    authorizedUse,
+    verificationState: 'FINALIZED' as const,
+    expiresAt: deadline.toString(),
   };
 }
 

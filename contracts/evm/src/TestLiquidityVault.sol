@@ -13,7 +13,7 @@ contract TestLiquidityVault is ReentrancyGuard {
     error ReservationExists();
     error ReservationExpired();
     error InsufficientFreeLiquidity();
-    error FeeCapExceeded();
+    error FeeMismatch();
     error InvalidFeasibility();
     error StaleFeasibility();
     error FeasibilityMismatch();
@@ -35,6 +35,7 @@ contract TestLiquidityVault is ReentrancyGuard {
         uint64 expiresAt;
         ReservationStatus status;
         address adapter;
+        uint256 receivableUnits;
     }
 
     struct FeasibilityEvidence {
@@ -213,7 +214,8 @@ contract TestLiquidityVault is ReentrancyGuard {
             feeCapUnits: feeCapUnits,
             expiresAt: expiresAt,
             status: ReservationStatus.ACTIVE,
-            adapter: adapter
+            adapter: adapter,
+            receivableUnits: 0
         });
         emit LiquidityReserved(
             migrationId, address(asset), adapter, principalUnits, feeCapUnits, expiresAt
@@ -238,6 +240,7 @@ contract TestLiquidityVault is ReentrancyGuard {
         if (block.timestamp > reservation.expiresAt) revert ReservationExpired();
 
         reservation.status = ReservationStatus.DRAWN;
+        reservation.receivableUnits = reservation.principalUnits;
         reservedUndrawn[address(reservation.asset)] -= reservation.principalUnits;
         principalReceivable[address(reservation.asset)] += reservation.principalUnits;
         reservation.asset.safeTransfer(receiver, reservation.principalUnits);
@@ -249,11 +252,11 @@ contract TestLiquidityVault is ReentrancyGuard {
         Reservation storage reservation = reservations[migrationId];
         if (
             reservation.status != ReservationStatus.DRAWN || msg.sender != reservation.adapter
-                || amountUnits == 0 || amountUnits >= reservation.principalUnits
+                || amountUnits == 0 || amountUnits >= reservation.receivableUnits
         ) revert InvalidReservation();
 
         reservation.asset.transferFromWithExactDelta(msg.sender, address(this), amountUnits);
-        reservation.principalUnits -= amountUnits;
+        reservation.receivableUnits -= amountUnits;
         principalReceivable[address(reservation.asset)] -= amountUnits;
         emit UnusedLiquidityReturned(migrationId, amountUnits);
     }
@@ -265,10 +268,10 @@ contract TestLiquidityVault is ReentrancyGuard {
     {
         Reservation storage reservation = reservations[migrationId];
         if (reservation.status != ReservationStatus.DRAWN) revert InvalidReservation();
-        if (feeUnits > reservation.feeCapUnits) revert FeeCapExceeded();
+        if (feeUnits != reservation.feeCapUnits) revert FeeMismatch();
         _assertLatestPassingFeasibility(migrationId, reservation);
 
-        uint256 principalUnits = reservation.principalUnits;
+        uint256 principalUnits = reservation.receivableUnits;
         reservation.asset
             .transferFromWithExactDelta(payer, address(this), principalUnits + feeUnits);
         principalReceivable[address(reservation.asset)] -= principalUnits;

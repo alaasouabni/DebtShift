@@ -123,6 +123,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
       ...typedPlan,
     });
     const actualPlanHash = hashTypedData(typedPlan);
+    const sourceEvaluatedAt = (await sourceChain.publicClient.getBlock()).timestamp;
 
     await write(
       sourceWallet,
@@ -146,7 +147,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
           requiredDestinationBorrowUnits: 10_050_000_000n,
           fundingShortfallUnits: 0n,
           sequence: 1n,
-          evaluatedAt: BigInt(Math.floor(Date.now() / 1000)),
+          evaluatedAt: sourceEvaluatedAt,
           validUntil: deadline,
         },
       ],
@@ -251,6 +252,41 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
           deliveredCollateral,
         ],
       );
+      const destinationEvaluatedAt = (await destinationChain.publicClient.getBlock()).timestamp;
+      await write(
+        destinationWallet,
+        destinationChain.publicClient,
+        destinationAdapter.abi,
+        deployment.destination.adapter,
+        'recordFeasibility',
+        [
+          LOCAL_MIGRATION_ID,
+          {
+            planHash: actualPlanHash,
+            analysisHash: keccak256(stringToHex('debtshift.local.destination-feasibility.v1')),
+            externalFundingEvidenceHash: `0x${'00'.repeat(32)}`,
+            settlementAsset: deployment.destination.debtToken,
+            solverPrincipalUnits: 10_000_000_000n,
+            solverFeeUnits: 50_000_000n,
+            capitalizedCostUnits: 0n,
+            totalRequiredUnits: 10_050_000_000n,
+            confirmedExternalFundingUnits: 0n,
+            maximumSafeBorrowingCapacityUnits: 10_050_000_000n,
+            requiredDestinationBorrowUnits: 10_050_000_000n,
+            fundingShortfallUnits: 0n,
+            sequence: 1n,
+            evaluatedAt: destinationEvaluatedAt,
+            validUntil: deadline,
+          },
+        ],
+      );
+      const destinationFeasibilityHash = await readHex(
+        destinationChain.publicClient,
+        destinationAdapter.abi,
+        deployment.destination.adapter,
+        'latestFeasibilityHash',
+        [LOCAL_MIGRATION_ID],
+      );
       await write(
         destinationWallet,
         destinationChain.publicClient,
@@ -258,15 +294,19 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
         deployment.destination.adapter,
         'openDestination',
         [
+          plan,
+          signature,
           {
-            migrationId: LOCAL_MIGRATION_ID,
-            borrower: deployment.borrower,
-            payoutReceiver: deployment.deployer,
+            sourceChainId: sourceChain.chain.id,
+            sourceAdapter: deployment.source.adapter,
             collateralUnits: deliveredCollateral,
-            minimumCollateralUnits: 9_800_000_000_000_000_000n,
             borrowUnits: 10_050_000_000n,
-            maximumDebtUnits: 10_100_000_000n,
-            deadline,
+            feasibilityHash: destinationFeasibilityHash,
+            fundingEvidenceHash: `0x${'00'.repeat(32)}`,
+            solverPrincipalUnits: 10_000_000_000n,
+            solverFeeUnits: 50_000_000n,
+            capitalizedCostUnits: 0n,
+            capitalizedCostReceiver: '0x0000000000000000000000000000000000000000',
           },
         ],
       );

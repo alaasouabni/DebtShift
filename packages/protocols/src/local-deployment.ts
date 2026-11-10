@@ -219,6 +219,14 @@ export async function deployLocalDebtShift(
   await write(
     destinationDeployer,
     destinationPublicClient,
+    artifacts.destinationAdapter.abi,
+    destinationAdapter,
+    'setPlanDomain',
+    [sourceChain.id, sourceAdapter, true],
+  );
+  await write(
+    destinationDeployer,
+    destinationPublicClient,
     artifacts.testToken.abi,
     destinationDebtToken,
     'mint',
