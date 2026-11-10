@@ -1,19 +1,27 @@
 import {
   createWalletClient,
+  hashTypedData,
   http,
+  keccak256,
+  stringToHex,
   type Abi,
   type Address,
   type Hex,
   type PublicClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { executionPlanTypes } from '@debtshift/domain';
 
 import { loadFoundryArtifact } from './artifacts.js';
 import { startAnvil } from './local-chain.js';
 import {
   DEFAULT_ANVIL_DEPLOYER_KEY,
+  DEFAULT_ANVIL_BORROWER_KEY,
   deployLocalDebtShift,
+  LOCAL_INTENT_HASH,
   LOCAL_MIGRATION_ID,
+  LOCAL_PLAN_NONCE,
+  LOCAL_TRANSPORT_QUOTE_HASH,
   write,
 } from './local-deployment.js';
 
@@ -53,6 +61,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
       destinationChain.publicClient,
     );
     const account = privateKeyToAccount(DEFAULT_ANVIL_DEPLOYER_KEY);
+    const borrowerAccount = privateKeyToAccount(DEFAULT_ANVIL_BORROWER_KEY);
     const sourceWallet = createWalletClient({
       account,
       chain: sourceChain.chain,
@@ -62,6 +71,11 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
       account,
       chain: destinationChain.chain,
       transport: http(destinationChain.rpcUrl),
+    });
+    const sourceBorrowerWallet = createWalletClient({
+      account: borrowerAccount,
+      chain: sourceChain.chain,
+      transport: http(sourceChain.rpcUrl),
     });
     const [token, sourceLending, targetLending, vault, escrow, sourceAdapter, destinationAdapter] =
       await Promise.all([
@@ -74,6 +88,76 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
         loadFoundryArtifact('DestinationAdapter'),
       ]);
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3_600);
+    const plan = {
+      intentHash: LOCAL_INTENT_HASH,
+      migrationId: LOCAL_MIGRATION_ID,
+      borrower: deployment.borrower,
+      sourcePositionId: keccak256(stringToHex('debtshift.local.source-position.v1')),
+      routeHash: keccak256(stringToHex('debtshift.local.route.v1')),
+      transportQuoteHash: LOCAL_TRANSPORT_QUOTE_HASH,
+      sourceRepaymentMax: 10_000_000_000n,
+      sourceCollateralMin: 10n * 10n ** 18n,
+      targetDebtMax: 10_100_000_000n,
+      minDestinationCollateral: 9_800_000_000_000_000_000n,
+      principalMax: 10_000_000_000n,
+      feeMax: 50_000_000n,
+      destinationReceiver: deployment.destination.escrow,
+      refundReceiver: deployment.borrower,
+      payoutReceiver: deployment.deployer,
+      deadline,
+      nonce: LOCAL_PLAN_NONCE,
+    } as const;
+    const typedPlan = {
+      domain: {
+        name: 'DebtShift',
+        version: '1',
+        chainId: sourceChain.chain.id,
+        verifyingContract: deployment.source.adapter,
+      },
+      primaryType: 'ExecutionPlan',
+      types: executionPlanTypes,
+      message: plan,
+    } as const;
+    const signature = await sourceBorrowerWallet.signTypedData({
+      account: borrowerAccount,
+      ...typedPlan,
+    });
+    const actualPlanHash = hashTypedData(typedPlan);
+
+    await write(
+      sourceWallet,
+      sourceChain.publicClient,
+      vault.abi,
+      deployment.source.vault,
+      'recordFeasibility',
+      [
+        LOCAL_MIGRATION_ID,
+        {
+          planHash: actualPlanHash,
+          analysisHash: keccak256(stringToHex('debtshift.local.feasibility.v1')),
+          externalFundingEvidenceHash: `0x${'00'.repeat(32)}`,
+          liquidityAsset: deployment.source.debtToken,
+          solverPrincipalUnits: 10_000_000_000n,
+          solverFeeUnits: 50_000_000n,
+          capitalizedCostUnits: 0n,
+          totalRequiredUnits: 10_050_000_000n,
+          confirmedExternalFundingUnits: 0n,
+          maximumSafeBorrowingCapacityUnits: 10_050_000_000n,
+          requiredDestinationBorrowUnits: 10_050_000_000n,
+          fundingShortfallUnits: 0n,
+          sequence: 1n,
+          evaluatedAt: BigInt(Math.floor(Date.now() / 1000)),
+          validUntil: deadline,
+        },
+      ],
+    );
+    const feasibilityHash = await readHex(
+      sourceChain.publicClient,
+      vault.abi,
+      deployment.source.vault,
+      'latestFeasibilityHash',
+      [LOCAL_MIGRATION_ID],
+    );
 
     await write(
       sourceWallet,
@@ -85,8 +169,10 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
         LOCAL_MIGRATION_ID,
         deployment.source.debtToken,
         deployment.source.adapter,
+        actualPlanHash,
+        feasibilityHash,
         10_000_000_000n,
-        100_000_000n,
+        50_000_000n,
         deadline,
       ],
     );
@@ -96,15 +182,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
       sourceAdapter.abi,
       deployment.source.adapter,
       'closeSource',
-      [
-        {
-          migrationId: LOCAL_MIGRATION_ID,
-          borrower: deployment.borrower,
-          maximumDebtUnits: 10_000_000_000n,
-          minimumCollateralUnits: 10n * 10n ** 18n,
-          deadline,
-        },
-      ],
+      [plan, signature],
     );
 
     let borrowerRefundUnits = 0n;
@@ -290,6 +368,20 @@ async function readBigInt(
   const result = await client.readContract({ address, abi, functionName, args });
   if (typeof result !== 'bigint') throw new Error(`Unexpected ${functionName} response.`);
   return result;
+}
+
+async function readHex(
+  client: PublicClient,
+  abi: Abi,
+  address: Address,
+  functionName: string,
+  args: readonly unknown[],
+): Promise<Hex> {
+  const result = await client.readContract({ address, abi, functionName, args });
+  if (typeof result !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(result)) {
+    throw new Error(`Unexpected ${functionName} response.`);
+  }
+  return result as Hex;
 }
 
 function assertTerminalState(

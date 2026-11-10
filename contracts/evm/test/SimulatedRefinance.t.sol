@@ -1,22 +1,41 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+import { DebtShiftHashing } from "../src/DebtShiftHashing.sol";
 import { DestinationAdapter } from "../src/DestinationAdapter.sol";
 import { MigrationEscrow } from "../src/MigrationEscrow.sol";
 import { SourceAdapter } from "../src/SourceAdapter.sol";
 import { TestLiquidityVault } from "../src/TestLiquidityVault.sol";
 import { IERC20 } from "../src/interfaces/IERC20.sol";
+import { MockEip1271Wallet } from "../src/mocks/MockEip1271Wallet.sol";
 import { MockSourceLending } from "../src/mocks/MockSourceLending.sol";
 import { MockTargetLending } from "../src/mocks/MockTargetLending.sol";
 import { TestToken } from "../src/mocks/TestToken.sol";
 
+interface Vm {
+    function addr(uint256 privateKey) external returns (address);
+    function prank(address sender) external;
+    function sign(uint256 privateKey, bytes32 digest)
+        external
+        returns (uint8 v, bytes32 r, bytes32 s);
+    function warp(uint256 timestamp) external;
+}
+
 contract SimulatedRefinanceTest {
-    bytes32 internal constant MIGRATION_ID =
-        0x67c5975085073b2512ada4bfe6296d62b485f963078bb88c104d68958287d692;
+    Vm private constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    uint256 internal constant BORROWER_KEY = 0xA11CE;
     uint256 internal constant SOURCE_DEBT = 10_000_000_000;
     uint256 internal constant SOURCE_COLLATERAL = 10 ether;
     uint256 internal constant DESTINATION_COLLATERAL = 9.9 ether;
     uint256 internal constant DESTINATION_DEBT = 10_050_000_000;
+    uint256 internal constant SOLVER_FEE = 50_000_000;
+
+    address internal borrower;
+    bytes32 internal migrationId;
+    bytes32 internal planHash;
+    bytes32 internal feasibilityHash;
+    DebtShiftHashing.ExecutionPlanHashInput internal plan;
 
     TestToken internal sourceDebtToken;
     TestToken internal sourceCollateralToken;
@@ -32,6 +51,7 @@ contract SimulatedRefinanceTest {
     DestinationAdapter internal destinationAdapter;
 
     function setUp() public {
+        borrower = vm.addr(BORROWER_KEY);
         sourceDebtToken = new TestToken("Source USD", "sUSDC", 6, address(this));
         sourceCollateralToken = new TestToken("Source Ether", "sWETH", 18, address(this));
         sourceLending = new MockSourceLending(
@@ -46,20 +66,29 @@ contract SimulatedRefinanceTest {
         sourceEscrow.setDepositor(address(sourceAdapter), true);
 
         sourceDebtToken.mint(address(sourceLending), 100_000_000_000);
-        sourceCollateralToken.mint(address(this), SOURCE_COLLATERAL);
+        sourceCollateralToken.mint(borrower, SOURCE_COLLATERAL);
+        vm.prank(borrower);
         sourceCollateralToken.approve(address(sourceLending), SOURCE_COLLATERAL);
+        vm.prank(borrower);
         sourceLending.openPosition(SOURCE_COLLATERAL, SOURCE_DEBT);
 
-        sourceDebtToken.mint(address(this), 20_000_000_000);
-        sourceDebtToken.approve(address(vault), 20_000_000_000);
-        vault.deposit(IERC20(address(sourceDebtToken)), 20_000_000_000);
+        sourceDebtToken.mint(address(this), 30_000_000_000);
+        sourceDebtToken.approve(address(vault), 30_000_000_000);
+        vault.deposit(IERC20(address(sourceDebtToken)), 30_000_000_000);
+
+        plan = _plan(borrower, 1);
+        migrationId = plan.migrationId;
+        planHash = _planHash(plan);
+        feasibilityHash = _recordPassingFeasibility(plan, planHash, uint64(block.timestamp));
         vault.reserve(
-            MIGRATION_ID,
+            migrationId,
             IERC20(address(sourceDebtToken)),
             address(sourceAdapter),
+            planHash,
+            feasibilityHash,
             SOURCE_DEBT,
-            100_000_000,
-            uint64(block.timestamp + 1 hours)
+            SOLVER_FEE,
+            plan.deadline
         );
 
         destinationDebtToken = new TestToken("Destination USD", "dUSDC", 6, address(this));
@@ -79,15 +108,13 @@ contract SimulatedRefinanceTest {
     }
 
     function testHappyPathMovesExactBalancesAndRejectsReplay() public {
-        SourceAdapter.CloseTerms memory closeTerms = _closeTerms();
-        sourceAdapter.closeSource(closeTerms);
+        bytes memory signature = _sign(planHash);
+        sourceAdapter.closeSource(plan, signature);
 
-        (uint256 sourceCollateralAfter, uint256 sourceDebtAfter) =
-            sourceLending.positions(address(this));
+        (uint256 sourceCollateralAfter, uint256 sourceDebtAfter) = sourceLending.positions(borrower);
         require(sourceCollateralAfter == 0 && sourceDebtAfter == 0, "source remains open");
         require(
-            sourceEscrow.balances(MIGRATION_ID, address(sourceCollateralToken))
-                == SOURCE_COLLATERAL,
+            sourceEscrow.balances(migrationId, address(sourceCollateralToken)) == SOURCE_COLLATERAL,
             "source collateral not isolated"
         );
         require(
@@ -95,17 +122,17 @@ contract SimulatedRefinanceTest {
             "vault receivable mismatch"
         );
 
-        (bool replayedSource,) =
-            address(sourceAdapter).call(abi.encodeCall(SourceAdapter.closeSource, (closeTerms)));
+        (bool replayedSource,) = address(sourceAdapter)
+            .call(abi.encodeCall(SourceAdapter.closeSource, (plan, signature)));
         require(!replayedSource, "source replay succeeded");
 
         sourceEscrow.release(
-            MIGRATION_ID, IERC20(address(sourceCollateralToken)), address(0x1234), SOURCE_COLLATERAL
+            migrationId, IERC20(address(sourceCollateralToken)), address(0x1234), SOURCE_COLLATERAL
         );
         destinationCollateralToken.mint(address(this), DESTINATION_COLLATERAL);
         destinationCollateralToken.approve(address(destinationEscrow), DESTINATION_COLLATERAL);
         destinationEscrow.assign(
-            MIGRATION_ID,
+            migrationId,
             IERC20(address(destinationCollateralToken)),
             address(this),
             DESTINATION_COLLATERAL
@@ -114,73 +141,247 @@ contract SimulatedRefinanceTest {
         DestinationAdapter.OpenTerms memory openTerms = _openTerms();
         destinationAdapter.openDestination(openTerms);
         (uint256 destinationCollateralAfter, uint256 destinationDebtAfter) =
-            targetLending.positions(address(this));
+            targetLending.positions(borrower);
         require(
             destinationCollateralAfter == DESTINATION_COLLATERAL, "destination collateral mismatch"
         );
         require(destinationDebtAfter == DESTINATION_DEBT, "destination debt mismatch");
         require(
-            destinationDebtToken.balanceOf(address(this)) == DESTINATION_DEBT,
-            "payout receiver mismatch"
+            destinationDebtToken.balanceOf(borrower) == DESTINATION_DEBT, "payout receiver mismatch"
         );
 
         (bool replayedDestination,) = address(destinationAdapter)
             .call(abi.encodeCall(DestinationAdapter.openDestination, (openTerms)));
         require(!replayedDestination, "destination replay succeeded");
 
-        sourceDebtToken.mint(address(this), 50_000_000);
-        sourceDebtToken.approve(address(vault), DESTINATION_DEBT);
-        vault.settle(MIGRATION_ID, address(this), 50_000_000);
+        sourceDebtToken.mint(address(this), SOURCE_DEBT + SOLVER_FEE);
+        sourceDebtToken.approve(address(vault), SOURCE_DEBT + SOLVER_FEE);
+        vault.settle(migrationId, address(this), SOLVER_FEE);
         require(vault.principalReceivable(address(sourceDebtToken)) == 0, "receivable remains");
         require(
-            sourceDebtToken.balanceOf(address(vault)) == 20_050_000_000, "vault settlement mismatch"
+            sourceDebtToken.balanceOf(address(vault)) == 30_000_000_000 + SOLVER_FEE,
+            "vault settlement mismatch"
         );
     }
 
     function testTransportRefundCanBeReturnedWithoutCrossMigrationConsumption() public {
-        sourceAdapter.closeSource(_closeTerms());
+        sourceAdapter.closeSource(plan, _sign(planHash));
         sourceEscrow.release(
-            MIGRATION_ID, IERC20(address(sourceCollateralToken)), address(this), SOURCE_COLLATERAL
+            migrationId, IERC20(address(sourceCollateralToken)), borrower, SOURCE_COLLATERAL
         );
 
+        vm.prank(borrower);
         sourceCollateralToken.approve(address(sourceEscrow), SOURCE_COLLATERAL);
         sourceEscrow.assign(
-            MIGRATION_ID, IERC20(address(sourceCollateralToken)), address(this), SOURCE_COLLATERAL
+            migrationId, IERC20(address(sourceCollateralToken)), borrower, SOURCE_COLLATERAL
         );
         sourceEscrow.release(
-            MIGRATION_ID, IERC20(address(sourceCollateralToken)), address(this), SOURCE_COLLATERAL
+            migrationId, IERC20(address(sourceCollateralToken)), borrower, SOURCE_COLLATERAL
         );
 
         require(
-            sourceCollateralToken.balanceOf(address(this)) == SOURCE_COLLATERAL,
+            sourceCollateralToken.balanceOf(borrower) == SOURCE_COLLATERAL,
             "refund did not return collateral"
         );
         require(
-            sourceEscrow.balances(MIGRATION_ID, address(sourceCollateralToken)) == 0,
+            sourceEscrow.balances(migrationId, address(sourceCollateralToken)) == 0,
             "refund left escrow balance"
         );
     }
 
-    function _closeTerms() private view returns (SourceAdapter.CloseTerms memory) {
-        return SourceAdapter.CloseTerms({
-            migrationId: MIGRATION_ID,
-            borrower: address(this),
-            maximumDebtUnits: SOURCE_DEBT,
-            minimumCollateralUnits: SOURCE_COLLATERAL,
-            deadline: uint64(block.timestamp + 30 minutes)
+    function testMutatedExecutionPlanSignatureIsRejectedBeforeVaultDraw() public {
+        bytes memory signature = _sign(planHash);
+        plan.sourceRepaymentMax -= 1;
+        (bool success,) = address(sourceAdapter)
+            .call(abi.encodeCall(SourceAdapter.closeSource, (plan, signature)));
+        require(!success, "mutated plan was accepted");
+        require(
+            _reservationStatus(migrationId) == TestLiquidityVault.ReservationStatus.ACTIVE,
+            "failed authorization consumed reservation"
+        );
+    }
+
+    function testReservationRejectsLatestProofWithUnresolvedShortfall() public {
+        DebtShiftHashing.ExecutionPlanHashInput memory otherPlan = _plan(borrower, 2);
+        bytes32 otherPlanHash = _planHash(otherPlan);
+        TestLiquidityVault.FeasibilityEvidence memory evidence =
+            _feasibility(otherPlanHash, uint64(block.timestamp), 1);
+        evidence.maximumSafeBorrowingCapacityUnits = SOURCE_DEBT;
+        evidence.fundingShortfallUnits = SOLVER_FEE;
+        bytes32 otherFeasibilityHash = vault.recordFeasibility(otherPlan.migrationId, evidence);
+
+        (bool success,) = address(vault)
+            .call(
+                abi.encodeCall(
+                    TestLiquidityVault.reserve,
+                    (
+                        otherPlan.migrationId,
+                        IERC20(address(sourceDebtToken)),
+                        address(sourceAdapter),
+                        otherPlanHash,
+                        otherFeasibilityHash,
+                        SOURCE_DEBT,
+                        SOLVER_FEE,
+                        otherPlan.deadline
+                    )
+                )
+            );
+        require(!success, "shortfall proof reserved liquidity");
+    }
+
+    function testNewerFailingProofSupersedesPassingReservation() public {
+        vm.warp(block.timestamp + 1);
+        TestLiquidityVault.FeasibilityEvidence memory failed =
+            _feasibility(planHash, uint64(block.timestamp), 2);
+        failed.maximumSafeBorrowingCapacityUnits = SOURCE_DEBT;
+        failed.fundingShortfallUnits = SOLVER_FEE;
+        vault.recordFeasibility(migrationId, failed);
+
+        (bool success,) = address(sourceAdapter)
+            .call(abi.encodeCall(SourceAdapter.closeSource, (plan, _sign(planHash))));
+        require(!success, "stale passing proof remained executable");
+        require(
+            _reservationStatus(migrationId) == TestLiquidityVault.ReservationStatus.ACTIVE,
+            "failed revalidation consumed reservation"
+        );
+    }
+
+    function testExpiredPlanCannotDrawLiquidity() public {
+        vm.warp(uint256(plan.deadline) + 1);
+        (bool success,) = address(sourceAdapter)
+            .call(abi.encodeCall(SourceAdapter.closeSource, (plan, _sign(planHash))));
+        require(!success, "expired plan closed source");
+        require(vault.principalReceivable(address(sourceDebtToken)) == 0, "expired draw occurred");
+    }
+
+    function testEip1271BorrowerAuthorizationIsAccepted() public {
+        MockEip1271Wallet wallet = new MockEip1271Wallet(address(this));
+        sourceCollateralToken.mint(address(wallet), SOURCE_COLLATERAL);
+        wallet.execute(
+            address(sourceCollateralToken),
+            abi.encodeCall(TestToken.approve, (address(sourceLending), SOURCE_COLLATERAL))
+        );
+        wallet.execute(
+            address(sourceLending),
+            abi.encodeCall(MockSourceLending.openPosition, (SOURCE_COLLATERAL, SOURCE_DEBT))
+        );
+
+        DebtShiftHashing.ExecutionPlanHashInput memory walletPlan = _plan(address(wallet), 3);
+        bytes32 walletPlanHash = _planHash(walletPlan);
+        bytes32 walletFeasibilityHash =
+            _recordPassingFeasibility(walletPlan, walletPlanHash, uint64(block.timestamp));
+        vault.reserve(
+            walletPlan.migrationId,
+            IERC20(address(sourceDebtToken)),
+            address(sourceAdapter),
+            walletPlanHash,
+            walletFeasibilityHash,
+            SOURCE_DEBT,
+            SOLVER_FEE,
+            walletPlan.deadline
+        );
+        wallet.approveDigest(walletPlanHash, true);
+
+        sourceAdapter.closeSource(walletPlan, hex"01");
+        (uint256 collateralAfter, uint256 debtAfter) = sourceLending.positions(address(wallet));
+        require(collateralAfter == 0 && debtAfter == 0, "EIP-1271 source remains open");
+    }
+
+    function _plan(address planBorrower, uint256 nonce)
+        private
+        view
+        returns (DebtShiftHashing.ExecutionPlanHashInput memory result)
+    {
+        bytes32 intentHash = keccak256(abi.encode("intent", planBorrower));
+        bytes32 quoteHash = keccak256(abi.encode("quote", nonce));
+        result = DebtShiftHashing.ExecutionPlanHashInput({
+            intentHash: intentHash,
+            migrationId: DebtShiftHashing.computeMigrationId(intentHash, quoteHash, nonce),
+            borrower: planBorrower,
+            sourcePositionId: keccak256(abi.encode("source-position", planBorrower)),
+            routeHash: keccak256(abi.encode("route", nonce)),
+            transportQuoteHash: quoteHash,
+            sourceRepaymentMax: SOURCE_DEBT,
+            sourceCollateralMin: SOURCE_COLLATERAL,
+            targetDebtMax: 10_100_000_000,
+            minDestinationCollateral: 9.8 ether,
+            principalMax: SOURCE_DEBT,
+            feeMax: SOLVER_FEE,
+            destinationReceiver: address(destinationEscrow) == address(0)
+                ? address(0xD357)
+                : address(destinationEscrow),
+            refundReceiver: planBorrower,
+            payoutReceiver: planBorrower,
+            deadline: uint64(block.timestamp + 30 minutes),
+            nonce: nonce
+        });
+    }
+
+    function _planHash(DebtShiftHashing.ExecutionPlanHashInput memory input)
+        private
+        view
+        returns (bytes32)
+    {
+        return DebtShiftHashing.hashExecutionPlan(input, block.chainid, address(sourceAdapter));
+    }
+
+    function _sign(bytes32 digest) private returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(BORROWER_KEY, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _recordPassingFeasibility(
+        DebtShiftHashing.ExecutionPlanHashInput memory input,
+        bytes32 inputPlanHash,
+        uint64 evaluatedAt
+    ) private returns (bytes32) {
+        return vault.recordFeasibility(
+            input.migrationId, _feasibility(inputPlanHash, evaluatedAt, 1)
+        );
+    }
+
+    function _feasibility(bytes32 inputPlanHash, uint64 evaluatedAt, uint64 sequence)
+        private
+        view
+        returns (TestLiquidityVault.FeasibilityEvidence memory)
+    {
+        return TestLiquidityVault.FeasibilityEvidence({
+            planHash: inputPlanHash,
+            analysisHash: keccak256(abi.encode("analysis", inputPlanHash, evaluatedAt)),
+            externalFundingEvidenceHash: bytes32(0),
+            liquidityAsset: address(sourceDebtToken),
+            solverPrincipalUnits: SOURCE_DEBT,
+            solverFeeUnits: SOLVER_FEE,
+            capitalizedCostUnits: 0,
+            totalRequiredUnits: SOURCE_DEBT + SOLVER_FEE,
+            confirmedExternalFundingUnits: 0,
+            maximumSafeBorrowingCapacityUnits: SOURCE_DEBT + SOLVER_FEE,
+            requiredDestinationBorrowUnits: SOURCE_DEBT + SOLVER_FEE,
+            fundingShortfallUnits: 0,
+            sequence: sequence,
+            evaluatedAt: evaluatedAt,
+            validUntil: uint64(block.timestamp + 30 minutes)
         });
     }
 
     function _openTerms() private view returns (DestinationAdapter.OpenTerms memory) {
         return DestinationAdapter.OpenTerms({
-            migrationId: MIGRATION_ID,
-            borrower: address(this),
-            payoutReceiver: address(this),
+            migrationId: migrationId,
+            borrower: borrower,
+            payoutReceiver: borrower,
             collateralUnits: DESTINATION_COLLATERAL,
             minimumCollateralUnits: 9.8 ether,
             borrowUnits: DESTINATION_DEBT,
             maximumDebtUnits: 10_100_000_000,
             deadline: uint64(block.timestamp + 30 minutes)
         });
+    }
+
+    function _reservationStatus(bytes32 id)
+        private
+        view
+        returns (TestLiquidityVault.ReservationStatus status)
+    {
+        (,,,,,, status,) = vault.reservations(id);
     }
 }

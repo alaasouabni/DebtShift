@@ -1,7 +1,12 @@
 import { spawnSync } from 'node:child_process';
 
 import type { MigrationExecutionContext } from '@debtshift/database';
-import { parseDebtShiftEnvironment } from '@debtshift/domain';
+import {
+  computeMigrationId,
+  getExecutionPlanTypedData,
+  hashExecutionPlan,
+  parseDebtShiftEnvironment,
+} from '@debtshift/domain';
 import {
   DeterministicTransportSimulator,
   transportQuoteRequestSchema,
@@ -9,6 +14,7 @@ import {
 } from '@debtshift/intents';
 import {
   DEFAULT_ANVIL_DEPLOYER_KEY,
+  DEFAULT_ANVIL_BORROWER_KEY,
   deployLocalDebtShift,
   loadFoundryArtifact,
   resolveAnvilPath,
@@ -16,7 +22,8 @@ import {
   type LocalAnvilChain,
   type LocalDebtShiftDeployment,
 } from '@debtshift/protocols';
-import type { Abi, Address } from 'viem';
+import type { Abi, Address, Hex } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
 import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
@@ -220,14 +227,71 @@ async function buildContext(
       refundReceiver: deployment.borrower,
     }),
   );
-  const migrationId = `0x${'ab'.repeat(32)}` as const;
+  const intentHash = `0x${'01'.repeat(32)}` as const;
+  const planNonce = 1n;
+  const migrationId = computeMigrationId(intentHash, quote.quoteHash as Hex, planNonce);
   const now = new Date();
   const deadline = Math.floor(Date.now() / 1000) + 3_600;
+  const plan = {
+    intentHash,
+    migrationId,
+    borrower: deployment.borrower,
+    sourcePositionId: `0x${'03'.repeat(32)}`,
+    routeHash: `0x${'04'.repeat(32)}`,
+    transportQuoteHash: quote.quoteHash,
+    sourceMarket: {
+      chainId: 31_337,
+      deployment: deployment.source.lending,
+    },
+    targetMarket: {
+      chainId: 31_338,
+      deployment: deployment.destination.lending,
+    },
+    sourceDebtAsset: { address: deployment.source.debtToken },
+    sourceCollateralAsset: { address: deployment.source.collateralToken },
+    destinationDebtAsset: { address: deployment.destination.debtToken, decimals: 6 },
+    destinationCollateralAsset: {
+      address: deployment.destination.collateralToken,
+      decimals: 18,
+    },
+    sourceRepaymentMaxUnits: BORROW_UNITS.toString(),
+    sourceCollateralMinUnits: COLLATERAL_UNITS.toString(),
+    minDestinationCollateralUnits: '9800000000000000000',
+    targetDebtMaxUnits: '10100000000',
+    principalMaxUnits: BORROW_UNITS.toString(),
+    feeMaxUnits: FEE_UNITS.toString(),
+    financing: {
+      validUntil: deadline.toString(),
+      capacityEvidenceHash: `0x${'cd'.repeat(32)}`,
+      liquidityBufferBps: 1000,
+      stressCollateralDropBps: 1000,
+      fundingShortfallUnits: '0',
+      confirmedExternalFundingUnits: '0',
+      externalFunding: [],
+      solverPrincipalUnits: BORROW_UNITS.toString(),
+      solverFeeUnits: FEE_UNITS.toString(),
+      capitalizedCostUnits: '0',
+      totalRequiredRepaymentAndFinancedCostUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      signedBorrowCapacityUnits: '10100000000',
+      requiredDestinationBorrowUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+    },
+    destinationReceiver: deployment.destination.escrow,
+    refundReceiver: deployment.borrower,
+    fundingProvider: deployment.source.vault,
+    payoutReceiver: deployment.deployer,
+    deadline: deadline.toString(),
+    nonce: planNonce.toString(),
+  } as unknown as MigrationExecutionContext['signedPlan']['plan'];
+  const borrower = privateKeyToAccount(DEFAULT_ANVIL_BORROWER_KEY);
+  const signature = await borrower.signTypedData(
+    getExecutionPlanTypedData(plan, deployment.source.adapter),
+  );
+  const planHash = hashExecutionPlan(plan, deployment.source.adapter);
   return {
     migration: {
       migrationId,
-      intentHash: `0x${'01'.repeat(32)}`,
-      planHash: `0x${'02'.repeat(32)}`,
+      intentHash,
+      planHash,
       quoteHash: quote.quoteHash,
       phase: 'AUTHORIZED',
       version: 0,
@@ -246,48 +310,9 @@ async function buildContext(
       },
     } as unknown as MigrationExecutionContext['signedIntent'],
     signedPlan: {
-      plan: {
-        migrationId,
-        borrower: deployment.borrower,
-        sourceMarket: {
-          chainId: 31_337,
-          deployment: deployment.source.lending,
-        },
-        targetMarket: {
-          chainId: 31_338,
-          deployment: deployment.destination.lending,
-        },
-        sourceDebtAsset: { address: deployment.source.debtToken },
-        sourceCollateralAsset: { address: deployment.source.collateralToken },
-        destinationDebtAsset: { address: deployment.destination.debtToken, decimals: 6 },
-        destinationCollateralAsset: {
-          address: deployment.destination.collateralToken,
-          decimals: 18,
-        },
-        sourceRepaymentMaxUnits: BORROW_UNITS.toString(),
-        sourceCollateralMinUnits: COLLATERAL_UNITS.toString(),
-        minDestinationCollateralUnits: '9800000000000000000',
-        targetDebtMaxUnits: '10100000000',
-        principalMaxUnits: BORROW_UNITS.toString(),
-        feeMaxUnits: FEE_UNITS.toString(),
-        financing: {
-          validUntil: deadline.toString(),
-          capacityEvidenceHash: `0x${'cd'.repeat(32)}`,
-          liquidityBufferBps: 1000,
-          stressCollateralDropBps: 1000,
-          fundingShortfallUnits: '0',
-          confirmedExternalFundingUnits: '0',
-          externalFunding: [],
-          totalRequiredRepaymentAndFinancedCostUnits: (BORROW_UNITS + FEE_UNITS).toString(),
-          signedBorrowCapacityUnits: '10100000000',
-          requiredDestinationBorrowUnits: (BORROW_UNITS + FEE_UNITS).toString(),
-        },
-        destinationReceiver: deployment.destination.escrow,
-        refundReceiver: deployment.borrower,
-        fundingProvider: deployment.source.vault,
-        payoutReceiver: deployment.deployer,
-        deadline: deadline.toString(),
-      },
+      plan,
+      planHash,
+      signature,
     } as unknown as MigrationExecutionContext['signedPlan'],
     sourceSnapshot: {
       collateralUnits: COLLATERAL_UNITS.toString(),

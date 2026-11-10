@@ -2,9 +2,11 @@
 pragma solidity 0.8.30;
 
 import { MigrationEscrow } from "./MigrationEscrow.sol";
+import { DebtShiftHashing } from "./DebtShiftHashing.sol";
 import { TestLiquidityVault } from "./TestLiquidityVault.sol";
 import { IERC20 } from "./interfaces/IERC20.sol";
 import { SafeToken } from "./libraries/SafeToken.sol";
+import { SignatureChecker } from "./libraries/SignatureChecker.sol";
 import { MockSourceLending } from "./mocks/MockSourceLending.sol";
 import { ReentrancyGuard } from "./security/ReentrancyGuard.sol";
 
@@ -16,14 +18,8 @@ contract SourceAdapter is ReentrancyGuard {
     error Expired();
     error MigrationAlreadyConsumed();
     error AssetMismatch();
-
-    struct CloseTerms {
-        bytes32 migrationId;
-        address borrower;
-        uint256 maximumDebtUnits;
-        uint256 minimumCollateralUnits;
-        uint64 deadline;
-    }
+    error InvalidAuthorization();
+    error NonceAlreadyConsumed();
 
     address public owner;
     bool public paused;
@@ -34,12 +30,19 @@ contract SourceAdapter is ReentrancyGuard {
     IERC20 public immutable collateralToken;
     mapping(address executor => bool allowed) public executors;
     mapping(bytes32 migrationId => bool consumed) public consumedMigrations;
+    mapping(address borrower => mapping(uint256 nonce => bool consumed)) public consumedNonces;
 
     event SourceClosed(
         bytes32 indexed migrationId,
         address indexed borrower,
         uint256 repaidDebtUnits,
         uint256 releasedCollateralUnits
+    );
+    event ExecutionPlanConsumed(
+        bytes32 indexed migrationId,
+        bytes32 indexed planHash,
+        address indexed borrower,
+        uint256 nonce
     );
 
     constructor(
@@ -71,33 +74,50 @@ contract SourceAdapter is ReentrancyGuard {
         paused = paused_;
     }
 
-    function closeSource(CloseTerms calldata terms)
-        external
-        nonReentrant
-        returns (uint256 repaidDebtUnits, uint256 collateralUnits)
-    {
+    function closeSource(
+        DebtShiftHashing.ExecutionPlanHashInput calldata plan,
+        bytes calldata borrowerSignature
+    ) external nonReentrant returns (uint256 repaidDebtUnits, uint256 collateralUnits) {
         if (!executors[msg.sender]) revert Unauthorized();
         if (paused) revert Paused();
-        if (block.timestamp > terms.deadline) revert Expired();
-        if (consumedMigrations[terms.migrationId]) revert MigrationAlreadyConsumed();
+        if (block.timestamp > plan.deadline) revert Expired();
+        if (consumedMigrations[plan.migrationId]) revert MigrationAlreadyConsumed();
+        if (consumedNonces[plan.borrower][plan.nonce]) revert NonceAlreadyConsumed();
+        if (
+            plan.migrationId
+                    != DebtShiftHashing.computeMigrationId(
+                        plan.intentHash, plan.transportQuoteHash, plan.nonce
+                    ) || plan.borrower == address(0) || plan.sourceRepaymentMax == 0
+                || plan.sourceCollateralMin == 0 || plan.principalMax < plan.sourceRepaymentMax
+        ) revert InvalidAuthorization();
 
-        consumedMigrations[terms.migrationId] = true;
-        uint256 fundedUnits = vault.draw(terms.migrationId, address(this));
-        if (fundedUnits > terms.maximumDebtUnits) revert AssetMismatch();
+        bytes32 planHash = DebtShiftHashing.hashExecutionPlan(plan, block.chainid, address(this));
+        if (!SignatureChecker.isValidSignatureNow(plan.borrower, planHash, borrowerSignature)) {
+            revert InvalidAuthorization();
+        }
+        vault.assertExecutable(plan.migrationId, planHash);
+
+        consumedMigrations[plan.migrationId] = true;
+        consumedNonces[plan.borrower][plan.nonce] = true;
+        uint256 fundedUnits = vault.draw(plan.migrationId, address(this));
+        if (fundedUnits > plan.principalMax || fundedUnits < plan.sourceRepaymentMax) {
+            revert AssetMismatch();
+        }
 
         debtToken.forceApprove(address(lending), fundedUnits);
         (repaidDebtUnits, collateralUnits) = lending.closePosition(
-            terms.borrower, terms.maximumDebtUnits, terms.minimumCollateralUnits, address(this)
+            plan.borrower, plan.sourceRepaymentMax, plan.sourceCollateralMin, address(this)
         );
 
         uint256 unusedUnits = fundedUnits - repaidDebtUnits;
         if (unusedUnits != 0) {
             debtToken.forceApprove(address(vault), unusedUnits);
-            vault.returnUnused(terms.migrationId, unusedUnits);
+            vault.returnUnused(plan.migrationId, unusedUnits);
         }
 
         collateralToken.forceApprove(address(escrow), collateralUnits);
-        escrow.assign(terms.migrationId, collateralToken, address(this), collateralUnits);
-        emit SourceClosed(terms.migrationId, terms.borrower, repaidDebtUnits, collateralUnits);
+        escrow.assign(plan.migrationId, collateralToken, address(this), collateralUnits);
+        emit ExecutionPlanConsumed(plan.migrationId, planHash, plan.borrower, plan.nonce);
+        emit SourceClosed(plan.migrationId, plan.borrower, repaidDebtUnits, collateralUnits);
     }
 }

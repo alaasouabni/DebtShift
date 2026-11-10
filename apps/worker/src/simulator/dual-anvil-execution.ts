@@ -1,5 +1,5 @@
 import type { MigrationExecutionContext } from '@debtshift/database';
-import type { DebtShiftEnvironment } from '@debtshift/domain';
+import { getExecutionPlanTypedData, type DebtShiftEnvironment } from '@debtshift/domain';
 import type { TransportObservation } from '@debtshift/intents';
 import { loadFoundryArtifact, type FoundryArtifact } from '@debtshift/protocols';
 import {
@@ -45,6 +45,23 @@ type FinancingCheckpoint =
   | 'AFTER_TARGET_BORROW'
   | 'BEFORE_SETTLEMENT'
   | 'AFTER_SETTLEMENT';
+
+interface FinancingRevalidation extends Readonly<Record<string, unknown>> {
+  readonly checkpoint: FinancingCheckpoint;
+  readonly observedAt: string;
+  readonly originalCapacityEvidenceHash: string;
+  readonly sourceState: 'OPEN_MATCHED' | 'CLOSED';
+  readonly destinationCollateralUnits: string;
+  readonly collateralValueUnits: string;
+  readonly protocolBorrowCapacityUnits: string;
+  readonly policyBorrowCapacityUnits: string;
+  readonly liquidityBorrowCapacityUnits: string;
+  readonly signedBorrowCapacityUnits: string;
+  readonly maximumSafeBorrowingCapacityUnits: string;
+  readonly confirmedExternalFundingUnits: string;
+  readonly requiredDestinationBorrowUnits: string;
+  readonly fundingShortfallUnits: string;
+}
 
 const eventTopics = {
   liquidityReserved: eventTopic(
@@ -148,6 +165,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       artifacts,
       'BEFORE_RESERVATION',
     );
+    const proof = await this.#recordFeasibility(context, artifacts, financingRevalidation);
     return this.#writeAction(
       this.#sourceWallet,
       this.#sourcePublic,
@@ -159,6 +177,8 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         migrationId,
         this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
         this.#environment.SOURCE_ADAPTER_ADDRESS,
+        context.signedPlan.planHash,
+        proof.feasibilityHash,
         BigInt(plan.principalMaxUnits),
         BigInt(plan.feeMaxUnits),
         BigInt(plan.deadline),
@@ -167,6 +187,9 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         action: 'reserve',
         principalUnits: plan.principalMaxUnits,
         feeCapUnits: plan.feeMaxUnits,
+        planHash: context.signedPlan.planHash,
+        feasibilityHash: proof.feasibilityHash,
+        feasibilityTransactionHash: proof.transactionHash,
         financingRevalidation,
       },
     );
@@ -197,6 +220,11 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       artifacts,
       'BEFORE_SOURCE_CLOSE',
     );
+    const proof = await this.#recordFeasibility(context, artifacts, financingRevalidation);
+    const authorization = getExecutionPlanTypedData(
+      plan,
+      this.#environment.EIP712_VERIFYING_CONTRACT,
+    ).message;
 
     return this.#writeAction(
       this.#sourceWallet,
@@ -205,20 +233,15 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       artifacts.sourceAdapter,
       this.#environment.SOURCE_ADAPTER_ADDRESS,
       'closeSource',
-      [
-        {
-          migrationId,
-          borrower: plan.borrower,
-          maximumDebtUnits: BigInt(plan.sourceRepaymentMaxUnits),
-          minimumCollateralUnits: BigInt(plan.sourceCollateralMinUnits),
-          deadline: BigInt(plan.deadline),
-        },
-      ],
+      [authorization, context.signedPlan.signature],
       {
         action: 'closeSource',
         borrower: plan.borrower,
         maximumDebtUnits: plan.sourceRepaymentMaxUnits,
         minimumCollateralUnits: plan.sourceCollateralMinUnits,
+        planHash: context.signedPlan.planHash,
+        feasibilityHash: proof.feasibilityHash,
+        feasibilityTransactionHash: proof.transactionHash,
         financingRevalidation,
       },
     );
@@ -407,6 +430,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       artifacts,
       'BEFORE_SETTLEMENT',
     );
+    const proof = await this.#recordFeasibility(context, artifacts, financingRevalidation);
 
     const repayment = BigInt(plan.principalMaxUnits) + BigInt(plan.feeMaxUnits);
     const auxiliaryTransactions = await this.#ensureTokenBalance(
@@ -438,6 +462,8 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         action: 'settleLiquidity',
         repaymentUnits: repayment.toString(),
         feeUnits: plan.feeMaxUnits,
+        feasibilityHash: proof.feasibilityHash,
+        feasibilityTransactionHash: proof.transactionHash,
         auxiliaryTransactions,
         financingRevalidation,
       },
@@ -571,6 +597,9 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     if (!sameAddress(plan.destinationReceiver, expected.DESTINATION_ESCROW_ADDRESS)) {
       throw new Error('The destination receiver must be the configured destination escrow.');
     }
+    if (!sameAddress(expected.EIP712_VERIFYING_CONTRACT, expected.SOURCE_ADAPTER_ADDRESS)) {
+      throw new Error('The EIP-712 verifying contract must be the configured source adapter.');
+    }
     if (plan.financing.fundingShortfallUnits !== '0') {
       throw new Error('The authorized financing structure has a non-zero funding shortfall.');
     }
@@ -586,7 +615,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     context: MigrationExecutionContext,
     artifacts: LocalArtifacts,
     checkpoint: FinancingCheckpoint,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<FinancingRevalidation> {
     const plan = context.signedPlan.plan;
     const financing = plan.financing;
     const nowSeconds = BigInt(Math.floor(Date.now() / 1_000));
@@ -766,6 +795,62 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     };
   }
 
+  async #recordFeasibility(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    revalidation: FinancingRevalidation,
+  ): Promise<{ readonly feasibilityHash: Hex; readonly transactionHash: Hex }> {
+    const plan = context.signedPlan.plan;
+    const financing = plan.financing;
+    const externalFundingEvidenceHash =
+      BigInt(revalidation.confirmedExternalFundingUnits) === 0n
+        ? (`0x${'00'.repeat(32)}` as Hex)
+        : keccak256(stringToHex(JSON.stringify(financing.externalFunding)));
+    const sequence =
+      (await this.#readBigInt(
+        this.#sourcePublic,
+        artifacts.vault,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'latestFeasibilitySequence',
+        [context.migration.migrationId],
+      )) + 1n;
+    const evidence = {
+      planHash: context.signedPlan.planHash,
+      analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
+      externalFundingEvidenceHash,
+      liquidityAsset: this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+      solverPrincipalUnits: BigInt(financing.solverPrincipalUnits),
+      solverFeeUnits: BigInt(financing.solverFeeUnits),
+      capitalizedCostUnits: BigInt(financing.capitalizedCostUnits),
+      totalRequiredUnits: BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
+      confirmedExternalFundingUnits: BigInt(revalidation.confirmedExternalFundingUnits),
+      maximumSafeBorrowingCapacityUnits: BigInt(
+        revalidation.maximumSafeBorrowingCapacityUnits,
+      ),
+      requiredDestinationBorrowUnits: BigInt(revalidation.requiredDestinationBorrowUnits),
+      fundingShortfallUnits: BigInt(revalidation.fundingShortfallUnits),
+      sequence,
+      evaluatedAt: BigInt(Math.floor(Date.parse(revalidation.observedAt) / 1_000)),
+      validUntil: BigInt(financing.validUntil),
+    } as const;
+    const transactionHash = await this.#writeHash(
+      this.#sourceWallet,
+      this.#sourcePublic,
+      artifacts.vault,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      'recordFeasibility',
+      [context.migration.migrationId, evidence],
+    );
+    const feasibilityHash = await this.#readHex(
+      this.#sourcePublic,
+      artifacts.vault,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      'latestFeasibilityHash',
+      [context.migration.migrationId],
+    );
+    return { feasibilityHash, transactionHash };
+  }
+
   async #readPosition(
     client: LocalPublicClient,
     artifact: FoundryArtifact,
@@ -839,6 +924,25 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       throw new Error(`Unexpected ${functionName} response from ${address}.`);
     }
     return result;
+  }
+
+  async #readHex(
+    client: LocalPublicClient,
+    artifact: FoundryArtifact,
+    address: Address,
+    functionName: string,
+    args: readonly unknown[],
+  ): Promise<Hex> {
+    const result = await client.readContract({
+      address,
+      abi: artifact.abi,
+      functionName,
+      args,
+    });
+    if (typeof result !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(result)) {
+      throw new Error(`Unexpected ${functionName} response from ${address}.`);
+    }
+    return result as Hex;
   }
 
   async #writeHash(

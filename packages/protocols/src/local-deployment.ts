@@ -11,6 +11,7 @@ import {
   type WalletClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { computeMigrationId } from '@debtshift/domain';
 
 import { loadFoundryArtifact, type FoundryArtifact } from './artifacts.js';
 
@@ -18,8 +19,14 @@ export const DEFAULT_ANVIL_DEPLOYER_KEY =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as const;
 export const DEFAULT_ANVIL_BORROWER_KEY =
   '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const;
-export const LOCAL_MIGRATION_ID =
-  '0x67c5975085073b2512ada4bfe6296d62b485f963078bb88c104d68958287d692' as const;
+export const LOCAL_INTENT_HASH = `0x${'11'.repeat(32)}` as const;
+export const LOCAL_TRANSPORT_QUOTE_HASH = `0x${'22'.repeat(32)}` as const;
+export const LOCAL_PLAN_NONCE = 1n;
+export const LOCAL_MIGRATION_ID = computeMigrationId(
+  LOCAL_INTENT_HASH,
+  LOCAL_TRANSPORT_QUOTE_HASH,
+  LOCAL_PLAN_NONCE,
+);
 
 export interface SourceDeployment {
   readonly debtToken: Address;
