@@ -42,6 +42,7 @@ Implementation must be understandable from this directory without relying on cha
 | [10-agent-and-free-data-sources.md](./10-agent-and-free-data-sources.md)                   | Defines the agent design, local model, free data providers, precedence, caching, and fallbacks. |
 | [11-refinancing-feasibility-model.md](./11-refinancing-feasibility-model.md)               | Defines borrowing capacity, funding shortfalls, secured resolutions, and revalidation rules.    |
 | [12-production-provider-boundaries.md](./12-production-provider-boundaries.md)             | Separates simulator fixtures from live Aave, Morpho, Chainlink, and 1Click providers.           |
+| [13-frontend-handoff.md](./13-frontend-handoff.md)                                         | Defines frontend ownership, API and signing contracts, user journeys, safety labels, and tests. |
 
 ## Work protocol
 
