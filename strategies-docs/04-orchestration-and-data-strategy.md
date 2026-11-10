@@ -12,6 +12,10 @@ The minimum relational model includes:
 - `intents`
 - `execution_plans`
 - `provider_quotes`
+- `financing_analyses`
+- `financing_components`
+- `funding_contributions`
+- `feasibility_checks`
 - `liquidity_reservations`
 - `migrations`
 - `commands`
@@ -20,6 +24,7 @@ The minimum relational model includes:
 - `transport_legs`
 - `evidence`
 - `ledger_entries`
+- `settlement_obligations`
 - `audit_events`
 - `recovery_cases`
 - `asset_catalog_versions`
@@ -36,6 +41,9 @@ The minimum relational model includes:
 - Optimistic migration version on phase updates.
 - Check constraints preventing negative unsigned token amounts.
 - Ledger reconciliation query grouped by migration, chain, token, and party.
+- Unique financing-component identity and exactly one financing classification per component.
+- A reservation constraint requiring a non-expired passing feasibility check for the same execution
+  plan and funding evidence set.
 
 ## Evidence model
 
@@ -71,6 +79,7 @@ Queue message deletion, timeout, or duplication must not change the financial re
 Idempotency keys are derived from immutable logical action identity, not retry count. Examples:
 
 - `reserve:<migrationId>`
+- `confirm-supplementary-funding:<migrationId>:<contributionId>`
 - `source-close:<migrationId>`
 - `route-deposit:<migrationId>:<legIndex>`
 - `target-open:<migrationId>`
@@ -84,11 +93,13 @@ A retry may create another transport attempt only after a recorded recovery deci
 For each migration:
 
 1. Obtain an exclusive migration lock.
-2. Load signed intent, execution plan, current snapshots, commands, and evidence.
+2. Load signed intent, execution plan, current snapshots, financing analysis, funding contributions,
+   commands, and evidence.
 3. Recheck canonical blocks for evidence near the reorganization window.
 4. Derive the strongest phase whose entry predicate is satisfied.
 5. Compare derived phase with persisted phase and append any justified transition.
-6. Re-evaluate deadlines, safety limits, balances, and provider readiness.
+6. Re-evaluate deadlines, source payoff, cost classifications, confirmed external funding,
+   destination capacity, safety limits, balances, and provider readiness.
 7. If forward execution is safe, create exactly one next command.
 8. If irreversible state exists and forward execution is unsafe, open or update recovery.
 9. If no action is required, schedule the next observation time.
@@ -116,6 +127,13 @@ For each migration:
 
 ## Recovery policies
 
+### Feasibility fails before solver reservation or source close
+
+- Reject or expire the plan and record the exact shortfall and failed capacity input.
+- Release any solver reservation.
+- Refund supplementary funding to its signed refund receiver after confirming no source draw exists.
+- Require a new analysis and execution-plan signature; never silently increase borrower debt or fees.
+
 ### Quote or authorization expires before source close
 
 - Release reservation.
@@ -141,6 +159,17 @@ For each migration:
 - Retry only within the signed window and current safety policy.
 - Otherwise execute the signed return/recovery route.
 
+### Destination capacity falls after source close
+
+- Recalculate the complete obligation and current safe capacity from finalized destination state.
+- Do not borrow above the protocol limit, DebtShift risk limit, available liquidity, or signed cap.
+- Use only preauthorized and already secured supplementary funds or a smaller safe borrow that still
+  covers the complete solver obligation.
+- A bounded wait is permitted only inside the signed deadline and exposure policy; future liquidity
+  or price recovery is never assumed.
+- If no fully funded safe path remains, retain or unwind collateral through the signed recovery path,
+  preserve the solver receivable, and record custody and residual exposure explicitly.
+
 ### Target opens but provider payout fails
 
 - Keep borrowed proceeds in settlement escrow.
@@ -157,11 +186,37 @@ For each migration:
 
 - Each balance movement creates equal debit and credit semantics in the migration ledger.
 - Principal and fee are separate entries.
+- Source payoff, borrower debt prepayment, solver-advanced costs, capitalized costs, separately paid
+  costs, and supplementary settlement funding use distinct component codes.
+- Each component is counted once. A borrower prepayment reduces solver principal and cannot also be
+  credited as settlement funding; a separately paid cost cannot increase destination borrowing.
 - Collateral and debt assets are never netted against one another.
 - Chains are part of asset identity.
 - Settlement requires zero unexplained imbalance.
 - Dust disposition is explicit and bounded.
 - A non-zero residual obligation prevents `SETTLED`.
+- `SETTLED` additionally requires finalized evidence that destination proceeds plus authorized
+  supplementary funding paid the exact solver principal and fee and every required capitalized-cost
+  recipient. A ledger receivable is not payment.
+
+## Feasibility evidence and phase predicates
+
+- `QUOTED` requires a reconciled provisional financing analysis with `fundingShortfall = 0` under
+  quote-time buffers.
+- `AUTHORIZED` requires signatures over the financing hash and finalized evidence for every external
+  funding contribution used by the plan.
+- `RESERVED` requires a fresh passing feasibility check before the solver or test vault commits
+  principal.
+- `SOURCE_CLOSED` requires one final pre-source feasibility check within its maximum age and the exact
+  reserved principal.
+- `TARGET_OPEN` requires a post-delivery capacity recheck and a target position no riskier than the
+  signed limits.
+- `SETTLED` requires finalized exact payout evidence and a zero residual obligation.
+
+Every feasibility record retains the component ledger hash, funding-evidence hashes, direct-read
+block provenance, oracle update time, policy version, capacity components, required borrow,
+shortfall, safety outputs, result, and expiry. A later failed check blocks execution even when an
+earlier quote passed.
 
 ## API event delivery
 

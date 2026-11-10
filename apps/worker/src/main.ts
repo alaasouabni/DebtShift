@@ -15,7 +15,7 @@ import { Logger } from '@nestjs/common';
 import type { ConnectionOptions } from 'bullmq';
 
 import { createSimulatedWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
-import { ViemLocalExecutionPort } from './local-execution.js';
+import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
 import { DurableCommandProcessor, PostgresCommandPersistence } from './processor.js';
 import { BullCommandPublisher, createCommandQueue, createCommandWorker } from './queue.js';
 
@@ -32,7 +32,7 @@ async function bootstrap(): Promise<void> {
     outcome: environment.SIMULATOR_TERMINAL_OUTCOME,
     processingPolls: environment.SIMULATOR_PROCESSING_POLLS,
   });
-  const execution = new ViemLocalExecutionPort(environment);
+  const execution = new DualAnvilSimulationExecutionPort(environment);
   const handlers = createSimulatedWorkflowHandlers(
     new PostgresWorkflowContextStore(databaseClient.db),
     execution,

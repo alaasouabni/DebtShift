@@ -6,10 +6,11 @@ wording.
 ```text
 Browser wallet -> web -> API -> PostgreSQL/outbox -> worker
                             |                     |
-                            |                     +-> EVM adapters and verified receipts
                             |                     +-> transport simulator / isolated 1Click client
                             |                     +-> NEAR agreement registry
-                            +-> deterministic optimizer and Route/Risk Agent
+                            |                     +-> EVM adapters and verified receipts
+                            +-> deterministic optimizer / financing analysis / risk validation
+                            +-> Route/Risk Agent
 ```
 
 PostgreSQL is the durable workflow source of truth. Redis and BullMQ provide at-least-once command
@@ -21,4 +22,23 @@ signatures. The worker can perform only the bounded test actions permitted by th
 deployed contracts. AI providers receive a minimized, read-only explanation payload after route
 selection and have no execution tools.
 
+The solver-financing design uses a mandatory sources-and-uses proof. Maximum safe destination
+borrowing is the minimum allowed by protocol collateral constraints, DebtShift stress policy,
+available liquidity, and the signed target-debt cap. Temporary liquidity cannot be reserved unless
+that capacity plus finalized migration-specific supplementary funding covers solver principal,
+solver fees, and every financed cost with zero shortfall. The proof is revalidated before source
+closure and target borrowing.
+
+Source closure and destination borrowing occur on different chains and are not atomic. Contracts
+enforce local custody and signed limits, but cannot guarantee future borrowing capacity or solver
+repayment. Capacity deterioration after source closure enters a bounded recovery path and preserves
+the exact collateral custody and solver receivable instead of creating an unsafe loan.
+
 The authoritative detailed design lives in `strategies-docs/01-architecture-blueprint.md`.
+
+Runtime market data is selected once at the API composition root. Local/CI/testnet loads only the
+explicit simulator providers; mainnet read-only loads direct Aave, Morpho, Chainlink, and 1Click
+read-only providers from a schema-validated registry; the isolated canary disables lending providers
+entirely. Core services import only provider ports, and lint rules reject simulator imports from
+production modules. The detailed rules are in
+`strategies-docs/12-production-provider-boundaries.md`.

@@ -1,5 +1,11 @@
 import type { PositionSnapshot } from '@debtshift/domain';
-import type { RouteCandidate, RouteComparison, RoutePolicy } from '@debtshift/optimizer';
+import {
+  evaluateRefinancingFeasibility,
+  refinancingFeasibilityInputSchema,
+  type RouteCandidate,
+  type RouteComparison,
+  type RoutePolicy,
+} from '@debtshift/optimizer';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -260,6 +266,7 @@ function routeCandidate(): RouteCandidate {
     assetRouteSupported: true,
     adapterVersionApproved: true,
     transportMinimumMet: true,
+    financing: financingInput(),
   };
 }
 
@@ -318,6 +325,7 @@ function selectedComparison(): RouteComparison {
           stressMaximumLtvBps: 6500,
         },
         rejections: [],
+        financing: evaluateRefinancingFeasibility(financingInput()),
         provenance: {
           sourceSnapshotId: `0x${'11'.repeat(32)}`,
           marketSnapshotId: `0x${'21'.repeat(32)}`,
@@ -330,6 +338,52 @@ function selectedComparison(): RouteComparison {
       },
     ],
   };
+}
+
+function financingInput() {
+  const sourceAsset = {
+    chainId: 8453,
+    address: '0x3000000000000000000000000000000000000003',
+    decimals: 6,
+    symbol: 'USDC',
+  };
+  const settlementAsset = {
+    chainId: 42161,
+    address: '0x6000000000000000000000000000000000000006',
+    decimals: 6,
+    symbol: 'USDC',
+  };
+  return refinancingFeasibilityInputSchema.parse({
+    evaluatedAt: '2026-11-09T12:00:10.000Z',
+    settlementAsset,
+    sourcePayoff: {
+      asset: sourceAsset,
+      amountUnits: '10000000000',
+      settlementAmountUnits: '10000000000',
+      conversion: {
+        quoteHash: `0x${'24'.repeat(32)}`,
+        provider: 'agent-fixture-conversion',
+        inputAsset: sourceAsset,
+        outputAsset: settlementAsset,
+        amountInUnits: '10000000000',
+        amountOutUnits: '10000000000',
+        expiresAt: '2026-11-09T12:10:00.000Z',
+      },
+    },
+    costs: [],
+    solverFee: {
+      asset: settlementAsset,
+      amountUnits: '0',
+      signedCapUnits: '100000000',
+    },
+    externalFunding: [],
+    capacities: {
+      protocolUnits: '20000000000',
+      policyUnits: '20000000000',
+      liquidityUnits: '20000000000',
+      signedUnits: '20000000000',
+    },
+  });
 }
 
 function aiExplanation() {

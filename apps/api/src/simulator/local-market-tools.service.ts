@@ -11,12 +11,15 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, type Address, type Hex, type PublicClient } from 'viem';
 
+import type { MarketIntelligencePort } from '../market-data/ports.js';
 import { LocalProtocolService, type LocalRouteDefinition } from './local-protocol.service.js';
 
 export const LOCAL_EXECUTABLE_ROUTE_ID = 'local-morpho-balanced';
 export const LOCAL_REJECTED_ROUTE_ID = 'local-morpho-low-liquidity';
 export const LOCAL_EXECUTION_FEE_UNITS = '50000000';
 export const LOCAL_MIN_APR_REDUCTION_BPS = 150;
+export const LOCAL_LIQUIDITY_BUFFER_BPS = 1_000;
+export const LOCAL_STRESS_COLLATERAL_DROP_BPS = 1_000;
 
 const ERC20_BALANCE_ABI = [
   {
@@ -55,7 +58,8 @@ export interface DestinationObservation {
 }
 
 @Injectable()
-export class LocalMarketToolsService implements RouteRiskTools {
+export class LocalMarketToolsService implements RouteRiskTools, MarketIntelligencePort {
+  readonly provider = 'SIMULATOR' as const;
   readonly #destinationClient: PublicClient;
   readonly #sourceChainId: number;
 
@@ -79,7 +83,7 @@ export class LocalMarketToolsService implements RouteRiskTools {
 
   async getRouteCandidates(
     position: PositionSnapshot,
-    _evaluatedAt: string,
+    evaluatedAt: string,
   ): Promise<readonly RouteCandidate[]> {
     const route = this.protocols.route;
     const block = await this.#destinationClient.getBlock({ blockTag: 'latest' });
@@ -105,14 +109,23 @@ export class LocalMarketToolsService implements RouteRiskTools {
         blockNumber: block.number,
       }),
     ]);
-    return buildLocalRouteCandidates(position, route, {
-      blockNumber: block.number,
-      blockHash: block.hash,
-      observedAt: new Date(Number(block.timestamp) * 1_000).toISOString(),
-      availableBorrowUnits,
-      collateralPriceInDebtWad,
-      maximumLtvBps,
-    });
+    return buildLocalRouteCandidates(
+      position,
+      route,
+      {
+        blockNumber: block.number,
+        blockHash: block.hash,
+        observedAt: new Date(Number(block.timestamp) * 1_000).toISOString(),
+        availableBorrowUnits,
+        collateralPriceInDebtWad,
+        maximumLtvBps,
+      },
+      evaluatedAt,
+    );
+  }
+
+  createPolicy(evaluatedAt: string): RoutePolicy {
+    return localRoutePolicy(evaluatedAt);
   }
 }
 
@@ -125,8 +138,8 @@ export function localRoutePolicy(evaluatedAt: string): RoutePolicy {
     maxPositionSnapshotAgeSeconds: 30,
     maxMarketSnapshotAgeSeconds: 30,
     maxOracleAgeSeconds: 30,
-    minimumLiquidityBufferBps: 1000,
-    stressCollateralDropBps: 1000,
+    minimumLiquidityBufferBps: LOCAL_LIQUIDITY_BUFFER_BPS,
+    stressCollateralDropBps: LOCAL_STRESS_COLLATERAL_DROP_BPS,
     stressTargetAprIncreaseBps: 200,
     requirePositiveNetBenefit: true,
     safetyPolicy: {
@@ -141,6 +154,7 @@ export function buildLocalRouteCandidates(
   position: PositionSnapshot,
   route: LocalRouteDefinition,
   observation: DestinationObservation,
+  evaluatedAt = observation.observedAt,
 ): readonly RouteCandidate[] {
   const block = {
     number: observation.blockNumber.toString(),
@@ -185,7 +199,7 @@ export function buildLocalRouteCandidates(
       destinationGasUsdMicro: '10000000',
       transportFeeUsdMicro: '10000000',
       slippageUsdMicro: '5000000',
-      solverFeeUsdMicro: '35000000',
+      solverFeeUsdMicro: LOCAL_EXECUTION_FEE_UNITS,
       protocolFeeUsdMicro: '15000000',
       collateralSwapCostUsdMicro: '0',
     },
@@ -204,6 +218,24 @@ export function buildLocalRouteCandidates(
     assetRouteSupported: true,
     adapterVersionApproved: true,
     transportMinimumMet: true,
+    financing: localFinancingStructure({
+      candidateId: LOCAL_EXECUTABLE_ROUTE_ID,
+      position,
+      route,
+      observation,
+      evaluatedAt,
+      deliveredCollateralValue,
+      availableBorrowUnits: observation.availableBorrowUnits,
+      requestedBorrowUnits: targetDebt,
+      solverFeeUnits: BigInt(LOCAL_EXECUTION_FEE_UNITS),
+      separatelyPaidCosts: [
+        ['source-gas', 'NETWORK', 10_000_000n],
+        ['destination-gas', 'NETWORK', 10_000_000n],
+        ['transport', 'TRANSPORT', 10_000_000n],
+        ['slippage', 'SLIPPAGE', 5_000_000n],
+        ['protocol', 'PROTOCOL', 15_000_000n],
+      ],
+    }),
   });
 
   const constrainedMarket = marketSnapshotSchema.parse({
@@ -218,12 +250,14 @@ export function buildLocalRouteCandidates(
     borrowAprBps: 350,
     availableBorrowUnits: principal.toString(),
   });
+  const lowLiquidityFee = 20_000_000n;
+  const lowLiquidityTargetDebt = principal + lowLiquidityFee;
   const lowLiquidity = routeCandidateSchema.parse({
     candidateId: LOCAL_REJECTED_ROUTE_ID,
     market: constrainedMarket,
-    requestedBorrowUnits: targetDebt.toString(),
+    requestedBorrowUnits: lowLiquidityTargetDebt.toString(),
     principalDebtValueUsdMicro: principal.toString(),
-    targetDebtValueUsdMicro: targetDebt.toString(),
+    targetDebtValueUsdMicro: lowLiquidityTargetDebt.toString(),
     deliveredCollateralValueUsdMicro: deliveredCollateralValue.toString(),
     costs: {
       sourceGasUsdMicro: '8000000',
@@ -249,6 +283,98 @@ export function buildLocalRouteCandidates(
     assetRouteSupported: true,
     adapterVersionApproved: true,
     transportMinimumMet: true,
+    financing: localFinancingStructure({
+      candidateId: LOCAL_REJECTED_ROUTE_ID,
+      position,
+      route,
+      observation,
+      evaluatedAt,
+      deliveredCollateralValue,
+      availableBorrowUnits: principal,
+      requestedBorrowUnits: lowLiquidityTargetDebt,
+      solverFeeUnits: lowLiquidityFee,
+      separatelyPaidCosts: [
+        ['source-gas', 'NETWORK', 8_000_000n],
+        ['destination-gas', 'NETWORK', 8_000_000n],
+        ['transport', 'TRANSPORT', 8_000_000n],
+        ['slippage', 'SLIPPAGE', 4_000_000n],
+        ['protocol', 'PROTOCOL', 12_000_000n],
+      ],
+    }),
   });
   return [balanced, lowLiquidity];
+}
+
+type LocalCostKind = 'TRANSPORT' | 'PROTOCOL' | 'NETWORK' | 'SLIPPAGE';
+
+interface LocalFinancingInput {
+  readonly candidateId: string;
+  readonly position: PositionSnapshot;
+  readonly route: LocalRouteDefinition;
+  readonly observation: DestinationObservation;
+  readonly evaluatedAt: string;
+  readonly deliveredCollateralValue: bigint;
+  readonly availableBorrowUnits: bigint;
+  readonly requestedBorrowUnits: bigint;
+  readonly solverFeeUnits: bigint;
+  readonly separatelyPaidCosts: readonly (readonly [string, LocalCostKind, bigint])[];
+}
+
+function localFinancingStructure(input: LocalFinancingInput) {
+  const stressedCollateralValue =
+    (input.deliveredCollateralValue * BigInt(10_000 - LOCAL_STRESS_COLLATERAL_DROP_BPS)) / 10_000n;
+  const protocolCapacity =
+    (input.deliveredCollateralValue * BigInt(input.observation.maximumLtvBps)) / 10_000n;
+  const normalPolicyCapacity = (input.deliveredCollateralValue * 7_000n) / 10_000n;
+  const stressPolicyCapacity = (stressedCollateralValue * 6_500n) / 10_000n;
+  const policyCapacity = minBigInt(normalPolicyCapacity, stressPolicyCapacity);
+  const liquidityCapacity =
+    (input.availableBorrowUnits * 10_000n) / BigInt(10_000 + LOCAL_LIQUIDITY_BUFFER_BPS);
+  const conversionExpiry = new Date(Date.parse(input.evaluatedAt) + 10 * 60 * 1_000).toISOString();
+  const sourceDebtUnits = input.position.debtUnits;
+  const conversionHash = hashCanonicalText(
+    `debtshift.local-parity-conversion.v1:${input.candidateId}:${sourceDebtUnits}:${input.evaluatedAt}`,
+  );
+  return {
+    evaluatedAt: input.evaluatedAt,
+    settlementAsset: input.route.destinationDebtAsset,
+    sourcePayoff: {
+      asset: input.route.sourceDebtAsset,
+      amountUnits: sourceDebtUnits,
+      settlementAmountUnits: sourceDebtUnits,
+      conversion: {
+        quoteHash: conversionHash,
+        provider: 'DEBTSHIFT_SIMULATOR_PARITY_QUOTE',
+        inputAsset: input.route.sourceDebtAsset,
+        outputAsset: input.route.destinationDebtAsset,
+        amountInUnits: sourceDebtUnits,
+        amountOutUnits: sourceDebtUnits,
+        expiresAt: conversionExpiry,
+      },
+    },
+    costs: input.separatelyPaidCosts.map(([id, kind, amount]) => ({
+      componentId: `${input.candidateId}:${id}`,
+      kind,
+      financingClass: 'SEPARATELY_PAID' as const,
+      asset: input.route.destinationDebtAsset,
+      amountUnits: amount.toString(),
+      settlementAmountUnits: amount.toString(),
+    })),
+    solverFee: {
+      asset: input.route.destinationDebtAsset,
+      amountUnits: input.solverFeeUnits.toString(),
+      signedCapUnits: input.solverFeeUnits.toString(),
+    },
+    externalFunding: [],
+    capacities: {
+      protocolUnits: protocolCapacity.toString(),
+      policyUnits: policyCapacity.toString(),
+      liquidityUnits: liquidityCapacity.toString(),
+      signedUnits: input.requestedBorrowUnits.toString(),
+    },
+  };
+}
+
+function minBigInt(left: bigint, right: bigint): bigint {
+  return left < right ? left : right;
 }

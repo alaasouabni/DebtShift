@@ -22,8 +22,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
 import type { DatabaseService } from './database.service.js';
-import { LocalProtocolService } from './local-protocol.service.js';
-import { LocalMarketToolsService } from './local-market-tools.service.js';
+import { LocalMarketToolsService } from './simulator/local-market-tools.service.js';
+import { LocalProtocolService } from './simulator/local-protocol.service.js';
 import { MigrationsService } from './migrations.service.js';
 import { PreparationService } from './preparation.service.js';
 import { RouteAnalysisService } from './route-analysis.service.js';
@@ -87,6 +87,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
       const preparation = new PreparationService(
         databaseService,
         protocols,
+        marketTools,
         routeAnalysis,
         new TransportService(),
         config,
@@ -115,7 +116,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
         quote: prepared.quote,
         sourceSnapshot: prepared.sourceSnapshot,
       };
-      const migrations = new MigrationsService(databaseService, protocols, config);
+      const migrations = new MigrationsService(databaseService, protocols, marketTools, config);
       const created = await migrations.execute(request);
       expect(created.created).toBe(true);
 

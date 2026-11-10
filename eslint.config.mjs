@@ -35,4 +35,28 @@ export default tseslint.config(
       'no-console': ['error', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    files: ['apps/api/src/**/*.ts', 'apps/worker/src/**/*.ts'],
+    ignores: [
+      'apps/api/src/app.module.ts',
+      'apps/api/src/simulator/**',
+      'apps/api/src/**/*.test.ts',
+      'apps/worker/src/main.ts',
+      'apps/worker/src/simulator/**',
+      'apps/worker/src/**/*.test.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/simulator/**'],
+              message: 'Production modules must depend on ports, never simulator implementations.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

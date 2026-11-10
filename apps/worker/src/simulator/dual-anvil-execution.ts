@@ -21,7 +21,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import type { FinalizedChainAction, LocalExecutionPort } from './handlers.js';
+import type { FinalizedChainAction, MigrationExecutionPort } from '../handlers.js';
 
 type LocalPublicClient = PublicClient<Transport, Chain>;
 type LocalWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
@@ -30,9 +30,21 @@ interface LocalArtifacts {
   readonly token: FoundryArtifact;
   readonly vault: FoundryArtifact;
   readonly escrow: FoundryArtifact;
+  readonly sourceLending: FoundryArtifact;
+  readonly targetLending: FoundryArtifact;
   readonly sourceAdapter: FoundryArtifact;
   readonly destinationAdapter: FoundryArtifact;
 }
+
+type FinancingCheckpoint =
+  | 'BEFORE_RESERVATION'
+  | 'AFTER_RESERVATION'
+  | 'BEFORE_SOURCE_CLOSE'
+  | 'AFTER_SOURCE_CLOSE'
+  | 'BEFORE_TARGET_BORROW'
+  | 'AFTER_TARGET_BORROW'
+  | 'BEFORE_SETTLEMENT'
+  | 'AFTER_SETTLEMENT';
 
 const eventTopics = {
   liquidityReserved: eventTopic(
@@ -49,7 +61,7 @@ const eventTopics = {
  * Executes only the disposable dual-Anvil workflow. This port is deliberately
  * unavailable in any funded mainnet mode; production adapters use separate ports.
  */
-export class ViemLocalExecutionPort implements LocalExecutionPort {
+export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort {
   readonly #environment: DebtShiftEnvironment;
   readonly #account: PrivateKeyAccount;
   readonly #sourceChain: Chain;
@@ -62,13 +74,17 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
 
   constructor(environment: DebtShiftEnvironment) {
     if (!['local', 'ci', 'testnet'].includes(environment.DEBTSHIFT_ENV)) {
-      throw new Error('The local execution port is disabled outside local, CI, and testnet.');
+      throw new Error(
+        'The dual-Anvil simulation execution port is disabled outside local, CI, and testnet.',
+      );
     }
     if (
       environment.TRANSPORT_PROVIDER !== 'DEBTSHIFT_SIMULATOR' ||
       environment.INTENTS_MODE !== 'simulated'
     ) {
-      throw new Error('The local execution port requires the explicitly simulated transport.');
+      throw new Error(
+        'The dual-Anvil simulation execution port requires the explicitly simulated transport.',
+      );
     }
     if (environment.LOCAL_EXECUTOR_PRIVATE_KEY.length === 0) {
       throw new Error('LOCAL_EXECUTOR_PRIVATE_KEY is required by the local execution worker.');
@@ -119,9 +135,19 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
       [migrationId, addressTopic(this.#environment.SOURCE_DEBT_TOKEN_ADDRESS)],
       { action: 'reserve', reconciled: true },
     );
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return withFinancingRevalidation(
+        existing,
+        await this.#revalidateFinancing(context, artifacts, 'AFTER_RESERVATION'),
+      );
+    }
 
     const plan = context.signedPlan.plan;
+    const financingRevalidation = await this.#revalidateFinancing(
+      context,
+      artifacts,
+      'BEFORE_RESERVATION',
+    );
     return this.#writeAction(
       this.#sourceWallet,
       this.#sourcePublic,
@@ -141,6 +167,7 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
         action: 'reserve',
         principalUnits: plan.principalMaxUnits,
         feeCapUnits: plan.feeMaxUnits,
+        financingRevalidation,
       },
     );
   }
@@ -158,7 +185,18 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
       [migrationId, addressTopic(plan.borrower)],
       { action: 'closeSource', reconciled: true },
     );
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return withFinancingRevalidation(
+        existing,
+        await this.#revalidateFinancing(context, artifacts, 'AFTER_SOURCE_CLOSE'),
+      );
+    }
+
+    const financingRevalidation = await this.#revalidateFinancing(
+      context,
+      artifacts,
+      'BEFORE_SOURCE_CLOSE',
+    );
 
     return this.#writeAction(
       this.#sourceWallet,
@@ -181,6 +219,7 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
         borrower: plan.borrower,
         maximumDebtUnits: plan.sourceRepaymentMaxUnits,
         minimumCollateralUnits: plan.sourceCollateralMinUnits,
+        financingRevalidation,
       },
     );
   }
@@ -298,12 +337,22 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
       [migrationId, addressTopic(plan.borrower)],
       { action: 'openTarget', reconciled: true },
     );
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return withFinancingRevalidation(
+        existing,
+        await this.#revalidateFinancing(context, artifacts, 'AFTER_TARGET_BORROW'),
+      );
+    }
 
     if (context.transportLeg.observedOutputUnits === null) {
       throw new Error('Destination collateral has not been independently observed.');
     }
-    const borrowUnits = BigInt(plan.principalMaxUnits) + BigInt(plan.feeMaxUnits);
+    const financingRevalidation = await this.#revalidateFinancing(
+      context,
+      artifacts,
+      'BEFORE_TARGET_BORROW',
+    );
+    const borrowUnits = BigInt(plan.financing.requiredDestinationBorrowUnits);
     return this.#writeAction(
       this.#destinationWallet,
       this.#destinationPublic,
@@ -328,6 +377,7 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
         borrower: plan.borrower,
         collateralUnits: context.transportLeg.observedOutputUnits,
         borrowUnits: borrowUnits.toString(),
+        financingRevalidation,
       },
     );
   }
@@ -345,7 +395,18 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
       [migrationId],
       { action: 'settleLiquidity', reconciled: true },
     );
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return withFinancingRevalidation(
+        existing,
+        await this.#revalidateFinancing(context, artifacts, 'AFTER_SETTLEMENT'),
+      );
+    }
+
+    const financingRevalidation = await this.#revalidateFinancing(
+      context,
+      artifacts,
+      'BEFORE_SETTLEMENT',
+    );
 
     const repayment = BigInt(plan.principalMaxUnits) + BigInt(plan.feeMaxUnits);
     const auxiliaryTransactions = await this.#ensureTokenBalance(
@@ -378,6 +439,7 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
         repaymentUnits: repayment.toString(),
         feeUnits: plan.feeMaxUnits,
         auxiliaryTransactions,
+        financingRevalidation,
       },
     );
   }
@@ -509,9 +571,236 @@ export class ViemLocalExecutionPort implements LocalExecutionPort {
     if (!sameAddress(plan.destinationReceiver, expected.DESTINATION_ESCROW_ADDRESS)) {
       throw new Error('The destination receiver must be the configured destination escrow.');
     }
+    if (plan.financing.fundingShortfallUnits !== '0') {
+      throw new Error('The authorized financing structure has a non-zero funding shortfall.');
+    }
+    if (BigInt(plan.financing.validUntil) < BigInt(plan.deadline)) {
+      throw new Error('Financing evidence expires before the execution plan.');
+    }
     if (BigInt(context.quote.amountInUnits) > BigInt(context.sourceSnapshot.collateralUnits)) {
       throw new Error('The transport amount exceeds the observed source collateral.');
     }
+  }
+
+  async #revalidateFinancing(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    checkpoint: FinancingCheckpoint,
+  ): Promise<Record<string, unknown>> {
+    const plan = context.signedPlan.plan;
+    const financing = plan.financing;
+    const nowSeconds = BigInt(Math.floor(Date.now() / 1_000));
+    if (nowSeconds > BigInt(plan.deadline) || nowSeconds > BigInt(financing.validUntil)) {
+      throw new Error(`Financing evidence expired at checkpoint ${checkpoint}.`);
+    }
+
+    const sourcePosition = await this.#readPosition(
+      this.#sourcePublic,
+      artifacts.sourceLending,
+      this.#environment.SOURCE_LENDING_ADDRESS,
+      plan.borrower,
+    );
+    const afterSourceClose =
+      checkpoint === 'AFTER_SOURCE_CLOSE' ||
+      checkpoint === 'BEFORE_TARGET_BORROW' ||
+      checkpoint === 'AFTER_TARGET_BORROW' ||
+      checkpoint === 'BEFORE_SETTLEMENT' ||
+      checkpoint === 'AFTER_SETTLEMENT';
+    if (afterSourceClose) {
+      if (sourcePosition[0] !== 0n || sourcePosition[1] !== 0n) {
+        throw new Error(`Source position is not closed at checkpoint ${checkpoint}.`);
+      }
+    } else if (
+      sourcePosition[0] < BigInt(plan.sourceCollateralMinUnits) ||
+      sourcePosition[1] !== BigInt(plan.sourceRepaymentMaxUnits)
+    ) {
+      throw new Error(`Source position changed before checkpoint ${checkpoint}.`);
+    }
+
+    let escrowFunding = 0n;
+    if (BigInt(financing.confirmedExternalFundingUnits) > 0n) {
+      for (const funding of financing.externalFunding) {
+        if (
+          !sameAddress(funding.escrow, this.#environment.DESTINATION_ESCROW_ADDRESS) ||
+          !sameAddress(funding.asset.address, this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS)
+        ) {
+          throw new Error(
+            'Supplementary funding is not assigned to the configured settlement escrow.',
+          );
+        }
+        if (nowSeconds > BigInt(funding.expiresAt)) {
+          throw new Error(`Supplementary funding ${funding.fundingId} expired.`);
+        }
+      }
+      escrowFunding = await this.#readBigInt(
+        this.#destinationPublic,
+        artifacts.escrow,
+        this.#environment.DESTINATION_ESCROW_ADDRESS,
+        'balances',
+        [context.migration.migrationId, this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS],
+      );
+      if (escrowFunding < BigInt(financing.confirmedExternalFundingUnits)) {
+        throw new Error(
+          'Finalized supplementary funding is no longer present in settlement escrow.',
+        );
+      }
+    }
+
+    const targetAlreadyOpen =
+      checkpoint === 'AFTER_TARGET_BORROW' ||
+      checkpoint === 'BEFORE_SETTLEMENT' ||
+      checkpoint === 'AFTER_SETTLEMENT';
+    const targetPosition = await this.#readPosition(
+      this.#destinationPublic,
+      artifacts.targetLending,
+      this.#environment.DESTINATION_LENDING_ADDRESS,
+      plan.borrower,
+    );
+    const requiredBorrow = BigInt(financing.requiredDestinationBorrowUnits);
+    if (targetAlreadyOpen) {
+      if (
+        targetPosition[0] < BigInt(plan.minDestinationCollateralUnits) ||
+        targetPosition[1] !== requiredBorrow
+      ) {
+        throw new Error(`Target position does not match signed financing at ${checkpoint}.`);
+      }
+    } else if (targetPosition[0] !== 0n || targetPosition[1] !== 0n) {
+      throw new Error(`Target position already exists before checkpoint ${checkpoint}.`);
+    }
+
+    const collateralUnits = targetAlreadyOpen
+      ? targetPosition[0]
+      : context.transportLeg.observedOutputUnits === null
+        ? BigInt(plan.minDestinationCollateralUnits)
+        : BigInt(context.transportLeg.observedOutputUnits);
+    if (collateralUnits < BigInt(plan.minDestinationCollateralUnits)) {
+      throw new Error(`Destination collateral is below the signed minimum at ${checkpoint}.`);
+    }
+    const [priceWad, protocolMaximumLtv, currentLiquidity] = await Promise.all([
+      this.#readBigInt(
+        this.#destinationPublic,
+        artifacts.targetLending,
+        this.#environment.DESTINATION_LENDING_ADDRESS,
+        'collateralPriceInDebtWad',
+        [],
+      ),
+      this.#readUnsigned(
+        this.#destinationPublic,
+        artifacts.targetLending,
+        this.#environment.DESTINATION_LENDING_ADDRESS,
+        'maximumLtvBps',
+        [],
+      ),
+      this.#readBigInt(
+        this.#destinationPublic,
+        artifacts.token,
+        this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS,
+        'balanceOf',
+        [this.#environment.DESTINATION_LENDING_ADDRESS],
+      ),
+    ]);
+    const collateralScale = 10n ** BigInt(plan.destinationCollateralAsset.decimals);
+    const debtScale = 10n ** BigInt(plan.destinationDebtAsset.decimals);
+    const collateralValue =
+      (collateralUnits * priceWad * debtScale) / (collateralScale * 10n ** 18n);
+    const stressedCollateralValue =
+      (collateralValue * BigInt(10_000 - financing.stressCollateralDropBps)) / 10_000n;
+    const protocolCapacity = (collateralValue * protocolMaximumLtv) / 10_000n;
+    const safetyPolicy = context.signedIntent.intent.safetyPolicy;
+    if (safetyPolicy.kind !== 'MAX_LTV_BPS') {
+      throw new Error('The local Morpho simulator requires a signed maximum-LTV policy.');
+    }
+    const normalPolicyCapacity = (collateralValue * BigInt(safetyPolicy.maximumLtvBps)) / 10_000n;
+    const stressPolicyCapacity =
+      (stressedCollateralValue * BigInt(safetyPolicy.stressMaximumLtvBps)) / 10_000n;
+    const policyCapacity = minBigInt(normalPolicyCapacity, stressPolicyCapacity);
+    const preBorrowLiquidity = targetAlreadyOpen
+      ? currentLiquidity + requiredBorrow
+      : currentLiquidity;
+    const liquidityCapacity =
+      (preBorrowLiquidity * 10_000n) / BigInt(10_000 + financing.liquidityBufferBps);
+    const signedCapacity = BigInt(financing.signedBorrowCapacityUnits);
+    const maximumSafeCapacity = minBigInt(
+      protocolCapacity,
+      policyCapacity,
+      liquidityCapacity,
+      signedCapacity,
+    );
+    const totalRequired = BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits);
+    const availableFunding = maximumSafeCapacity + escrowFunding;
+    const shortfall = totalRequired > availableFunding ? totalRequired - availableFunding : 0n;
+    if (requiredBorrow > maximumSafeCapacity || shortfall !== 0n) {
+      throw new Error(
+        `Fresh financing has ${shortfall.toString()} settlement units of shortfall at ${checkpoint}.`,
+      );
+    }
+
+    if (checkpoint === 'BEFORE_SETTLEMENT' || checkpoint === 'AFTER_SETTLEMENT') {
+      const payoutBalance = await this.#readBigInt(
+        this.#destinationPublic,
+        artifacts.token,
+        this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS,
+        'balanceOf',
+        [plan.payoutReceiver],
+      );
+      if (payoutBalance + escrowFunding < totalRequired) {
+        throw new Error('Settlement sources cannot cover the signed total repayment obligation.');
+      }
+    }
+
+    return {
+      checkpoint,
+      observedAt: new Date().toISOString(),
+      originalCapacityEvidenceHash: financing.capacityEvidenceHash,
+      sourceState: afterSourceClose ? 'CLOSED' : 'OPEN_MATCHED',
+      destinationCollateralUnits: collateralUnits.toString(),
+      collateralValueUnits: collateralValue.toString(),
+      protocolBorrowCapacityUnits: protocolCapacity.toString(),
+      policyBorrowCapacityUnits: policyCapacity.toString(),
+      liquidityBorrowCapacityUnits: liquidityCapacity.toString(),
+      signedBorrowCapacityUnits: signedCapacity.toString(),
+      maximumSafeBorrowingCapacityUnits: maximumSafeCapacity.toString(),
+      confirmedExternalFundingUnits: escrowFunding.toString(),
+      requiredDestinationBorrowUnits: requiredBorrow.toString(),
+      fundingShortfallUnits: shortfall.toString(),
+    };
+  }
+
+  async #readPosition(
+    client: LocalPublicClient,
+    artifact: FoundryArtifact,
+    address: Address,
+    borrower: Address,
+  ): Promise<readonly [bigint, bigint]> {
+    const result = await client.readContract({
+      address,
+      abi: artifact.abi,
+      functionName: 'positions',
+      args: [borrower],
+    });
+    if (
+      !Array.isArray(result) ||
+      result.length !== 2 ||
+      typeof result[0] !== 'bigint' ||
+      typeof result[1] !== 'bigint'
+    ) {
+      throw new Error(`Unexpected position response from ${address}.`);
+    }
+    return [result[0], result[1]];
+  }
+
+  async #readUnsigned(
+    client: LocalPublicClient,
+    artifact: FoundryArtifact,
+    address: Address,
+    functionName: string,
+    args: readonly unknown[],
+  ): Promise<bigint> {
+    const result = await client.readContract({ address, abi: artifact.abi, functionName, args });
+    if (typeof result !== 'number' && typeof result !== 'bigint') {
+      throw new Error(`Unexpected ${functionName} response from ${address}.`);
+    }
+    return BigInt(result);
   }
 
   async #ensureTokenBalance(
@@ -648,6 +937,17 @@ function sameAddress(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
 }
 
+function minBigInt(first: bigint, ...rest: readonly bigint[]): bigint {
+  return rest.reduce((minimum, value) => (value < minimum ? value : minimum), first);
+}
+
+function withFinancingRevalidation(
+  action: FinalizedChainAction,
+  financingRevalidation: Record<string, unknown>,
+): FinalizedChainAction {
+  return { ...action, payload: { ...action.payload, financingRevalidation } };
+}
+
 function localChain(id: number, name: string, rpcUrl: string): Chain {
   return defineChain({
     id,
@@ -658,12 +958,23 @@ function localChain(id: number, name: string, rpcUrl: string): Chain {
 }
 
 async function loadArtifacts(): Promise<LocalArtifacts> {
-  const [token, vault, escrow, sourceAdapter, destinationAdapter] = await Promise.all([
-    loadFoundryArtifact('TestToken'),
-    loadFoundryArtifact('TestLiquidityVault'),
-    loadFoundryArtifact('MigrationEscrow'),
-    loadFoundryArtifact('SourceAdapter'),
-    loadFoundryArtifact('DestinationAdapter'),
-  ]);
-  return { token, vault, escrow, sourceAdapter, destinationAdapter };
+  const [token, vault, escrow, sourceLending, targetLending, sourceAdapter, destinationAdapter] =
+    await Promise.all([
+      loadFoundryArtifact('TestToken'),
+      loadFoundryArtifact('TestLiquidityVault'),
+      loadFoundryArtifact('MigrationEscrow'),
+      loadFoundryArtifact('MockSourceLending'),
+      loadFoundryArtifact('MockTargetLending'),
+      loadFoundryArtifact('SourceAdapter'),
+      loadFoundryArtifact('DestinationAdapter'),
+    ]);
+  return {
+    token,
+    vault,
+    escrow,
+    sourceLending,
+    targetLending,
+    sourceAdapter,
+    destinationAdapter,
+  };
 }

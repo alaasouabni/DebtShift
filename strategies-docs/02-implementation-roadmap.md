@@ -84,6 +84,9 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [ ] Implement the destination adapter and post-state checks.
 - [ ] Implement per-migration escrow accounting.
 - [ ] Implement the test liquidity vault with principal and fee separation.
+- [ ] Implement migration-specific supplementary-funding and settlement escrow with exact use and
+      refund authorization.
+- [ ] Make liquidity reservation require a fresh, plan-bound, zero-shortfall feasibility proof.
 - [ ] Add consumed nonces, deadline checks, allowlists, pause scopes, and residual refunds.
 - [ ] Add reentrancy protection and safe token handling.
 - [ ] Emit the canonical migration events.
@@ -92,6 +95,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [ ] Prove or reject the bounded aToken-allowance source-close mechanism on a pinned Aave fork.
 - [ ] If rejected, implement the documented smart-account or borrower-transaction alternative.
 - [ ] Add pinned Morpho destination fork tests.
+- [ ] Add contract invariants proving confirmed borrower funding is isolated and `SETTLED` requires
+      exact solver repayment rather than a ledger receivable.
 
 ### Exit criteria
 
@@ -99,6 +104,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - Mutating any signed route field causes execution to revert.
 - Source close and target open pass against pinned real protocol state.
 - No contract can transfer active-migration assets to an unsigned receiver.
+- No vault reservation or solver payout can bypass the signed financing structure and secured
+  supplementary-funding evidence.
 
 ## Milestone 4 - Market intelligence and optimizer
 
@@ -110,10 +117,20 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Normalize rates without losing native units or calculation provenance.
 - [x] Calculate target rate impact after the requested borrow.
 - [x] Add gas, approval, transport, slippage, funding, and protocol costs.
+- [ ] Add exclusive financing-component classification and reject omitted or double-counted costs.
+- [ ] Calculate source payoff, solver principal and fee, capitalized costs, separately paid costs,
+      borrower debt prepayment, and confirmed external funding as one reconciled analysis.
+- [ ] Calculate protocol capacity, DebtShift policy capacity, safe market liquidity, signed capacity,
+      required destination borrowing, and exact funding shortfall.
+- [ ] Implement borrower-funded fees, safe fee capitalization, partial debt prepayment, and fail-closed
+      rejection as the only supported shortfall outcomes.
 - [x] Add break-even, scenario, and net-benefit calculations.
 - [x] Add Aave health-factor and Morpho LTV/LLTV safety policies.
 - [x] Add oracle freshness and liquidity requirements.
 - [x] Add adverse collateral-price and rate-drift scenarios.
+- [ ] Add golden fixtures rejecting the `10,000 USDC` capacity / `10,100 USDC` obligation case and
+      accepting it only with `100 USDC` of finalized supplementary funding or additional safe
+      capacity.
 - [x] Return human-readable rejection reasons for ineligible routes.
 - [x] Add golden fixtures reproducing the specification’s example economics.
 - [x] Implement the deterministic Route/Risk Agent and its read-only tool contracts.
@@ -131,6 +148,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 - Calculations are deterministic and covered by golden tests.
 - Every eligible route has exact execution caps and safety outputs.
+- Every eligible route has a current zero-shortfall proof; unresolved or unconfirmed funding makes it
+  ineligible regardless of APR savings.
 - Display-only USD provider values never enter authorization calculations.
 - The same inputs always produce the same route eligibility and ranking regardless of whether Ollama is enabled.
 - The application starts and remains fully functional without any AI API key or local model.
@@ -143,13 +162,19 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 ### Tasks
 
 - [ ] Implement command handlers for reserve, source close, route, destination verification, target open, settlement, and final receipt.
+- [ ] Add feasibility evidence and revalidation checkpoints before reservation, source close, target
+      borrow, and settlement.
 - [ ] Implement provisional, confirmed, finalized, and retracted evidence states.
+- [ ] Persist financing analyses, exclusive component classifications, funding contributions,
+      checkpoint feasibility evidence, and settlement obligations.
 - [ ] Add chain-specific finality configuration.
 - [ ] Add canonical-block rechecks and reorg handling.
 - [ ] Add transport polling with strict unknown-status behavior.
 - [ ] Add destination balance and receipt reconciliation.
 - [ ] Add retry budgets and deadline-aware scheduling.
 - [ ] Add each recovery policy and operator escalation state.
+- [ ] Add post-source-close price, liquidity, rate, and risk-parameter deterioration recovery without
+      unsafe borrowing or false settlement.
 - [ ] Add balanced ledger checks before settlement.
 - [ ] Add stale migration and deadline alerts.
 
@@ -158,6 +183,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - Every allowed transition has a passing integration test.
 - Every disallowed transition has a negative test.
 - Chaos tests prove no duplicate movement after worker, Redis, RPC, or API interruption.
+- Shock tests prove a newer failed capacity check supersedes an older passing quote and preserves
+  collateral custody, solver receivables, and signed recovery limits.
 
 ## Milestone 6 - Complete API and web product
 
@@ -171,6 +198,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [ ] Implement SSE reconnect and cursor recovery.
 - [ ] Build source position and risk views.
 - [ ] Build route comparison and economic explanation views.
+- [ ] Display financing classifications, maximum safe capacity, confirmed external funding, required
+      destination borrowing, exact shortfall, resolution status, and checkpoint provenance.
 - [ ] Build the exact authorization review and signing flow.
 - [ ] Build the migration timeline with provider and verified states separated.
 - [ ] Build evidence, ledger, residual asset, and recovery views.
@@ -248,6 +277,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [ ] Add structured logs, traces, and Prometheus metrics.
 - [ ] Add dashboards for phases, latency, failures, health, and ledger imbalance.
 - [ ] Add alerts for reservation shortfall, deadline approach, stale recovery, receipt mismatch, and accounting imbalance.
+- [ ] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
+      exposure, and payout failure after collateral delivery.
 - [ ] Add database backup/restore and migration rollback drills.
 - [ ] Add secret rotation and relayer-key replacement procedures.
 - [ ] Generate an SBOM and container provenance metadata.

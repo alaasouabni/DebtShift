@@ -37,7 +37,25 @@ Configuration schemas are divided into:
 - NEAR network, RPC, registry account, and verifier identity.
 - Relayer key references.
 - Risk, fee, timeout, and exposure policy.
+- Capacity buffers, cost-classification policy, approved shortfall-resolution modes, and
+  supplementary-funding finality requirements.
 - Observability exporters and log levels.
+
+Market-provider selection is explicit and validated:
+
+- `local`, `ci`, and `testnet` require `MARKET_DATA_PROVIDER=SIMULATOR`.
+- `mainnet-readonly` requires `MARKET_DATA_PROVIDER=LIVE_READ_ONLY`, an authenticated 1Click client,
+  and a complete `LIVE_MARKET_CONFIG_JSON` registry.
+- `mainnet-canary` requires `MARKET_DATA_PROVIDER=DISABLED`, preventing the canary process from
+  reaching lending adapters or market routes.
+- Production modes never fall back to simulator fixtures when configuration or an external provider
+  is unavailable.
+
+The live registry has no built-in production addresses. It supplies the Aave pool/data provider,
+Morpho singleton/market/oracle, exact token identities and 1Click asset IDs, Chainlink feeds and age
+limits, route policy, conservative gas bounds, and analytics risk-cost assumptions. Direct reads
+must confirm chain, token metadata, market identity, and oracle identity before observations are
+accepted.
 
 Secrets are referenced through environment or a secret manager. `.env.example` contains names and safe examples only.
 
@@ -102,6 +120,10 @@ Applications refuse to start if required manifest entries or chain IDs disagree 
 - Command attempts and terminal failures.
 - Transport outcomes by route and token.
 - Reservation amount and shortfall.
+- Maximum safe borrowing capacity, required destination borrow, confirmed external funding, and
+  funding shortfall by migration.
+- Feasibility-check age and result at quote, reservation, source-close, target-open, and settlement
+  checkpoints.
 - Source and destination finality delay.
 - Post-migration Aave health factor or Morpho LTV margin.
 - Oracle age.
@@ -113,6 +135,9 @@ Applications refuse to start if required manifest entries or chain IDs disagree 
 ## Required alerts
 
 - Liquidity reservation below commitment.
+- Non-zero funding shortfall or missing supplementary-funding evidence at any pre-source checkpoint.
+- Destination safe capacity below required borrowing after source closure.
+- Feasibility input, funding evidence, or capacity snapshot expired before an irreversible command.
 - Execution deadline approaching with an active irreversible migration.
 - Transport terminal status not reconciled with balances.
 - Destination funding below minimum.
@@ -134,6 +159,11 @@ Operations documentation must cover:
 - Stuck reservation release.
 - Transport refund reconciliation.
 - Destination-funded recovery.
+- Borrowing-capacity deterioration before and after source closure.
+- Supplementary-funding deposit confirmation, cancellation refund, settlement consumption, and
+  mismatch investigation.
+- Solver payout failure after collateral delivery, including exposure escalation and receivable
+  reconciliation.
 - Relayer key rotation.
 - Emergency pause and unpause.
 - Evidence mismatch investigation.
@@ -147,6 +177,9 @@ The first release must include both configuration and code-level prevention of f
 - Documented solver financing and default terms.
 - Production-grade key custody and multisig roles.
 - Per-route and aggregate exposure limits.
+- Audited zero-shortfall feasibility enforcement, secured supplementary-funding escrow, conservative
+  capacity buffers, and post-source capacity-loss recovery drills.
+- Explicit acknowledgement that cross-chain smart contracts do not guarantee solver repayment.
 - Live 1Click committed-quote and refund validation.
 - Canary limits and emergency response exercise.
 - Explicit project-owner approval recorded in the decision log.

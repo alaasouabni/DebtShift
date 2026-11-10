@@ -42,6 +42,83 @@ export interface ChainlinkOracleFreshnessConfig {
   readonly sequencerUptimeFeed?: ChainlinkSequencerPolicy;
 }
 
+export interface ChainlinkPriceObservation {
+  readonly feed: Address;
+  readonly answer: bigint;
+  readonly decimals: number;
+  readonly updatedAt: string;
+  readonly blockNumber: string;
+}
+
+/** Direct USD/feed price read pinned to a caller-selected canonical block. */
+export class ChainlinkPriceReader {
+  constructor(
+    private readonly client: PublicClient,
+    private readonly sequencer?: ChainlinkSequencerPolicy,
+  ) {
+    if (
+      sequencer !== undefined &&
+      (!Number.isInteger(sequencer.recoveryGraceSeconds) || sequencer.recoveryGraceSeconds < 3_600)
+    ) {
+      throw new Error('L2 sequencer recovery grace must be at least 3600 seconds.');
+    }
+  }
+
+  async readAtBlock(
+    feedInput: ChainlinkFeedPolicy,
+    blockNumber: bigint,
+    blockObservedAt: string,
+  ): Promise<ChainlinkPriceObservation> {
+    const feed = getAddress(feedInput.address);
+    if (!Number.isInteger(feedInput.maximumAgeSeconds) || feedInput.maximumAgeSeconds <= 0) {
+      throw new Error('Chainlink feed maximum age must be a positive integer.');
+    }
+    const observedAtSeconds = BigInt(Math.floor(Date.parse(blockObservedAt) / 1_000));
+    if (observedAtSeconds <= 0n) throw new Error('Invalid oracle observation timestamp.');
+    const [round, decimals, sequencerRound] = await Promise.all([
+      this.client.readContract({
+        address: feed,
+        abi: CHAINLINK_AGGREGATOR_V3_ABI,
+        functionName: 'latestRoundData',
+        blockNumber,
+      }),
+      this.client.readContract({
+        address: feed,
+        abi: CHAINLINK_AGGREGATOR_V3_ABI,
+        functionName: 'decimals',
+        blockNumber,
+      }),
+      this.sequencer === undefined
+        ? Promise.resolve(undefined)
+        : this.client.readContract({
+            address: getAddress(this.sequencer.address),
+            abi: CHAINLINK_AGGREGATOR_V3_ABI,
+            functionName: 'latestRoundData',
+            blockNumber,
+          }),
+    ]);
+    if (sequencerRound !== undefined && this.sequencer !== undefined) {
+      assertSequencerAvailable(
+        sequencerRound,
+        observedAtSeconds,
+        this.sequencer.recoveryGraceSeconds,
+      );
+    }
+    const [roundId, answer, , updatedAt, answeredInRound] = round;
+    assertCompleteRound(feed, roundId, answer, updatedAt, answeredInRound, observedAtSeconds);
+    if (observedAtSeconds - updatedAt > BigInt(feedInput.maximumAgeSeconds)) {
+      throw new Error(`Chainlink feed ${feed} is stale.`);
+    }
+    return {
+      feed,
+      answer,
+      decimals,
+      updatedAt: new Date(Number(updatedAt) * 1_000).toISOString(),
+      blockNumber: blockNumber.toString(),
+    };
+  }
+}
+
 /**
  * Verifies the configured feed proxies at the exact Morpho snapshot block.
  * The Morpho oracle price is still read independently by MorphoBlueReadAdapter.
@@ -115,24 +192,24 @@ export class ChainlinkOracleFreshnessReader implements MorphoOracleFreshnessRead
           }),
     ]);
     if (sequencerResult !== undefined && this.#sequencer !== undefined) {
-      if (sequencerResult[1] !== 0n) throw new Error('The L2 sequencer is reported down.');
-      if (sequencerResult[2] === 0n || observedAtSeconds < sequencerResult[2]) {
-        throw new Error('The L2 sequencer status round is incomplete.');
-      }
-      if (observedAtSeconds - sequencerResult[2] < BigInt(this.#sequencer.recoveryGraceSeconds)) {
-        throw new Error('The L2 sequencer recovery grace period has not elapsed.');
-      }
+      assertSequencerAvailable(
+        sequencerResult,
+        observedAtSeconds,
+        this.#sequencer.recoveryGraceSeconds,
+      );
     }
     let oldestUpdatedAt = observedAtSeconds;
     const provenance: string[] = [];
     for (const { feed, round, decimals } of feedResults) {
-      const [roundId, answer, , updatedAt] = round;
-      if (roundId === 0n || answer <= 0n || updatedAt === 0n) {
-        throw new Error(`Chainlink feed ${feed.address} returned an incomplete round.`);
-      }
-      if (updatedAt > observedAtSeconds) {
-        throw new Error(`Chainlink feed ${feed.address} is newer than the observed block.`);
-      }
+      const [roundId, answer, , updatedAt, answeredInRound] = round;
+      assertCompleteRound(
+        feed.address,
+        roundId,
+        answer,
+        updatedAt,
+        answeredInRound,
+        observedAtSeconds,
+      );
       if (observedAtSeconds - updatedAt > BigInt(feed.maximumAgeSeconds)) {
         throw new Error(`Chainlink feed ${feed.address} is stale.`);
       }
@@ -145,5 +222,35 @@ export class ChainlinkOracleFreshnessReader implements MorphoOracleFreshnessRead
         `debtshift.chainlink-freshness.v1:${input.blockNumber}:${provenance.sort().join('|')}`,
       ),
     };
+  }
+}
+
+function assertCompleteRound(
+  feed: Address,
+  roundId: bigint,
+  answer: bigint,
+  updatedAt: bigint,
+  answeredInRound: bigint,
+  observedAtSeconds: bigint,
+): void {
+  if (roundId === 0n || answer <= 0n || updatedAt === 0n || answeredInRound < roundId) {
+    throw new Error(`Chainlink feed ${feed} returned an incomplete round.`);
+  }
+  if (updatedAt > observedAtSeconds) {
+    throw new Error(`Chainlink feed ${feed} is newer than the observed block.`);
+  }
+}
+
+function assertSequencerAvailable(
+  round: readonly [bigint, bigint, bigint, bigint, bigint],
+  observedAtSeconds: bigint,
+  recoveryGraceSeconds: number,
+): void {
+  if (round[1] !== 0n) throw new Error('The L2 sequencer is reported down.');
+  if (round[2] === 0n || observedAtSeconds < round[2]) {
+    throw new Error('The L2 sequencer status round is incomplete.');
+  }
+  if (observedAtSeconds - round[2] < BigInt(recoveryGraceSeconds)) {
+    throw new Error('The L2 sequencer recovery grace period has not elapsed.');
   }
 }

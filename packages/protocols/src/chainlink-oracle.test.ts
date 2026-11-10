@@ -1,7 +1,7 @@
 import type { Address, PublicClient } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ChainlinkOracleFreshnessReader } from './chainlink-oracle.js';
+import { ChainlinkOracleFreshnessReader, ChainlinkPriceReader } from './chainlink-oracle.js';
 
 const MORPHO_ORACLE = '0x1000000000000000000000000000000000000001';
 const FEED_A = '0x2000000000000000000000000000000000000002';
@@ -68,6 +68,35 @@ describe('Chainlink oracle freshness reader', () => {
         blockObservedAt: new Date(10_000_000).toISOString(),
       }),
     ).rejects.toThrow('grace');
+  });
+
+  it('returns an exact pinned price and rejects answered-in-earlier-round data', async () => {
+    const reader = new ChainlinkPriceReader(
+      fakeClient({ [FEED_A]: [11n, 2_000_000_000n, 9_900n, 9_950n, 11n] }),
+    );
+    await expect(
+      reader.readAtBlock(
+        { address: FEED_A, maximumAgeSeconds: 100 },
+        123n,
+        new Date(10_000_000).toISOString(),
+      ),
+    ).resolves.toMatchObject({
+      feed: FEED_A,
+      answer: 2_000_000_000n,
+      decimals: 8,
+      blockNumber: '123',
+    });
+
+    const incomplete = new ChainlinkPriceReader(
+      fakeClient({ [FEED_A]: [11n, 2_000_000_000n, 9_900n, 9_950n, 10n] }),
+    );
+    await expect(
+      incomplete.readAtBlock(
+        { address: FEED_A, maximumAgeSeconds: 100 },
+        123n,
+        new Date(10_000_000).toISOString(),
+      ),
+    ).rejects.toThrow('incomplete round');
   });
 });
 

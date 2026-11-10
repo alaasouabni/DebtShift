@@ -11,17 +11,19 @@ contract CanonicalHashFixtureTest {
         0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;
     bytes32 internal constant RESERVATION_HASH =
         0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;
+    bytes32 internal constant FINANCING_HASH =
+        0x85f3bad6e3b068aab393e9edcf51b3839cd982b0786e4bc6d5ebbdd0793a9319;
 
     bytes32 internal constant EXPECTED_POSITION =
         0xc0552755e1b8638016061a1864011b9be643b108a402cd4fee6be1086fe0b229;
     bytes32 internal constant EXPECTED_INTENT =
-        0x1512eaf38eaa112d95de0046d6c7471a9b3409f20a6afa6b20e3517a90ac3100;
+        0x3c4460663723c694cd7d18bf8ac67a18bcf65c6d8cbf8859597980f3221f9be0;
     bytes32 internal constant EXPECTED_MIGRATION =
-        0x67c5975085073b2512ada4bfe6296d62b485f963078bb88c104d68958287d692;
+        0x6ea3ae4a5060567ee39012471204d1554b6c71f8eaf23f156fc89f3d8209af85;
     bytes32 internal constant EXPECTED_ROUTE =
-        0x8ac99583375d02c0c9e0fb1c6d1d7f8468441058a7d2d8d1ca47be98891d2eeb;
+        0x4b31a759ac1beda55e80ec96b52b7e59f6aba136be4586a5e85944b10f49be4c;
     bytes32 internal constant EXPECTED_PLAN =
-        0xb1ba7e63357fd3c3acbc768e76acb7dd650b4cde6268c3a5aeb04ec9a79043cb;
+        0xd1e44f009a8b9a6e559f469395a223fe91b8548a33ba8fa3a2a9617b806005d0;
 
     function testCanonicalHashFixture() public pure {
         bytes32 sourceMarket = DebtShiftHashing.hashMarketReference(
@@ -55,7 +57,9 @@ contract CanonicalHashFixtureTest {
                 borrower: BORROWER,
                 sourcePositionId: position,
                 allowedTargetsHash: keccak256(abi.encode(allowedTargets)),
-                feeAssetHash: sourceDebt,
+                feeAssetHash: DebtShiftHashing.hashTokenReference(
+                    31_338, 0x5000000000000000000000000000000000000005, 6
+                ),
                 maxSourceDebt: 10_000_000_000,
                 minSourceCollateral: 9_900_000_000_000_000_000,
                 maxTotalFee: 100_000_000,
@@ -92,7 +96,7 @@ contract CanonicalHashFixtureTest {
                 transportQuoteHash: QUOTE_HASH,
                 sourceRepaymentMax: 10_000_000_000,
                 sourceCollateralMin: 9_900_000_000_000_000_000,
-                targetDebtMax: 10_100_000_000,
+                targetDebtMax: 10_050_000_000,
                 minDestinationCollateral: 9_800_000_000_000_000_000,
                 principalMax: 10_000_000_000,
                 feeMax: 50_000_000,
@@ -129,7 +133,7 @@ contract CanonicalHashFixtureTest {
                 ),
                 sourceRepaymentMax: 10_000_000_000,
                 sourceCollateralMin: 9_900_000_000_000_000_000,
-                targetDebtMax: 10_100_000_000,
+                targetDebtMax: 10_050_000_000,
                 minDestinationCollateral: 9_800_000_000_000_000_000,
                 transportProviderHash: keccak256("DEBTSHIFT_SIMULATOR"),
                 transportQuoteHash: QUOTE_HASH,
@@ -138,10 +142,13 @@ contract CanonicalHashFixtureTest {
                 refundReceiver: BORROWER,
                 fundingProvider: 0x8000000000000000000000000000000000000008,
                 reservationHash: RESERVATION_HASH,
-                payoutAssetHash: sourceDebt,
+                payoutAssetHash: DebtShiftHashing.hashTokenReference(
+                    31_338, 0x5000000000000000000000000000000000000005, 6
+                ),
                 payoutReceiver: 0x8000000000000000000000000000000000000008,
                 principalMax: 10_000_000_000,
                 feeMax: 50_000_000,
+                financingHash: FINANCING_HASH,
                 deadline: 1_793_999_000
             })
         );

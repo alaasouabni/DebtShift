@@ -22,6 +22,8 @@ Implementation must be understandable from this directory without relying on cha
 - Default to the deterministic TypeScript Route/Risk Agent with no AI configuration required.
 - Allow the user to optionally select either a user-supplied AI API or a local Ollama model for explanations; neither can authorize or execute financial actions.
 - Use free public protocol APIs and RPC endpoints with direct onchain verification for execution-critical state.
+- Require a reconciled, zero-shortfall refinancing feasibility proof before any solver or test-vault
+  commitment. Unsecured promises and speculative future capacity are not funding sources.
 
 ## Document index
 
@@ -38,6 +40,8 @@ Implementation must be understandable from this directory without relying on cha
 | [08-progress-and-decisions.md](./08-progress-and-decisions.md)                             | Tracks milestone status, decisions, open questions, and implementation handoffs.                |
 | [09-definition-of-done.md](./09-definition-of-done.md)                                     | Defines what must be true before the implementation is called complete.                         |
 | [10-agent-and-free-data-sources.md](./10-agent-and-free-data-sources.md)                   | Defines the agent design, local model, free data providers, precedence, caching, and fallbacks. |
+| [11-refinancing-feasibility-model.md](./11-refinancing-feasibility-model.md)               | Defines borrowing capacity, funding shortfalls, secured resolutions, and revalidation rules.    |
+| [12-production-provider-boundaries.md](./12-production-provider-boundaries.md)             | Separates simulator fixtures from live Aave, Morpho, Chainlink, and 1Click providers.           |
 
 ## Work protocol
 
@@ -69,6 +73,12 @@ Implementation must be understandable from this directory without relying on cha
 - Every phase transition is justified by persisted evidence.
 - Provider success is independently reconciled against destination balances and transaction receipts.
 - Unknown protocol, token, chain, or transport states fail closed.
+- Every financing component is classified exactly once; separately paid costs and financed costs
+  are never double counted.
+- Solver or test-vault capital cannot be reserved until maximum safe destination borrowing plus
+  confirmed external funding covers every repayment and financed-cost obligation.
+- Per-chain contracts provide bounded custody and actions, not a guarantee of cross-chain atomicity
+  or solver repayment.
 - No borrower EOA private key is stored or requested.
 - Real-fund execution remains disabled until the future production gates are explicitly approved.
 

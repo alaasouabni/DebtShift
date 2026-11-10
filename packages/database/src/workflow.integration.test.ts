@@ -52,6 +52,13 @@ describe('durable workflow and transactional outbox', () => {
         migration_id, intent_hash, plan_hash, quote_hash, phase, expires_at
       ) VALUES ('${hash('5')}', '${hash('1')}', '${hash('2')}', '${hash('3')}',
         'AUTHORIZED', now() + interval '1 hour');
+      INSERT INTO liquidity_reservations (
+        reservation_id, migration_id, reservation_hash, provider, chain_id, asset,
+        principal_units, fee_cap_units, status, expires_at
+      ) VALUES ('${hash('4')}', '${hash('5')}', '${hash('6')}',
+        '0x8000000000000000000000000000000000000008', 31337,
+        '0x3000000000000000000000000000000000000003', 100, 5, 'PENDING',
+        now() + interval '1 hour');
       INSERT INTO evidence (
         evidence_id, migration_id, type, schema_version, provider, network,
         raw_observation_hash, normalized_payload, observed_at, verification_state,
@@ -64,7 +71,10 @@ describe('durable workflow and transactional outbox', () => {
         ('${hash('b')}', '${hash('5')}', 'INTENT_AUTHORIZATION', 1, 'WALLET',
           'eip712:31337', '${hash('c')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
         ('${hash('d')}', '${hash('5')}', 'EXECUTION_PLAN_AUTHORIZATION', 1, 'WALLET',
-          'eip712:31337', '${hash('e')}', '{}', now(), 'FINALIZED', 'TEST', '1');
+          'eip712:31337', '${hash('e')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
+        ('${hash('f')}', '${hash('5')}', 'FINANCING_FEASIBILITY', 1,
+          'DETERMINISTIC_ENGINE_V1', 'eip155:31337', '${hash('0')}', '{}', now(),
+          'FINALIZED', 'TEST', '1');
     `);
   });
 
@@ -129,7 +139,7 @@ describe('durable workflow and transactional outbox', () => {
 
   it('advances from finalized evidence and enqueues the next command exactly once', async () => {
     const record = evidenceSchema.parse({
-      evidenceId: hash('f'),
+      evidenceId: hash('0'),
       migrationId: hash('5'),
       type: 'LIQUIDITY_RESERVATION',
       schemaVersion: 1,
@@ -153,6 +163,10 @@ describe('durable workflow and transactional outbox', () => {
       `SELECT phase, version FROM migrations WHERE migration_id = '${hash('5')}'`,
     );
     expect(migration.rows[0]).toEqual({ phase: 'RESERVED', version: 1 });
+    const reservation = await postgres.query<{ status: string }>(
+      `SELECT status FROM liquidity_reservations WHERE migration_id = '${hash('5')}'`,
+    );
+    expect(reservation.rows[0]?.status).toBe('ACTIVE');
     const commandCount = await postgres.query<{ count: string | number }>(
       'SELECT count(*) FROM commands',
     );

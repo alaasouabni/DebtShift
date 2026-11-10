@@ -19,7 +19,7 @@ import {
 import type { Abi, Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 
-import { ViemLocalExecutionPort } from './local-execution.js';
+import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
 
 const ANVIL_PATH = resolveAnvilPath();
 const ANVIL_AVAILABLE = spawnSync(ANVIL_PATH, ['--version'], { windowsHide: true }).status === 0;
@@ -27,7 +27,7 @@ const BORROW_UNITS = 10_000_000_000n;
 const FEE_UNITS = 50_000_000n;
 const COLLATERAL_UNITS = 10n * 10n ** 18n;
 
-describe.skipIf(!ANVIL_AVAILABLE)('Viem local execution port', () => {
+describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => {
   it('executes and reconciles the complete successful dual-chain workflow', async () => {
     await withDeployment(
       async ({ source, destination, deployment, execution, context, simulator }) => {
@@ -144,7 +144,7 @@ interface DeploymentFixture {
   readonly source: LocalAnvilChain;
   readonly destination: LocalAnvilChain;
   readonly deployment: LocalDebtShiftDeployment;
-  readonly execution: ViemLocalExecutionPort;
+  readonly execution: DualAnvilSimulationExecutionPort;
   readonly context: MigrationExecutionContext;
   readonly simulator: DeterministicTransportSimulator;
 }
@@ -187,7 +187,7 @@ async function withDeployment(
       source,
       destination,
       deployment,
-      execution: new ViemLocalExecutionPort(environment),
+      execution: new DualAnvilSimulationExecutionPort(environment),
       context,
       simulator,
     });
@@ -236,7 +236,15 @@ async function buildContext(
       createdAt: now,
       updatedAt: now,
     },
-    signedIntent: {} as MigrationExecutionContext['signedIntent'],
+    signedIntent: {
+      intent: {
+        safetyPolicy: {
+          kind: 'MAX_LTV_BPS',
+          maximumLtvBps: 7000,
+          stressMaximumLtvBps: 6500,
+        },
+      },
+    } as unknown as MigrationExecutionContext['signedIntent'],
     signedPlan: {
       plan: {
         migrationId,
@@ -251,14 +259,29 @@ async function buildContext(
         },
         sourceDebtAsset: { address: deployment.source.debtToken },
         sourceCollateralAsset: { address: deployment.source.collateralToken },
-        destinationDebtAsset: { address: deployment.destination.debtToken },
-        destinationCollateralAsset: { address: deployment.destination.collateralToken },
+        destinationDebtAsset: { address: deployment.destination.debtToken, decimals: 6 },
+        destinationCollateralAsset: {
+          address: deployment.destination.collateralToken,
+          decimals: 18,
+        },
         sourceRepaymentMaxUnits: BORROW_UNITS.toString(),
         sourceCollateralMinUnits: COLLATERAL_UNITS.toString(),
         minDestinationCollateralUnits: '9800000000000000000',
         targetDebtMaxUnits: '10100000000',
         principalMaxUnits: BORROW_UNITS.toString(),
         feeMaxUnits: FEE_UNITS.toString(),
+        financing: {
+          validUntil: deadline.toString(),
+          capacityEvidenceHash: `0x${'cd'.repeat(32)}`,
+          liquidityBufferBps: 1000,
+          stressCollateralDropBps: 1000,
+          fundingShortfallUnits: '0',
+          confirmedExternalFundingUnits: '0',
+          externalFunding: [],
+          totalRequiredRepaymentAndFinancedCostUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+          signedBorrowCapacityUnits: '10100000000',
+          requiredDestinationBorrowUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+        },
         destinationReceiver: deployment.destination.escrow,
         refundReceiver: deployment.borrower,
         fundingProvider: deployment.source.vault,

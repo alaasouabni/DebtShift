@@ -19,6 +19,7 @@
     "check:all": "npm run check && npm run check:contracts",
     "check:contracts": "npm run check:evm && npm run check:near",
     "check:evm": "node scripts/check-evm.mjs",
+    "check:forks": "node scripts/check-protocol-forks.mjs",
     "check:near": "cargo fmt --manifest-path contracts/near/Cargo.toml --check && cargo test --manifest-path contracts/near/Cargo.toml --workspace && cargo clippy --manifest-path contracts/near/Cargo.toml --workspace --all-targets -- -D warnings && cargo near build non-reproducible-wasm --locked --no-abi --manifest-path contracts/near/registry/Cargo.toml",
     "clean": "turbo run clean",
     "demo:happy": "npm run check:evm && npm run build --workspace @debtshift/protocols && node packages/protocols/dist/local-demo.js happy",

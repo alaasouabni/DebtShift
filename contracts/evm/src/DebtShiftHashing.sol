@@ -73,6 +73,7 @@ library DebtShiftHashing {
         address payoutReceiver;
         uint256 principalMax;
         uint256 feeMax;
+        bytes32 financingHash;
         uint64 deadline;
     }
 

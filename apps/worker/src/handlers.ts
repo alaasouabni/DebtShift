@@ -30,7 +30,7 @@ export interface FinalizedChainAction {
   readonly payload: Record<string, unknown>;
 }
 
-export interface LocalExecutionPort {
+export interface MigrationExecutionPort {
   reserve(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   dispatchTransport(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
@@ -67,31 +67,49 @@ export class PostgresWorkflowContextStore implements WorkflowContextStore {
 
 export function createSimulatedWorkflowHandlers(
   store: WorkflowContextStore,
-  execution: LocalExecutionPort,
+  execution: MigrationExecutionPort,
   simulator: DeterministicTransportSimulator,
 ): ReadonlyMap<string, CommandHandler> {
   return new Map<string, CommandHandler>([
     [
       'RESERVE_LIQUIDITY',
-      handler(store, async (context) => [
-        chainEvidence(
-          context.migration.migrationId,
-          'LIQUIDITY_RESERVATION',
-          'LOCAL_TEST_VAULT',
-          await execution.reserve(context),
-        ),
-      ]),
+      handler(store, async (context) => {
+        const action = await execution.reserve(context);
+        return [
+          chainEvidence(
+            context.migration.migrationId,
+            'FINANCING_REVALIDATION',
+            'DEBTSHIFT_RISK_VALIDATOR',
+            action,
+          ),
+          chainEvidence(
+            context.migration.migrationId,
+            'LIQUIDITY_RESERVATION',
+            'LOCAL_TEST_VAULT',
+            action,
+          ),
+        ];
+      }),
     ],
     [
       'CLOSE_SOURCE',
-      handler(store, async (context) => [
-        chainEvidence(
-          context.migration.migrationId,
-          'SOURCE_CLOSE',
-          'LOCAL_SOURCE_ADAPTER',
-          await execution.closeSource(context),
-        ),
-      ]),
+      handler(store, async (context) => {
+        const action = await execution.closeSource(context);
+        return [
+          chainEvidence(
+            context.migration.migrationId,
+            'FINANCING_REVALIDATION',
+            'DEBTSHIFT_RISK_VALIDATOR',
+            action,
+          ),
+          chainEvidence(
+            context.migration.migrationId,
+            'SOURCE_CLOSE',
+            'LOCAL_SOURCE_ADAPTER',
+            action,
+          ),
+        ];
+      }),
     ],
     [
       'DISPATCH_TRANSPORT',
@@ -183,20 +201,35 @@ export function createSimulatedWorkflowHandlers(
     ],
     [
       'OPEN_TARGET',
-      handler(store, async (context) => [
-        chainEvidence(
-          context.migration.migrationId,
-          'TARGET_POSITION',
-          'LOCAL_TARGET_ADAPTER',
-          await execution.openTarget(context),
-        ),
-      ]),
+      handler(store, async (context) => {
+        const action = await execution.openTarget(context);
+        return [
+          chainEvidence(
+            context.migration.migrationId,
+            'FINANCING_REVALIDATION',
+            'DEBTSHIFT_RISK_VALIDATOR',
+            action,
+          ),
+          chainEvidence(
+            context.migration.migrationId,
+            'TARGET_POSITION',
+            'LOCAL_TARGET_ADAPTER',
+            action,
+          ),
+        ];
+      }),
     ],
     [
       'SETTLE_LIQUIDITY',
       handler(store, async (context) => {
         const action = await execution.settleLiquidity(context);
         return [
+          chainEvidence(
+            context.migration.migrationId,
+            'FINANCING_REVALIDATION',
+            'DEBTSHIFT_RISK_VALIDATOR',
+            action,
+          ),
           chainEvidence(
             context.migration.migrationId,
             'LIQUIDITY_SETTLEMENT',

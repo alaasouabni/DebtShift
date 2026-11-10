@@ -9,8 +9,9 @@ Browser wallet
     |
     v
 Next.js web  --->  NestJS API  ---> PostgreSQL
-                         |              |
-                         |              +--> transactional outbox
+                         |   |          |
+                         |   |          +--> transactional outbox
+                         |   +--> refinancing analysis / risk validation
                          v
                     Redis/BullMQ ---> worker
                                          |
@@ -37,6 +38,7 @@ Next.js web  --->  NestJS API  ---> PostgreSQL
 - Authenticates wallet sessions.
 - Validates all request schemas.
 - Serves positions, markets, quotes, migrations, events, and evidence.
+- Produces a reconciled financing analysis and rejects any non-zero funding shortfall.
 - Builds EIP-712 payloads and verifies returned signatures.
 - Creates database transactions and outbox commands.
 - Never treats an API request as sufficient onchain authorization.
@@ -45,6 +47,8 @@ Next.js web  --->  NestJS API  ---> PostgreSQL
 
 - Indexes lending state and market state.
 - Rehydrates canonical evidence before every state decision.
+- Revalidates source payoff, secured funding, destination capacity, liquidity, and post-state safety
+  before every irreversible financing action.
 - Executes idempotent commands.
 - Polls transport status and verifies chain receipts.
 - Applies finality rules and handles reorgs.
@@ -75,6 +79,8 @@ Next.js web  --->  NestJS API  ---> PostgreSQL
 - Source and target APR normalization.
 - Execution-time utilization impact.
 - Gas, transport, slippage, and solver cost projection.
+- Sources-and-uses classification, maximum safe borrowing capacity, required destination borrow,
+  and funding-shortfall calculation.
 - Break-even and scenario analysis.
 - Protocol-specific post-state and stress calculations.
 - Deterministic route eligibility and ranking.
@@ -94,6 +100,8 @@ Next.js web  --->  NestJS API  ---> PostgreSQL
 - Aave position and market reader.
 - Morpho position and market reader.
 - Transaction simulation and receipt decoding.
+- Direct destination liquidity, collateral constraint, oracle, and protocol-native safety reads used
+  by feasibility revalidation.
 - Deployment and asset allowlists.
 - Provider-specific safety normalization without erasing native metrics.
 
@@ -126,6 +134,7 @@ The simulator remains the only funded transport implementation connected to the 
 - Source migration adapter.
 - Destination migration adapter.
 - Migration escrow.
+- Supplementary funding and settlement escrow controls.
 - Test liquidity vault.
 - Test protocol markets and tokens.
 - Foundry tests and deployment scripts.
@@ -140,16 +149,17 @@ The simulator remains the only funded transport implementation connected to the 
 
 ## Source-of-truth rules
 
-| Claim                      | Authoritative source                                                                |
-| -------------------------- | ----------------------------------------------------------------------------------- |
-| Borrower authorization     | Valid signature plus unconsumed onchain nonce and deadline.                         |
-| Source debt and collateral | Lending contract state at a stored canonical block.                                 |
-| Source close               | Finalized receipt, expected adapter event, and follow-up position read.             |
-| Transport outcome          | Provider status plus origin receipt, destination receipt, and balance verification. |
-| Target position            | Lending contract state after the target transaction is finalized.                   |
-| Solver settlement          | Destination payout receipt plus balanced internal ledger.                           |
-| Workflow phase             | Deterministic derivation from signed terms and verified persisted evidence.         |
-| Final registry record      | NEAR transaction receipt containing the expected receipt-bundle hash.               |
+| Claim                      | Authoritative source                                                                                        |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Borrower authorization     | Valid signature plus unconsumed onchain nonce and deadline.                                                 |
+| Source debt and collateral | Lending contract state at a stored canonical block.                                                         |
+| Source close               | Finalized receipt, expected adapter event, and follow-up position read.                                     |
+| Refinancing feasibility    | Reconciled obligations, fresh capacity reads, finalized supplementary-funding evidence, and zero shortfall. |
+| Transport outcome          | Provider status plus origin receipt, destination receipt, and balance verification.                         |
+| Target position            | Lending contract state after the target transaction is finalized.                                           |
+| Solver settlement          | Finalized exact solver payout, required financed-cost receipts, and balanced internal ledger.               |
+| Workflow phase             | Deterministic derivation from signed terms and verified persisted evidence.                                 |
+| Final registry record      | NEAR transaction receipt containing the expected receipt-bundle hash.                                       |
 
 ## State machine
 
@@ -168,14 +178,20 @@ No post-source-close failure may return to DRAFT, QUOTED, or EXPIRED.
 ### Phase meanings
 
 - `DRAFT`: fresh source snapshot exists; no execution authorization exists.
-- `QUOTED`: an eligible route and complete economics projection exist.
+- `QUOTED`: an eligible route, complete economics projection, and provisional zero-shortfall
+  financing analysis exist.
 - `AUTHORIZED`: the borrower’s intent and exact execution plan are valid.
-- `RESERVED`: funding and transport readiness are reserved inside their validity windows.
+  Authorization validity also requires the exact financing structure and finalized supplementary
+  funding evidence to be bound to the execution plan.
+- `RESERVED`: fresh feasibility still passes and solver or test-vault funding plus transport
+  readiness are reserved inside their validity windows.
 - `SOURCE_CLOSED`: source debt and released collateral custody are verified.
 - `ROUTING`: one origin deposit is finalized and being tracked.
 - `DEST_FUNDED`: expected destination token and minimum amount are finalized at the authorized receiver.
-- `TARGET_OPEN`: target collateral and debt state satisfy the signed limits.
-- `SETTLED`: principal, fees, residuals, and ledger balances reconcile.
+- `TARGET_OPEN`: target collateral and debt state satisfy signed limits and current safe capacity;
+  authorized proceeds are held for settlement.
+- `SETTLED`: solver principal, solver fee, financed costs, external funding, residuals, and ledger
+  balances reconcile with the exact payout finalized.
 - `COMPLETED`: the final receipt hash is registered and verified on NEAR.
 - `RECOVERY`: an irreversible action occurred and the forward path is unsafe or unavailable.
 - `FAILED_SAFE`: recovery has ended with all known assets and residual obligations recorded.
@@ -187,7 +203,8 @@ Every external action follows this sequence:
 
 1. Lock the migration row and rehydrate canonical evidence.
 2. Derive the current phase from evidence.
-3. Check signed limits and current safety conditions.
+3. Check signed limits, complete settlement coverage, zero funding shortfall, and current safety
+   conditions.
 4. Insert a command with a deterministic idempotency key.
 5. Commit the command and outbox notification in one database transaction.
 6. Deliver the command at least once through the queue.
@@ -204,12 +221,17 @@ Every external action follows this sequence:
 - The API may propose actions but cannot authorize capital movement.
 - The worker holds only operational relayer keys for explicitly permitted test actions.
 - EVM contracts enforce exact assets, markets, receivers, amounts, nonces, and deadlines.
+- Funding escrow proves possession and authorized use of borrower contributions; an EOA balance or
+  offchain promise is not confirmed funding.
 - 1Click or the simulator transports assets but does not prove a lending position opened.
 - The simulator is not described as 1Click testnet; simulator evidence is explicitly tagged with provider `DEBTSHIFT_SIMULATOR`.
 - Live canary evidence is tagged `NEAR_INTENTS_1CLICK` and is accepted only from the production endpoint under the canary capability.
 - Canary completion proves transport integration only; it cannot satisfy a debt migration’s source-close, target-open, settlement, or completion predicates.
 - NEAR stores attestations and receipt hashes; it does not independently query EVM networks.
 - PostgreSQL stores workflow history but cannot override contradictory chain evidence.
+- Cross-chain execution is asynchronous. Per-chain contracts constrain actions and custody but do
+  not guarantee future destination capacity or solver repayment; remaining exposure is bounded by
+  explicit limits and recovery accounting.
 
 ## Repository target
 

@@ -6,16 +6,16 @@ This file is updated throughout implementation. It is the first place to inspect
 
 | Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                    |
 | ----------------------------------- | ----------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-08 | Ten implementation documents plus this tracker created and cross-checked.                                                                                           |
+| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-10 | Twelve implementation documents plus this tracker created and cross-checked, including financing and production-provider boundaries.                                |
 | M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                             |
 | M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.       |
 | M2 Simulated vertical slice         | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real PostgreSQL/Redis smoke evidence.              |
-| M3 EVM adapters and fork validation | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
+| M3 EVM adapters and fork validation | IN_PROGRESS | 2026-11-09 | -          | Direct Aave/Morpho/Chainlink adapters and identity/freshness tests exist; pinned public-fork validation remains.                                                    |
 | M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks. |
 | M5 Orchestration and recovery       | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
 | M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
 | M7 NEAR registry                    | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
-| M8 Live read-only integrations      | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
+| M8 Live read-only integrations      | IN_PROGRESS | 2026-11-10 | -          | Live registry/provider wiring and authenticated 1Click dry-only client implemented; external smoke and catalog/cache work remain.                                   |
 | M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
 | M10 Reproducible release            | NOT_STARTED | -          | -          | -                                                                                                                                                                   |
 
@@ -23,7 +23,8 @@ This file is updated throughout implementation. It is the first place to inspect
 
 - **Task:** M3/M4 - harden real protocol adapters and implement deterministic market intelligence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Implement official Aave V3 and Morpho Blue direct-read adapters, then validate them on pinned forks.
+- **Next verification:** Validate configured Aave V3 and Morpho Blue reads on pinned public forks,
+  then add live catalog caching, retry, rate-limit, and circuit-breaker behavior.
 
 ## Decision log
 
@@ -140,6 +141,39 @@ This file is updated throughout implementation. It is the first place to inspect
 - **Decision:** Execute checked-in SQL migrations in PGlite during unit tests, while retaining PostgreSQL as the production/local-service database and adding container integration tests at the M2/M5 gates.
 - **Reason:** This gives every checkout a fast, isolated PostgreSQL-compatible constraint test even when Docker Desktop is unavailable; it does not replace real PostgreSQL integration coverage.
 
+### ADR-016 - Zero-shortfall proof before temporary liquidity commitment
+
+- **Status:** APPROVED
+- **Date:** 2026-11-09
+- **Decision:** A solver- or test-vault-financed migration is ineligible unless maximum safe
+  destination borrowing capacity plus finalized, plan-bound external funding covers the exact solver
+  principal, solver fee, and every other financed cost. The component ledger must classify each cost
+  exactly once and report a zero funding shortfall before reservation and source closure.
+- **Resolution modes:** Borrower-funded supplementary escrow, safe debt capitalization, verified
+  borrower partial debt repayment, or migration rejection. Future deposits, wallet balances,
+  speculative capacity, and unsecured promises do not count.
+- **Execution consequence:** Revalidate before reservation, source close, target borrow, and payout. A
+  failed post-source-close check cannot authorize unsafe borrowing; it activates only signed,
+  pre-funded forward or recovery paths and preserves explicit solver exposure.
+- **Reason:** A destination position may safely support the original debt while lacking capacity for
+  solver fees and other financed costs. Per-chain smart contracts cannot eliminate this asynchronous
+  cross-chain financing risk.
+
+### ADR-017 - Explicit production provider boundary
+
+- **Status:** APPROVED
+- **Date:** 2026-11-10
+- **Decision:** Select market providers once at the application composition root through validated
+  `SIMULATOR`, `LIVE_READ_ONLY`, or `DISABLED` capabilities. Application services depend only on
+  ports; production modules cannot import simulator implementations.
+- **Live behavior:** Aave, Morpho, and Chainlink state comes from direct RPC reads configured by a
+  versioned runtime registry. 1Click read-only access is pinned to the official origin and exposes
+  only catalog and `dry: true` quote methods.
+- **Safety consequence:** Production configuration failure stops the live path. It never activates
+  fixture values. The isolated mainnet canary disables all lending market providers.
+- **Release consequence:** Live lending routes remain analysis-only and are marked adapter-unapproved
+  until pinned forks, audits, execution authorization, and future mainnet gates are satisfied.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                                      |
@@ -151,6 +185,41 @@ This file is updated throughout implementation. It is the first place to inspect
 | D-07 | Future production upgrade policy          | Future mainnet phase | Decide after audit and governance requirements exist.                                  |
 
 ## Implementation journal
+
+### 2026-11-10 - Simulator/production boundary and live read-only providers
+
+- Moved API market fixtures and dual-Anvil worker execution beneath explicit `simulator/`
+  namespaces and renamed the worker implementation to `DualAnvilSimulationExecutionPort`.
+- Replaced direct `Local*` dependencies in route analysis, preparation, and migration services with
+  startup-selected protocol and market-intelligence ports.
+- Added environment validation that requires simulator providers locally, live providers in
+  `mainnet-readonly`, and disabled lending providers in `mainnet-canary`.
+- Added the schema-validated `LIVE_MARKET_CONFIG_JSON` registry with no production address defaults.
+- Wired live Aave source reads, Morpho identity/rate/liquidity reads, Chainlink price/freshness and
+  sequencer checks, live gas prices, and authenticated 1Click dry quotes into read-only route
+  analysis.
+- Added an official-origin-pinned 1Click client with no committed quote, deposit, or broadcast
+  capability; provider USD display fields are not used in financial calculations.
+- Live lending routes remain deliberately execution-unapproved. Pinned fork validation and external
+  credentialed smoke tests remain open M3/M8 gates.
+- Focused verification passed: domain 17 tests, intents 13 tests, protocols 8 tests, API 5 tests,
+  worker 14 tests, domain/protocol/API/worker type checks, and API/worker lint.
+
+### 2026-11-09 - Solver-financing feasibility correction
+
+- Added the canonical sources-and-uses model in
+  `11-refinancing-feasibility-model.md`, including exact capacity, required-borrow, and shortfall
+  equations.
+- Made zero shortfall and finalized supplementary-funding evidence mandatory before solver or test-
+  vault reservation and source closure.
+- Defined borrower-funded fees, safe debt capitalization, verified partial debt repayment, and
+  fail-closed rejection as the supported resolution paths.
+- Added execution-time revalidation, capacity-deterioration recovery, solver exposure limits, and an
+  explicit statement that cross-chain contracts do not guarantee repayment.
+- Propagated the model into product scope, architecture, authorization, escrow, orchestration,
+  testing, operations, security, agent, roadmap, and completion requirements.
+- This is a documentation and implementation-plan correction; corresponding code and contract tasks
+  remain unchecked until their tests pass.
 
 ### 2026-11-08 - Strategy initialization
 

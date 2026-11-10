@@ -2,13 +2,13 @@ import { positionSnapshotSchema, type PositionSnapshot } from '@debtshift/domain
 import { compareRoutes } from '@debtshift/optimizer';
 import { describe, expect, it } from 'vitest';
 
-import type { LocalRouteDefinition } from './local-protocol.service.js';
+import type { LocalRouteDefinition } from './simulator/local-protocol.service.js';
 import {
   buildLocalRouteCandidates,
   LOCAL_EXECUTABLE_ROUTE_ID,
   LOCAL_REJECTED_ROUTE_ID,
   localRoutePolicy,
-} from './local-market-tools.service.js';
+} from './simulator/local-market-tools.service.js';
 
 const BORROWER = '0xa1d79dfa76e98D5e8A776114d9524c4B6E888daa' as const;
 
@@ -35,15 +35,30 @@ describe('local market intelligence fixtures', () => {
       (evaluation) => evaluation.candidateId === LOCAL_EXECUTABLE_ROUTE_ID,
     );
     expect(selected?.eligible).toBe(true);
-    expect(selected?.economics.allInCostUsdMicro).toBe('85000000');
-    expect(selected?.economics.netBenefitUsdMicro).toBe('38287671');
+    expect(selected?.economics.allInCostUsdMicro).toBe('100000000');
+    expect(selected?.economics.netBenefitUsdMicro).toBe('23287671');
+    expect(selected?.financing).toMatchObject({
+      eligible: true,
+      solverPrincipalUnits: '10000000000',
+      solverFeeUnits: '50000000',
+      separatelyPaidCostUnits: '50000000',
+      totalRequiredRepaymentAndFinancedCostUnits: '10050000000',
+      requiredDestinationBorrowUnits: '10050000000',
+      fundingShortfallUnits: '0',
+    });
     expect(selected?.provenance.marketBlockNumber).toBe('200');
 
     const rejected = comparison.evaluations.find(
       (evaluation) => evaluation.candidateId === LOCAL_REJECTED_ROUTE_ID,
     );
     expect(rejected?.eligible).toBe(false);
-    expect(rejected?.rejections.map(({ code }) => code)).toContain('INSUFFICIENT_BORROW_LIQUIDITY');
+    expect(rejected?.rejections.map(({ code }) => code)).toEqual(
+      expect.arrayContaining([
+        'INSUFFICIENT_BORROW_LIQUIDITY',
+        'REQUIRED_BORROW_EXCEEDS_SAFE_CAPACITY',
+        'FUNDING_SHORTFALL',
+      ]),
+    );
   });
 });
 
@@ -121,8 +136,11 @@ function localRoute(): LocalRouteDefinition {
       decimals: 18,
       symbol: 'dWETH',
     },
-    destinationEscrow: '0x7000000000000000000000000000000000000007',
-    sourceVault: '0x8000000000000000000000000000000000000008',
-    executor: '0x9000000000000000000000000000000000000009',
+    execution: {
+      kind: 'SIMULATOR',
+      destinationEscrow: '0x7000000000000000000000000000000000000007',
+      sourceVault: '0x8000000000000000000000000000000000000008',
+      executor: '0x9000000000000000000000000000000000000009',
+    },
   };
 }

@@ -20,6 +20,7 @@ import {
   signatureSchema,
   uint64StringSchema,
 } from './primitives.js';
+import { executionFinancingSchema } from './financing.js';
 
 export const accountTypeSchema = z.enum(['EOA', 'EIP1271']);
 
@@ -75,11 +76,15 @@ export const refinanceIntentSchema = z
       });
     }
 
-    if (intent.feeAsset.chainId !== intent.sourcePosition.market.chainId) {
+    const authorizedFeeChains = new Set([
+      intent.sourcePosition.market.chainId,
+      ...intent.allowedTargets.map((target) => target.chainId),
+    ]);
+    if (!authorizedFeeChains.has(intent.feeAsset.chainId)) {
       context.addIssue({
         code: 'custom',
         path: ['feeAsset'],
-        message: 'The initial fee cap must be denominated on the source chain.',
+        message: 'The fee asset must be on the source chain or an allowed target chain.',
       });
     }
 
@@ -185,6 +190,7 @@ export const executionPlanSchema = z
     payoutReceiver: evmAddressSchema,
     principalMaxUnits: positiveBaseUnitAmountSchema,
     feeMaxUnits: baseUnitAmountSchema,
+    financing: executionFinancingSchema,
     routeHash: bytes32Schema,
     deadline: uint64StringSchema,
     nonce: nonceSchema,
@@ -193,20 +199,79 @@ export const executionPlanSchema = z
   .superRefine((plan, context) => {
     const sourceChainId = plan.sourceMarket.chainId;
     const destinationChainId = plan.targetMarket.chainId;
-    const sourceAssets = [plan.sourceDebtAsset, plan.sourceCollateralAsset, plan.payoutAsset];
-    const destinationAssets = [plan.destinationDebtAsset, plan.destinationCollateralAsset];
+    const sourceAssets = [plan.sourceDebtAsset, plan.sourceCollateralAsset];
+    const destinationAssets = [
+      plan.destinationDebtAsset,
+      plan.destinationCollateralAsset,
+      plan.payoutAsset,
+      plan.financing.settlementAsset,
+    ];
 
     if (sourceAssets.some((asset) => asset.chainId !== sourceChainId)) {
       context.addIssue({
         code: 'custom',
-        message: 'Source debt, collateral, and payout assets must belong to the source chain.',
+        message: 'Source debt and collateral assets must belong to the source chain.',
       });
     }
 
     if (destinationAssets.some((asset) => asset.chainId !== destinationChainId)) {
       context.addIssue({
         code: 'custom',
-        message: 'Destination debt and collateral assets must belong to the target chain.',
+        message:
+          'Destination debt, collateral, payout, and settlement assets must belong to the target chain.',
+      });
+    }
+
+    if (!sameToken(plan.payoutAsset, plan.financing.settlementAsset)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['payoutAsset'],
+        message: 'Payout asset must equal the signed settlement asset.',
+      });
+    }
+    if (!sameToken(plan.destinationDebtAsset, plan.financing.settlementAsset)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['financing', 'settlementAsset'],
+        message: 'Settlement asset must equal the destination debt asset.',
+      });
+    }
+    if (plan.sourceRepaymentMaxUnits !== plan.financing.sourceDebtPayoffAssetUnits) {
+      context.addIssue({
+        code: 'custom',
+        path: ['financing', 'sourceDebtPayoffAssetUnits'],
+        message: 'Financing source payoff must equal the execution source repayment cap.',
+      });
+    }
+    if (BigInt(plan.targetDebtMaxUnits) !== BigInt(plan.financing.requiredDestinationBorrowUnits)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['financing', 'requiredDestinationBorrowUnits'],
+        message: 'Execution target debt must equal the reconciled required destination borrow.',
+      });
+    }
+    if (plan.feeMaxUnits !== plan.financing.solverFeeUnits) {
+      context.addIssue({
+        code: 'custom',
+        path: ['financing', 'solverFeeUnits'],
+        message: 'Execution fee must equal the reconciled solver fee.',
+      });
+    }
+    if (BigInt(plan.deadline) > BigInt(plan.financing.validUntil)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['financing', 'validUntil'],
+        message: 'Execution plan cannot outlive its financing evidence.',
+      });
+    }
+    if (
+      !sameToken(plan.sourceDebtAsset, plan.financing.settlementAsset) &&
+      plan.financing.sourceConversionQuoteHash === undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['financing', 'sourceConversionQuoteHash'],
+        message: 'Cross-chain source payoff requires a signed settlement conversion.',
       });
     }
   });
@@ -225,3 +290,14 @@ export type SignedRefinanceIntent = z.infer<typeof signedRefinanceIntentSchema>;
 export type ProviderQuote = z.infer<typeof providerQuoteSchema>;
 export type ExecutionPlan = z.infer<typeof executionPlanSchema>;
 export type SignedExecutionPlan = z.infer<typeof signedExecutionPlanSchema>;
+
+function sameToken(
+  left: z.infer<typeof tokenReferenceSchema>,
+  right: z.infer<typeof tokenReferenceSchema>,
+): boolean {
+  return (
+    left.chainId === right.chainId &&
+    left.address.toLowerCase() === right.address.toLowerCase() &&
+    left.decimals === right.decimals
+  );
+}

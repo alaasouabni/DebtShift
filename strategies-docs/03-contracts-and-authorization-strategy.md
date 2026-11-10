@@ -14,6 +14,7 @@ The intent expresses durable user policy:
 - Maximum source debt to repay.
 - Minimum source collateral to release.
 - Maximum total fee and slippage bounds.
+- Permitted shortfall-resolution modes, maximum capitalized costs, and maximum borrower contribution.
 - Protocol-specific minimum safety policy.
 - Intent expiry and intent nonce.
 
@@ -32,9 +33,31 @@ The short-lived execution plan binds exact execution details:
 - Minimum destination amount.
 - Funding provider and reservation hash.
 - Payout chain, asset, receiver, principal cap, and fee cap.
+- Reconciled solver principal, solver fee, capitalized costs with exact recipients, separately paid
+  costs, and any verified borrower debt prepayment.
+- Required destination borrow, maximum safe capacity, capacity-buffer policy, financing-analysis
+  hash, snapshot provenance, and expiry.
+- Supplementary funding asset, amount, migration escrow, finalized deposit evidence, authorized use,
+  and refund receiver.
 - Execution deadline and execution nonce.
 
 Both structures use canonical EIP-712 encoding. Contract-wallet signatures must support EIP-1271.
+
+## Mandatory financing gate
+
+Before a solver or test-vault reservation is accepted, the risk validation service re-derives the
+model in `11-refinancing-feasibility-model.md` from fresh direct reads and finalized escrow evidence.
+The reservation is allowed only when:
+
+- the component ledger reconciles without duplicate cost classification;
+- maximum safe borrowing capacity plus confirmed external funding covers solver principal, solver
+  fee, and every other financed cost;
+- the required destination borrow passes current liquidity and stressed safety limits; and
+- the execution plan binds the exact zero-shortfall financing structure.
+
+An offchain promise, an unconfirmed transaction, or an unescrowed wallet balance cannot satisfy this
+gate. The gate is rechecked immediately before source closure; a failed pre-source recheck expires or
+requotes the plan without drawing temporary liquidity.
 
 ## Source adapter
 
@@ -43,6 +66,8 @@ Both structures use canonical EIP-712 encoding. Contract-wallet signatures must 
 - Validate chain/domain, intent hash, execution-plan signature, nonce, and deadline.
 - Validate allowlisted lending deployment, debt asset, collateral asset, and receivers.
 - Draw no more than the authorized test-vault principal.
+- Re-read accrued source debt and verify any finalized borrower prepayment before calculating the
+  exact draw.
 - Repay no more than the source debt cap.
 - Release no less than the authorized collateral minimum.
 - Assign released collateral to the migration escrow or exact transport receiver.
@@ -76,8 +101,12 @@ No solver-funded arbitrary-EOA path may proceed without an atomic or enforceable
 - Verify finalized destination funding before lending actions are requested.
 - Supply measured collateral on behalf of the borrower.
 - Borrow no more than the signed target debt cap.
+- Borrow no more than the revalidated required destination amount and maximum safe capacity.
 - Enforce Morpho market parameters and the application LTV buffer.
-- Transfer no more than principal plus signed fee to the exact payout receiver.
+- Send destination proceeds to settlement escrow, where they may be combined only with the exact
+  signed supplementary funding.
+- Transfer no more than the reconciled solver principal plus signed fee to the exact payout receiver.
+- Pay other capitalized costs only to their signed recipients and component caps.
 - Return residual collateral and debt asset to the borrower.
 - Emit one canonical target-open event and one settlement event.
 
@@ -92,10 +121,14 @@ No solver-funded arbitrary-EOA path may proceed without an atomic or enforceable
 ## Migration escrow
 
 - Store balances by migration, chain, and token.
+- Distinguish transported collateral, destination loan proceeds, borrower supplementary funding, and
+  solver repayment balances.
 - Accept deposits only from configured adapters or expected transport delivery.
 - Prevent cross-migration balance consumption.
 - Restrict withdrawals to signed borrower, transport, payout, or refund receivers.
 - Support deadline-bound recovery actions.
+- Lock supplementary funding before solver commitment and release it only to the signed settlement
+  or refund path.
 - Emit balance-assignment and release events.
 - Expose read methods needed for reconciliation.
 - Prohibit administrator sweeping of active migration balances.
@@ -104,10 +137,13 @@ No solver-funded arbitrary-EOA path may proceed without an atomic or enforceable
 
 - Hold only allowlisted test debt assets.
 - Reserve principal by migration and expiry.
+- Accept a reservation only with a current zero-shortfall feasibility hash and finalized required
+  supplementary-funding evidence.
 - Permit one bounded draw by the authorized source adapter.
 - Track principal and fee separately.
 - Release unused reservation after verified cancellation or terminal outcome.
 - Accept destination repayment and record shortfall explicitly.
+- Never classify an unresolved expected payout as a recognized receivable for successful settlement.
 - Disallow arbitrary external borrowers.
 
 This vault demonstrates temporary financing mechanics; it is not presented as a production credit agreement.
@@ -124,6 +160,8 @@ This vault demonstrates temporary financing mechanics; it is not presented as a 
 - No upgrade mechanism in the first test release unless a concrete requirement emerges.
 - No fee-on-transfer or rebasing token support.
 - Residual asset return on every successful terminal path.
+- No contract claims to guarantee cross-chain repayment: each contract enforces local custody and
+  signed bounds, while the orchestrator and risk service handle changing remote capacity.
 
 ## Mainnet 1Click canary boundary
 
@@ -140,6 +178,7 @@ The live canary is an application-level transport proof and does not use the Deb
 
 - `MigrationAuthorized`
 - `LiquidityReserved`
+- `SupplementaryFundingSecured`
 - `SourceClosed`
 - `CollateralAssigned`
 - `RouteDispatched`

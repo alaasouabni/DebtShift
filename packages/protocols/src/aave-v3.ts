@@ -177,11 +177,16 @@ export class AaveV3ReadAdapter {
     }
   }
 
-  async readPosition(borrowerInput: Address): Promise<PositionSnapshot | undefined> {
+  async readPosition(
+    borrowerInput: Address,
+    requestedBlockNumber?: bigint,
+  ): Promise<PositionSnapshot | undefined> {
     const borrower = getAddress(borrowerInput);
     const [actualChainId, block] = await Promise.all([
       this.client.getChainId(),
-      this.client.getBlock({ blockTag: 'latest' }),
+      requestedBlockNumber === undefined
+        ? this.client.getBlock({ blockTag: 'latest' })
+        : this.client.getBlock({ blockNumber: requestedBlockNumber }),
     ]);
     if (actualChainId !== this.config.chainId) {
       throw new Error(
@@ -190,6 +195,9 @@ export class AaveV3ReadAdapter {
     }
     if (block.hash === null) throw new Error('Aave position block is not canonical.');
     const blockNumber = block.number;
+    if (requestedBlockNumber !== undefined && blockNumber !== requestedBlockNumber) {
+      throw new Error('Aave RPC returned a different block than requested.');
+    }
     const collateralAddress = getAddress(this.config.collateralAsset.address);
     const debtAddress = getAddress(this.config.debtAsset.address);
     const [collateralData, debtData, reserveData, accountData, collateralToken, debtToken] =
@@ -309,6 +317,9 @@ export class AaveV3ReadAdapter {
       address,
       decimals,
       symbol,
+      ...(configured.providerAssetId === undefined
+        ? {}
+        : { providerAssetId: configured.providerAssetId }),
     });
   }
 }

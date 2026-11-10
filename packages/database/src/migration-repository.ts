@@ -1,6 +1,7 @@
 import {
   executionPlanSchema,
   hashCanonicalText,
+  hashExecutionFinancing,
   positionSnapshotSchema,
   providerQuoteSchema,
   refinanceIntentSchema,
@@ -17,16 +18,19 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 
 import type { DebtShiftDatabase } from './client.js';
 import {
+  assetCatalogVersions,
   auditEvents,
   commands,
   evidence,
   executionPlans,
   intents,
   ledgerEntries,
+  liquidityReservations,
   markets,
   migrations,
   positions,
   positionSnapshots,
+  providerObservations,
   providerQuotes,
   transportLegs,
   wallets,
@@ -156,6 +160,18 @@ export async function createAuthorizedMigration(
         phase: 'AUTHORIZED',
         expiresAt,
       });
+      await transaction.insert(liquidityReservations).values({
+        reservationId: hashCanonicalText(`debtshift.liquidity-reservation.v1:${migrationId}`),
+        migrationId,
+        reservationHash: signedPlan.plan.reservationHash,
+        provider: signedPlan.plan.fundingProvider.toLowerCase(),
+        chainId: signedPlan.plan.sourceMarket.chainId.toString(),
+        asset: signedPlan.plan.sourceDebtAsset.address.toLowerCase(),
+        principalUnits: signedPlan.plan.principalMaxUnits,
+        feeCapUnits: signedPlan.plan.feeMaxUnits,
+        status: 'PENDING',
+        expiresAt: new Date(Number(BigInt(signedPlan.plan.deadline) * 1_000n)),
+      });
       await transaction.insert(transportLegs).values({
         migrationId,
         legIndex: 0,
@@ -176,6 +192,7 @@ export async function createAuthorizedMigration(
         ['ROUTE_QUOTE', quote.provider, quote],
         ['INTENT_AUTHORIZATION', 'EIP712', signedIntent],
         ['EXECUTION_PLAN_AUTHORIZATION', 'EIP712', signedPlan],
+        ['FINANCING_FEASIBILITY', 'DETERMINISTIC_ENGINE_V1', signedPlan.plan.financing],
       ];
       for (const [type, provider, payload] of initialEvidence) {
         const evidenceId = hashCanonicalText(`debtshift.evidence.v1:${migrationId}:${type}`);
@@ -202,10 +219,29 @@ export async function createAuthorizedMigration(
           verifierVersion: 'debtshift-v1',
         });
       }
+      for (const funding of signedPlan.plan.financing.externalFunding) {
+        await transaction.insert(evidence).values({
+          evidenceId: funding.evidenceId,
+          migrationId,
+          type: 'SUPPLEMENTARY_FUNDING',
+          schemaVersion: 1,
+          provider: 'MIGRATION_ESCROW',
+          network: `eip155:${funding.asset.chainId.toString()}`,
+          chainId: funding.asset.chainId.toString(),
+          providerReference: funding.fundingId,
+          rawObservationHash: hashCanonicalText(canonicalJson(funding)),
+          normalizedPayload: toJsonRecord(funding),
+          observedAt: new Date(signedPlan.plan.financing.evaluatedAt),
+          verificationState: 'FINALIZED',
+          verificationMethod: 'FINALIZED_ESCROW_BALANCE',
+          verifierVersion: 'debtshift-financing-v1',
+        });
+      }
       const auditPayload = {
         intentHash: signedIntent.intentHash,
         planHash: signedPlan.planHash,
         quoteHash: quote.quoteHash,
+        financingHash: hashExecutionFinancing(signedPlan.plan.financing),
       };
       await transaction.insert(auditEvents).values({
         eventId: hashCanonicalText(`debtshift.audit.v1:${migrationId}:1`),
@@ -235,34 +271,40 @@ export async function getMigrationDetails(database: DebtShiftDatabase, migration
     .where(eq(migrations.migrationId, migrationId))
     .limit(1);
   if (migration === undefined) return undefined;
-  const [storedEvidence, storedEvents, storedCommands, storedLedger] = await Promise.all([
-    database
-      .select()
-      .from(evidence)
-      .where(eq(evidence.migrationId, migrationId))
-      .orderBy(asc(evidence.createdAt)),
-    database
-      .select()
-      .from(auditEvents)
-      .where(eq(auditEvents.migrationId, migrationId))
-      .orderBy(asc(auditEvents.sequence)),
-    database
-      .select()
-      .from(commands)
-      .where(eq(commands.migrationId, migrationId))
-      .orderBy(asc(commands.createdAt)),
-    database
-      .select()
-      .from(ledgerEntries)
-      .where(eq(ledgerEntries.migrationId, migrationId))
-      .orderBy(asc(ledgerEntries.sequence)),
-  ]);
+  const [storedEvidence, storedEvents, storedCommands, storedLedger, storedReservations] =
+    await Promise.all([
+      database
+        .select()
+        .from(evidence)
+        .where(eq(evidence.migrationId, migrationId))
+        .orderBy(asc(evidence.createdAt)),
+      database
+        .select()
+        .from(auditEvents)
+        .where(eq(auditEvents.migrationId, migrationId))
+        .orderBy(asc(auditEvents.sequence)),
+      database
+        .select()
+        .from(commands)
+        .where(eq(commands.migrationId, migrationId))
+        .orderBy(asc(commands.createdAt)),
+      database
+        .select()
+        .from(ledgerEntries)
+        .where(eq(ledgerEntries.migrationId, migrationId))
+        .orderBy(asc(ledgerEntries.sequence)),
+      database
+        .select()
+        .from(liquidityReservations)
+        .where(eq(liquidityReservations.migrationId, migrationId)),
+    ]);
   return {
     migration,
     evidence: storedEvidence,
     events: storedEvents,
     commands: storedCommands,
     ledger: storedLedger,
+    reservations: storedReservations,
   };
 }
 
@@ -301,6 +343,96 @@ export async function storeProviderQuote(
   const stored = await getProviderQuote(database, quote.quoteHash);
   if (stored === undefined) throw new Error('Prepared provider quote was not persisted.');
   return stored;
+}
+
+export interface ProviderObservationInput {
+  readonly provider: string;
+  readonly operation: string;
+  readonly requestHash: string;
+  readonly responseHash: string;
+  readonly requestPayload: Readonly<Record<string, unknown>>;
+  readonly responsePayload: Readonly<Record<string, unknown>>;
+  readonly correlationId?: string;
+  readonly observedAt: string;
+}
+
+export async function storeProviderObservation(
+  database: DebtShiftDatabase,
+  input: ProviderObservationInput,
+): Promise<string> {
+  const provider = requiredBoundedText(input.provider, 64, 'provider');
+  const operation = requiredBoundedText(input.operation, 64, 'operation');
+  const requestHash = requiredBytes32(input.requestHash, 'request hash');
+  const responseHash = requiredBytes32(input.responseHash, 'response hash');
+  const observedAt = new Date(input.observedAt);
+  if (Number.isNaN(observedAt.valueOf())) throw new Error('Provider observation time is invalid.');
+  const observationId = hashCanonicalText(
+    `debtshift.provider-observation.v1:${provider}:${operation}:${responseHash}`,
+  );
+  await database
+    .insert(providerObservations)
+    .values({
+      observationId,
+      provider,
+      operation,
+      requestHash,
+      responseHash,
+      requestPayload: toJsonRecord(input.requestPayload),
+      responsePayload: toJsonRecord(input.responsePayload),
+      ...(input.correlationId === undefined
+        ? {}
+        : { correlationId: requiredBoundedText(input.correlationId, 256, 'correlation ID') }),
+      observedAt,
+    })
+    .onConflictDoNothing({ target: providerObservations.observationId });
+  const [stored] = await database
+    .select({ observationId: providerObservations.observationId })
+    .from(providerObservations)
+    .where(eq(providerObservations.observationId, observationId))
+    .limit(1);
+  if (stored === undefined) throw new Error('Provider observation was not persisted.');
+  return stored.observationId;
+}
+
+export interface AssetCatalogVersionInput {
+  readonly provider: string;
+  readonly environment: string;
+  readonly assets: readonly Readonly<Record<string, unknown>>[];
+  readonly rawResponseHash: string;
+  readonly fetchedAt: string;
+}
+
+export async function storeAssetCatalogVersion(
+  database: DebtShiftDatabase,
+  input: AssetCatalogVersionInput,
+): Promise<string> {
+  const provider = requiredBoundedText(input.provider, 64, 'catalog provider');
+  const environment = requiredBoundedText(input.environment, 64, 'catalog environment');
+  const rawResponseHash = requiredBytes32(input.rawResponseHash, 'catalog raw response hash');
+  const fetchedAt = new Date(input.fetchedAt);
+  if (Number.isNaN(fetchedAt.valueOf())) throw new Error('Asset catalog fetch time is invalid.');
+  const payload = input.assets.map((asset) => toJsonRecord(asset));
+  if (payload.length === 0) throw new Error('Asset catalog cannot be empty.');
+  const catalogHash = hashCanonicalText(canonicalJson(payload));
+  await database
+    .insert(assetCatalogVersions)
+    .values({
+      catalogHash,
+      provider,
+      environment,
+      schemaVersion: 1,
+      payload,
+      rawResponseHash,
+      fetchedAt,
+    })
+    .onConflictDoNothing({ target: assetCatalogVersions.catalogHash });
+  const [stored] = await database
+    .select({ catalogHash: assetCatalogVersions.catalogHash })
+    .from(assetCatalogVersions)
+    .where(eq(assetCatalogVersions.catalogHash, catalogHash))
+    .limit(1);
+  if (stored === undefined) throw new Error('Asset catalog version was not persisted.');
+  return stored.catalogHash;
 }
 
 export async function getProviderQuote(
@@ -468,4 +600,21 @@ function toJsonRecord(value: unknown): Record<string, unknown> {
     throw new Error('Expected an object payload.');
   }
   return parsed as Record<string, unknown>;
+}
+
+function requiredBoundedText(value: string, maximumLength: number, name: string): string {
+  const normalized = value.trim();
+  if (normalized.length === 0 || normalized.length > maximumLength) {
+    throw new Error(
+      `Provider observation ${name} must be between 1 and ${maximumLength} characters.`,
+    );
+  }
+  return normalized;
+}
+
+function requiredBytes32(value: string, name: string): string {
+  if (!/^0x[0-9a-f]{64}$/.test(value)) {
+    throw new Error(`Provider observation ${name} must be a lowercase bytes32 value.`);
+  }
+  return value;
 }

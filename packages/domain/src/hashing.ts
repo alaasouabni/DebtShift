@@ -9,6 +9,13 @@ import type { Address, Hex } from 'viem';
 
 import type { MarketReference, PositionReference, Protocol, TokenReference } from './assets.js';
 import type { ExecutionPlan, RefinanceIntent, SafetyPolicy } from './authorization.js';
+import type {
+  ConfirmedExternalFunding,
+  ExecutionFinancing,
+  ExecutionFinancingComponent,
+} from './financing.js';
+
+const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as Hex;
 
 const protocolIds: Readonly<Record<Protocol, Hex>> = Object.freeze({
   AAVE_V3: keccak256(stringToHex('debtshift.protocol.aave-v3.v1')),
@@ -177,7 +184,7 @@ export function computeRouteHash(plan: ExecutionPlan): Hex {
   return keccak256(
     encodeAbiParameters(
       parseAbiParameters(
-        'bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, uint256, uint256, uint256, uint256, bytes32, bytes32, bytes32, address, address, address, bytes32, bytes32, address, uint256, uint256, uint64',
+        'bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, uint256, uint256, uint256, uint256, bytes32, bytes32, bytes32, address, address, address, bytes32, bytes32, address, uint256, uint256, bytes32, uint64',
       ),
       [
         plan.sourcePositionId,
@@ -202,7 +209,99 @@ export function computeRouteHash(plan: ExecutionPlan): Hex {
         plan.payoutReceiver,
         BigInt(plan.principalMaxUnits),
         BigInt(plan.feeMaxUnits),
+        hashExecutionFinancing(plan.financing),
         BigInt(plan.deadline),
+      ],
+    ),
+  );
+}
+
+export function hashExecutionFinancing(financing: ExecutionFinancing): Hex {
+  const amountsHash = keccak256(
+    encodeAbiParameters(
+      parseAbiParameters(
+        'uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256',
+      ),
+      [
+        BigInt(financing.sourceDebtPayoffAssetUnits),
+        BigInt(financing.sourceDebtPayoffUnits),
+        BigInt(financing.borrowerDebtPrepaymentAssetUnits),
+        BigInt(financing.borrowerDebtPrepaymentUnits),
+        BigInt(financing.solverAdvancedCostUnits),
+        BigInt(financing.solverPrincipalUnits),
+        BigInt(financing.solverFeeUnits),
+        BigInt(financing.capitalizedCostUnits),
+        BigInt(financing.separatelyPaidCostUnits),
+        BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
+        BigInt(financing.confirmedExternalFundingUnits),
+        BigInt(financing.protocolBorrowCapacityUnits),
+        BigInt(financing.policyBorrowCapacityUnits),
+        BigInt(financing.liquidityBorrowCapacityUnits),
+        BigInt(financing.signedBorrowCapacityUnits),
+        BigInt(financing.maximumSafeBorrowingCapacityUnits),
+        BigInt(financing.requiredDestinationBorrowUnits),
+        BigInt(financing.fundingShortfallUnits),
+      ],
+    ),
+  );
+  const componentHashes = financing.costs.map(hashExecutionFinancingComponent);
+  const fundingHashes = financing.externalFunding.map(hashConfirmedExternalFunding);
+  return keccak256(
+    encodeAbiParameters(
+      parseAbiParameters(
+        'uint8, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, uint16, uint16, uint64',
+      ),
+      [
+        financing.modelVersion,
+        hashTokenReference(financing.settlementAsset),
+        financing.sourceConversionQuoteHash ?? ZERO_BYTES32,
+        financing.borrowerDebtPrepaymentEvidenceId ?? ZERO_BYTES32,
+        amountsHash,
+        keccak256(encodeAbiParameters(parseAbiParameters('bytes32[]'), [componentHashes])),
+        keccak256(encodeAbiParameters(parseAbiParameters('bytes32[]'), [fundingHashes])),
+        hashCanonicalText(financing.evaluatedAt),
+        financing.capacityEvidenceHash,
+        financing.liquidityBufferBps,
+        financing.stressCollateralDropBps,
+        BigInt(financing.validUntil),
+      ],
+    ),
+  );
+}
+
+function hashExecutionFinancingComponent(component: ExecutionFinancingComponent): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      parseAbiParameters('bytes32, bytes32, bytes32, bytes32, uint256, uint256, bytes32'),
+      [
+        hashCanonicalText(component.componentId),
+        hashCanonicalText(component.kind),
+        hashCanonicalText(component.financingClass),
+        hashTokenReference(component.asset),
+        BigInt(component.amountUnits),
+        BigInt(component.settlementAmountUnits),
+        component.conversionQuoteHash ?? ZERO_BYTES32,
+      ],
+    ),
+  );
+}
+
+function hashConfirmedExternalFunding(funding: ConfirmedExternalFunding): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      parseAbiParameters(
+        'bytes32, bytes32, bytes32, uint256, address, address, bytes32, bytes32, uint64',
+      ),
+      [
+        hashCanonicalText(funding.fundingId),
+        funding.evidenceId,
+        hashTokenReference(funding.asset),
+        BigInt(funding.amountUnits),
+        funding.escrow,
+        funding.refundReceiver,
+        hashCanonicalText(funding.authorizedUse),
+        hashCanonicalText(funding.verificationState),
+        BigInt(funding.expiresAt),
       ],
     ),
   );

@@ -9,6 +9,11 @@ a clearly labeled 1Click-compatible simulator. Production 1Click is limited to r
 and dry-quote access plus one separately gated, manually approved, low-value transport canary. The
 canary is not a live debt refinance.
 
+Simulator fixtures live only under explicit `simulator/` namespaces. `mainnet-readonly` instead
+requires a complete runtime market registry and uses direct Aave, Morpho, and Chainlink RPC reads
+plus authenticated 1Click dry quotes; it cannot fall back to fixture values. See
+`strategies-docs/12-production-provider-boundaries.md` for the enforced boundary.
+
 ## Repository
 
 - `apps/web`: Next.js borrower dashboard.
@@ -76,5 +81,12 @@ well-known disposable Anvil keys are used for local tests. Real-fund lending and
 refinancing are disabled. The default Route/Risk Agent is deterministic and requires no AI service.
 Optional local or user-supplied AI providers can explain an already-computed result but cannot rank
 routes, alter signed fields, or invoke execution.
+
+The solver-financing architecture also requires a zero-shortfall proof before temporary liquidity is
+committed: safe destination borrowing plus finalized supplementary funding must cover principal,
+solver fees, and every financed cost. Cross-chain smart contracts bound custody and actions but do
+not make the migration atomic or guarantee solver repayment. The exact model and recovery rules are
+defined in `strategies-docs/11-refinancing-feasibility-model.md` and remain part of the production
+implementation and verification gates.
 
 See `strategies-docs/README.md` for the implementation source of truth.

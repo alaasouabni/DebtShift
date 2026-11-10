@@ -21,15 +21,23 @@ The product and README must never imply that the live canary is a complete mainn
 2. Discover a source lending position containing one supported collateral and one supported debt asset.
 3. Display current debt, collateral, APR, safety metric, and snapshot block.
 4. Compare at least two target route outcomes using deterministic cost and risk calculations.
-5. Select a route and review exact amounts, recipients, fees, deadlines, and risk limits.
-6. Sign a bounded refinance intent and final execution plan.
-7. Reserve temporary repayment liquidity from the test vault.
-8. Close the source debt and move released collateral into the authorized transport path.
-9. Route the collateral through a 1Click-compatible simulator.
-10. Supply the delivered collateral to the target market and open the replacement debt position.
-11. Repay the temporary funding obligation and reconcile residual balances.
-12. Record the evidence bundle in the application and its hash in the NEAR registry.
-13. Display a complete, ordered timeline with transaction and receipt details.
+5. Calculate the complete sources-and-uses ledger, maximum safe destination borrowing capacity, and
+   any funding shortfall.
+6. Resolve a shortfall through secured borrower funding, safe debt capitalization, or verified
+   borrower debt prepayment; otherwise reject the route.
+7. Select a route and review exact amounts, financing classifications, recipients, fees, deadlines,
+   and risk limits.
+8. Sign a bounded refinance intent and final execution plan.
+9. Revalidate zero-shortfall feasibility, then reserve temporary repayment liquidity from the test
+   vault.
+10. Close the source debt and move released collateral into the authorized transport path.
+11. Route the collateral through a 1Click-compatible simulator.
+12. Revalidate destination capacity, supply the delivered collateral, and open the replacement debt
+    position only when the complete repayment remains funded.
+13. Combine authorized loan proceeds and secured supplementary funds to repay the temporary funding
+    obligation and reconcile residual balances.
+14. Record the evidence bundle in the application and its hash in the NEAR registry.
+15. Display a complete, ordered timeline with transaction and receipt details.
 
 ## Required failure journey
 
@@ -86,6 +94,7 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - Any claim that the simulated transport is a 1Click testnet deployment; no public 1Click testnet exists.
 - Public solver marketplace or permissionless liquidity.
 - Legal enforcement of solver credit agreements.
+- Unsecured borrower promises or speculative future destination capacity as a funding source.
 - Multi-collateral or multi-debt source positions.
 - Fee-on-transfer, rebasing, yield-bearing wrapper, or non-standard ERC-20 assets.
 - Arbitrary chain and protocol combinations.
@@ -101,6 +110,11 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - A new developer can start the complete local stack from documented commands.
 - Seed scripts create a borrower source position and fund the test liquidity vault.
 - The UI returns at least two deterministic route comparisons.
+- Every eligible route displays the source payoff, solver principal and fee, financed versus
+  separately paid costs, confirmed external funding, maximum safe borrowing capacity, required
+  destination borrow, and funding shortfall.
+- A solver or test-vault reservation is impossible unless the funding shortfall is zero and any
+  supplementary funding is finalized in migration-specific escrow.
 - Changing a signed chain, market, token, amount, receiver, fee, nonce, or deadline invalidates authorization.
 - Repeated execute requests do not duplicate any asset movement.
 - A worker crash at every irreversible boundary can resume from persisted evidence.
@@ -109,6 +123,8 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - The ledger balances by migration, chain, token, and financing party.
 - The NEAR registry contains the same final evidence hash displayed by the application.
 - The failure scenario visibly reaches `RECOVERY` and never reports success incorrectly.
+- A post-source-close decline in destination capacity never causes an unsafe target borrow or a
+  false settlement; custody and the solver receivable remain explicit in recovery evidence.
 - The UI and documentation clearly label simulator-backed delivery receipts as simulated rather than testnet 1Click transactions.
 - The live canary displays the real 1Click correlation/status data and independently verified origin and destination receipts.
 - The live canary cannot call lending adapters or draw from the liquidity vault.
@@ -121,6 +137,8 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - Database writes that schedule work use a transactional outbox.
 - Application logs contain correlation ID, migration ID, phase, command ID, and chain when applicable.
 - All externally supplied addresses and integer strings are schema-validated.
+- Feasibility is revalidated from fresh direct reads before reservation, source closure, target
+  borrowing, and settlement.
 - Unknown transport states and unexpected contract events create an operator-visible exception.
 - Live canary execution requires an explicit user confirmation after the committed quote is displayed.
 - Live canary policy is enforced using token base units, not provider-supplied USD display fields.
@@ -130,6 +148,10 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - **Intent:** the borrower’s policy limits and allowed target scope.
 - **Execution plan:** the exact, short-lived route bound to provider and recipient details.
 - **Quote:** an economic projection and exact execution terms valid until a deadline.
+- **Financing analysis:** the reconciled sources-and-uses calculation proving safe capacity,
+  confirmed funding, and zero shortfall at a recorded block.
+- **Confirmed external funding:** finalized settlement-asset funds isolated for the migration and
+  authorized for the exact payout or refund path.
 - **Migration:** one immutable attempt to execute a signed plan.
 - **Evidence:** a verified observation supporting a state transition.
 - **Command:** a requested external side effect with a stable idempotency key.

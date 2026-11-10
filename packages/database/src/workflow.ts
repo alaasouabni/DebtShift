@@ -7,13 +7,14 @@ import {
   type Evidence,
   type MigrationPhase,
 } from '@debtshift/domain';
-import { and, asc, eq, inArray, lte, max } from 'drizzle-orm';
+import { and, asc, eq, inArray, lte, max, or } from 'drizzle-orm';
 
 import type { DebtShiftDatabase } from './client.js';
 import {
   auditEvents,
   commands,
   evidence as evidenceTable,
+  liquidityReservations,
   migrations,
   outboxMessages,
 } from './schema.js';
@@ -121,6 +122,56 @@ export async function advanceMigrationWithEvidence(
           verifierVersion: parsedEvidence.verifierVersion,
         })
         .onConflictDoNothing({ target: evidenceTable.evidenceId });
+
+      if (parsedEvidence.verificationState === 'FINALIZED') {
+        if (parsedEvidence.type === 'LIQUIDITY_RESERVATION') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'ACTIVE', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                eq(liquidityReservations.status, 'PENDING'),
+              ),
+            );
+        }
+        if (parsedEvidence.type === 'SOURCE_CLOSE') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'DRAWN', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                eq(liquidityReservations.status, 'ACTIVE'),
+              ),
+            );
+        }
+        if (parsedEvidence.type === 'LIQUIDITY_SETTLEMENT') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'SETTLED', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                eq(liquidityReservations.status, 'DRAWN'),
+              ),
+            );
+        }
+        if (parsedEvidence.type === 'MIGRATION_EXPIRED') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'EXPIRED', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                or(
+                  eq(liquidityReservations.status, 'PENDING'),
+                  eq(liquidityReservations.status, 'ACTIVE'),
+                ),
+              ),
+            );
+        }
+      }
 
       const storedEvidence = await transaction
         .select()

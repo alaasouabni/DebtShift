@@ -236,6 +236,7 @@ function exampleInput(horizonDays: number) {
         assetRouteSupported: true,
         adapterVersionApproved: true,
         transportMinimumMet: true,
+        financing: exampleFinancing(),
       },
     ],
     policy: {
@@ -255,6 +256,52 @@ function exampleInput(horizonDays: number) {
         maximumLtvBps: 7000,
         stressMaximumLtvBps: 6500,
       },
+    },
+  };
+}
+
+function exampleFinancing() {
+  const sourceAsset = {
+    chainId: 8453,
+    address: '0x3000000000000000000000000000000000000003',
+    decimals: 6,
+    symbol: 'USDC',
+  };
+  const settlementAsset = {
+    chainId: 42161,
+    address: '0x6000000000000000000000000000000000000006',
+    decimals: 6,
+    symbol: 'USDC',
+  };
+  return {
+    evaluatedAt: EVALUATED_AT,
+    settlementAsset,
+    sourcePayoff: {
+      asset: sourceAsset,
+      amountUnits: '10000000000',
+      settlementAmountUnits: '10000000000',
+      conversion: {
+        quoteHash: `0x${'66'.repeat(32)}`,
+        provider: 'optimizer-fixture-conversion',
+        inputAsset: sourceAsset,
+        outputAsset: settlementAsset,
+        amountInUnits: '10000000000',
+        amountOutUnits: '10000000000',
+        expiresAt: '2026-11-09T12:10:00.000Z',
+      },
+    },
+    costs: [],
+    solverFee: {
+      asset: settlementAsset,
+      amountUnits: '0',
+      signedCapUnits: '100000000',
+    },
+    externalFunding: [],
+    capacities: {
+      protocolUnits: '20000000000',
+      policyUnits: '20000000000',
+      liquidityUnits: '20000000000',
+      signedUnits: '20000000000',
     },
   };
 }

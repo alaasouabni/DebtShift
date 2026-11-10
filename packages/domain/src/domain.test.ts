@@ -11,6 +11,7 @@ import {
   getExecutionPlanTypedData,
   getRefinanceIntentTypedData,
   hashExecutionPlan,
+  hashExecutionFinancing,
   hashRefinanceIntent,
   hashSourcePosition,
 } from './hashing.js';
@@ -38,6 +39,7 @@ const canonicalFixture = JSON.parse(
     migrationId: string;
     routeHash: string;
     executionPlanHash: string;
+    financingHash: string;
   };
 };
 
@@ -75,8 +77,8 @@ function buildIntent() {
       },
     ],
     feeAsset: {
-      chainId: 31_337,
-      address: '0x3000000000000000000000000000000000000003',
+      chainId: 31_338,
+      address: '0x5000000000000000000000000000000000000005',
       decimals: 6,
       symbol: 'dUSDC',
     },
@@ -101,6 +103,12 @@ function buildPlan() {
   const intentHash = hashRefinanceIntent(intent, verifyingContract);
   const nonce = 9n;
   const migrationId = computeMigrationId(intentHash, QUOTE_HASH, nonce);
+  const destinationDebtAsset = {
+    chainId: 31_338,
+    address: '0x5000000000000000000000000000000000000005',
+    decimals: 6,
+    symbol: 'dUSDC',
+  };
   const rawPlan = executionPlanSchema.parse({
     intentHash,
     migrationId,
@@ -110,12 +118,7 @@ function buildPlan() {
     targetMarket: intent.allowedTargets[0],
     sourceDebtAsset: intent.sourcePosition.debtAsset,
     sourceCollateralAsset: intent.sourcePosition.collateralAsset,
-    destinationDebtAsset: {
-      chainId: 31_338,
-      address: '0x5000000000000000000000000000000000000005',
-      decimals: 6,
-      symbol: 'dUSDC',
-    },
+    destinationDebtAsset,
     destinationCollateralAsset: {
       chainId: 31_338,
       address: '0x6000000000000000000000000000000000000006',
@@ -124,7 +127,7 @@ function buildPlan() {
     },
     sourceRepaymentMaxUnits: '10000000000',
     sourceCollateralMinUnits: '9900000000000000000',
-    targetDebtMaxUnits: '10100000000',
+    targetDebtMaxUnits: '10050000000',
     minDestinationCollateralUnits: '9800000000000000000',
     transportProvider: 'DEBTSHIFT_SIMULATOR',
     transportQuoteHash: QUOTE_HASH,
@@ -133,10 +136,49 @@ function buildPlan() {
     refundReceiver: account.address,
     fundingProvider: '0x8000000000000000000000000000000000000008',
     reservationHash: RESERVATION_HASH,
-    payoutAsset: intent.sourcePosition.debtAsset,
+    payoutAsset: destinationDebtAsset,
     payoutReceiver: '0x8000000000000000000000000000000000000008',
     principalMaxUnits: '10000000000',
     feeMaxUnits: '50000000',
+    financing: {
+      modelVersion: 1,
+      evaluatedAt: '2026-11-06T20:46:40.000Z',
+      validUntil: '1793999000',
+      capacityEvidenceHash: `0x${'dd'.repeat(32)}`,
+      liquidityBufferBps: 1000,
+      stressCollateralDropBps: 1000,
+      settlementAsset: destinationDebtAsset,
+      sourceDebtPayoffAssetUnits: '10000000000',
+      sourceDebtPayoffUnits: '10000000000',
+      sourceConversionQuoteHash: `0x${'cc'.repeat(32)}`,
+      borrowerDebtPrepaymentAssetUnits: '0',
+      borrowerDebtPrepaymentUnits: '0',
+      costs: [
+        {
+          componentId: 'operator-execution-cost',
+          kind: 'EXECUTION',
+          financingClass: 'SEPARATELY_PAID',
+          asset: destinationDebtAsset,
+          amountUnits: '50000000',
+          settlementAmountUnits: '50000000',
+        },
+      ],
+      solverAdvancedCostUnits: '0',
+      solverPrincipalUnits: '10000000000',
+      solverFeeUnits: '50000000',
+      capitalizedCostUnits: '0',
+      separatelyPaidCostUnits: '50000000',
+      totalRequiredRepaymentAndFinancedCostUnits: '10050000000',
+      externalFunding: [],
+      confirmedExternalFundingUnits: '0',
+      protocolBorrowCapacityUnits: '12000000000',
+      policyBorrowCapacityUnits: '11000000000',
+      liquidityBorrowCapacityUnits: '15000000000',
+      signedBorrowCapacityUnits: '10050000000',
+      maximumSafeBorrowingCapacityUnits: '10050000000',
+      requiredDestinationBorrowUnits: '10050000000',
+      fundingShortfallUnits: '0',
+    },
     routeHash: ZERO_BYTES32,
     deadline: '1793999000',
     nonce: nonce.toString(),
@@ -153,6 +195,9 @@ function phaseEvidence(
     routeQuote: false,
     intentAuthorization: false,
     executionPlanAuthorization: false,
+    financingFeasibility: false,
+    financingRevalidation: false,
+    supplementaryFunding: false,
     liquidityReservation: false,
     sourceClose: false,
     transportOrigin: false,
@@ -195,6 +240,7 @@ describe('canonical authorization hashing', () => {
       intentHash: hashRefinanceIntent(intent, verifyingContract),
       migrationId: plan.migrationId,
       routeHash: plan.routeHash,
+      financingHash: hashExecutionFinancing(plan.financing),
       executionPlanHash: hashExecutionPlan(plan, verifyingContract),
     }).toEqual(canonicalFixture.outputs);
   });
@@ -238,6 +284,7 @@ describe('evidence-derived migration phases', () => {
           routeQuote: true,
           intentAuthorization: true,
           executionPlanAuthorization: true,
+          financingFeasibility: true,
           liquidityReservation: true,
           sourceClose: true,
           transportOrigin: true,

@@ -273,7 +273,7 @@ interface ExplanationPayload {
   readonly selectedCandidateId?: string;
   readonly candidate: Pick<
     RouteEvaluation,
-    'candidateId' | 'eligible' | 'economics' | 'safety' | 'rejections' | 'provenance'
+    'candidateId' | 'eligible' | 'economics' | 'safety' | 'financing' | 'rejections' | 'provenance'
   >;
 }
 
@@ -292,6 +292,7 @@ function createExplanationPayload(comparison: RouteComparison): ExplanationPaylo
       eligible: selected.eligible,
       economics: selected.economics,
       safety: selected.safety,
+      financing: selected.financing,
       rejections: selected.rejections,
       provenance: selected.provenance,
     },
@@ -307,10 +308,11 @@ function deterministicExplanation(payload: ExplanationPayload): RouteExplanation
         `Stress target APR is ${formatBps(route.economics.stressTargetAprBps)}.`,
         'Cross-chain settlement remains non-atomic and depends on independently verified custody.',
       ];
-  const safety =
+  const positionSafety =
     route.safety.kind === 'MAX_LTV_BPS'
       ? `Projected LTV is ${formatBps(route.safety.postLtvBps)} and stressed LTV is ${formatBps(route.safety.stressLtvBps)}.`
       : `Projected health factor is ${formatWad(route.safety.postHealthFactorWad)} and stressed health factor is ${formatWad(route.safety.stressHealthFactorWad)}.`;
+  const financingSafety = ` Required destination borrowing is ${formatTokenUnits(route.financing.requiredDestinationBorrowUnits, route.financing.settlementAsset.decimals, route.financing.settlementAsset.symbol)}, maximum safe capacity is ${formatTokenUnits(route.financing.maximumSafeBorrowingCapacityUnits, route.financing.settlementAsset.decimals, route.financing.settlementAsset.symbol)}, and the confirmed funding shortfall is ${formatTokenUnits(route.financing.fundingShortfallUnits, route.financing.settlementAsset.decimals, route.financing.settlementAsset.symbol)}.`;
   return explanationSchema.parse({
     summary: route.eligible
       ? `Route ${route.candidateId} passes the deterministic economics, liquidity, freshness, and safety policy.`
@@ -321,11 +323,19 @@ function deterministicExplanation(payload: ExplanationPayload): RouteExplanation
       breakEven === undefined
         ? 'There is no finite break-even because the projected APR reduction is not positive.'
         : `At unchanged projected rates, one-time costs break even after about ${formatDays(breakEven)} days.`,
-    safetyExplanation: safety,
+    safetyExplanation: `${positionSafety}${financingSafety}`,
     dataFreshnessWarning: `Market block ${route.provenance.marketBlockNumber} and oracle update ${route.provenance.oracleUpdatedAt} were evaluated at ${route.provenance.evaluatedAt}; execution must re-read critical state.`,
     reviewAndSignStatement:
       'Review every amount, market, receiver, fee cap, deadline, and risk limit before signing. This explanation cannot authorize execution.',
   });
+}
+
+function formatTokenUnits(amount: string, decimals: number, symbol?: string): string {
+  const value = BigInt(amount);
+  const scale = 10n ** BigInt(decimals);
+  const whole = value / scale;
+  const fraction = (value % scale).toString().padStart(decimals, '0').replace(/0+$/, '');
+  return `${whole.toString()}${fraction.length === 0 ? '' : `.${fraction}`} ${symbol ?? 'settlement units'}`;
 }
 
 function remoteProviderUrl(

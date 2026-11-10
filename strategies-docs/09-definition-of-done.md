@@ -16,6 +16,11 @@ DebtShift’s first implementation is complete only when every mandatory item be
 
 - [ ] Borrower connects a wallet and sees a source position with block provenance.
 - [ ] At least two route outcomes display costs, savings, safety, and rejection explanations.
+- [ ] Every route displays reconciled obligations, financing classifications, maximum safe capacity,
+      required destination borrow, confirmed external funding, and exact shortfall.
+- [ ] No route can become `RESERVED` unless its current feasibility evidence proves zero shortfall.
+- [ ] Borrower-funded fees or other supplementary funds are finalized in migration-specific escrow
+      before temporary liquidity is committed.
 - [ ] Borrower reviews and signs bounded intent and execution-plan data.
 - [ ] Source debt closes and collateral release is independently verified.
 - [ ] Transport origin and destination receipts are distinct and visible.
@@ -32,7 +37,16 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] Transport refund enters recovery and verifies actual custody.
 - [ ] Wrong destination token, amount, or receiver cannot open the target position.
 - [ ] Unsafe destination market state prevents target borrowing.
+- [ ] Insufficient quote-time capacity rejects the migration before reservation or source movement.
+- [ ] Missing, pending, mismatched, expired, or unconfirmed supplementary funding cannot satisfy the
+      feasibility predicate.
+- [ ] Collateral-price or liquidity deterioration before source close releases the reservation and
+      requires a requote.
+- [ ] Capacity deterioration after source close never creates an unsafe loan and opens a recovery case
+      with collateral custody and solver exposure recorded.
 - [ ] Failed provider payout preserves proceeds and retries idempotently.
+- [ ] Failure to repay the solver after collateral delivery blocks `SETTLED` and preserves exact
+      proceeds, receivable, and recovery evidence.
 - [ ] Unknown provider status stops advancement and alerts.
 - [ ] Simulated reorg retracts provisional evidence and re-derives state.
 - [ ] Worker/API/Redis interruption does not duplicate asset movement.
@@ -43,6 +57,10 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] EOA and EIP-1271 signatures are supported as designed.
 - [ ] Nonce replay, expiry, and mutated route tests fail.
 - [ ] Chain, market, token, receiver, principal, fee, and slippage caps are enforced.
+- [ ] Supplementary-funding escrow enforces migration, asset, chain, amount, use, deadline, and refund
+      receiver isolation.
+- [ ] The liquidity vault rejects reservations with stale, mismatched, or non-zero-shortfall
+      feasibility evidence.
 - [ ] Reentrancy and cross-migration escrow isolation invariants pass.
 - [ ] Administrative roles cannot sweep active migration balances.
 - [ ] Pinned Aave source and Morpho destination fork tests pass.
@@ -55,6 +73,10 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] Every irreversible command has a deterministic idempotency key.
 - [ ] Transactional outbox interruption tests pass.
 - [ ] Terminal settlement has zero unexplained ledger imbalance.
+- [ ] Financing components have unique identities and exclusive classifications; solver principal,
+      solver fee, capitalized costs, separate costs, debt prepayment, and external funding reconcile.
+- [ ] Feasibility is revalidated before reservation, source closure, target borrowing, and settlement;
+      a newer failure supersedes an older passing quote.
 - [ ] `COMPLETED` requires verified NEAR receipt registration.
 
 ## NEAR registry
@@ -89,6 +111,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] Public API cache, retry, rate-limit, and circuit-breaker behavior is tested.
 - [ ] Stale or conflicting indexed data cannot advance an irreversible phase.
 - [ ] Execution-critical Aave and Morpho state is read directly from contracts at a recorded block.
+- [ ] The Route/Risk Agent computes protocol capacity, DebtShift policy capacity, safe liquidity,
+      required borrowing, shortfall, and supported secured resolution alternatives deterministically.
 - [ ] The project runs without a paid API subscription.
 
 ## Release boundary
@@ -103,5 +127,7 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] The canary cannot access lending adapters, migration escrow, solver reservations, or the liquidity vault.
 - [ ] Real-fund lending transactions and complete mainnet refinancing remain disabled.
 - [ ] No documentation claims that the test release is audited, trustless, or production ready.
+- [ ] No documentation or UI claims that per-chain smart contracts make the cross-chain refinance
+      atomic or guarantee solver repayment.
 
 When all mandatory items are checked, the test-funds DebtShift implementation may be labeled **hackathon-complete**. Mainnet readiness is a separate project phase with separate approval and audit requirements.

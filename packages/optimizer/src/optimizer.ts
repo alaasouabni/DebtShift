@@ -7,6 +7,7 @@ import {
   type RouteRejection,
   type RouteSafety,
 } from './models.js';
+import { evaluateRefinancingFeasibility } from './feasibility.js';
 import { projectBorrowRate } from './rate.js';
 
 const BPS = 10_000n;
@@ -46,6 +47,17 @@ function evaluateRoute(
 ): RouteEvaluation {
   const rejections: RouteRejection[] = [];
   const requestedBorrow = BigInt(candidate.requestedBorrowUnits);
+  const financing = evaluateRefinancingFeasibility(candidate.financing);
+  for (const rejection of financing.rejections) {
+    reject(rejections, rejection.code, rejection.message);
+  }
+  if (requestedBorrow !== BigInt(financing.requiredDestinationBorrowUnits)) {
+    reject(
+      rejections,
+      'REQUESTED_BORROW_MISMATCH',
+      'Requested destination borrowing does not match the reconciled financing requirement.',
+    );
+  }
   const availableBorrow = BigInt(candidate.market.availableBorrowUnits);
   const requiredLiquidity = ceilDiv(
     requestedBorrow * (BPS + BigInt(policy.minimumLiquidityBufferBps)),
@@ -179,6 +191,7 @@ function evaluateRoute(
       ...(breakEvenSeconds === undefined ? {} : { breakEvenSeconds }),
     },
     safety,
+    financing,
     rejections,
     provenance: {
       sourceSnapshotId: sourcePosition.snapshotId,

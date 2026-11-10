@@ -14,6 +14,9 @@
 - Integer amount parsing and formatting.
 - Token decimal mismatch rejection.
 - APR, cost, break-even, and scenario calculations.
+- Sources-and-uses classification and duplicate-cost rejection.
+- Protocol, policy, liquidity, and signed-cap derivation of maximum safe borrowing capacity.
+- Required destination borrow and exact funding-shortfall calculation.
 - Aave and Morpho safety policies.
 - Route eligibility and rejection reasons.
 - Phase-entry predicates and illegal transitions.
@@ -39,6 +42,7 @@
 - Reentrancy protection.
 - Allowlist enforcement.
 - Principal and fee caps.
+- Supplementary-funding asset, amount, escrow, use, refund, deadline, and finality binding.
 - Collateral minimum and debt maximum enforcement.
 - Residual refunds.
 - Pause-role boundaries.
@@ -50,6 +54,11 @@
 - One migration cannot consume another migration’s escrow.
 - A nonce is consumed at most once.
 - Solver payout never exceeds funded principal plus signed fee.
+- A solver reservation cannot exist without a current passing zero-shortfall feasibility record.
+- Confirmed external funding cannot be consumed by another migration or released to an unsigned
+  receiver.
+- `SETTLED` is unreachable unless finalized proceeds and supplementary-funding debits equal the exact
+  solver payout obligation.
 - Vault assets equal free liquidity plus reservations plus recognized receivables.
 - A completed migration has no unexplained adapter or escrow balance.
 - Repeated calls cannot duplicate source repayment, collateral routing, target borrow, or settlement.
@@ -73,6 +82,8 @@
 - Supply collateral and borrow atomically.
 - Validate the application LTV buffer and current SDK behavior.
 - Reject stale position data, insufficient liquidity, and unsafe post-state.
+- Derive safe borrow capacity using both protocol constraints and stricter DebtShift stress policy.
+- Reject a borrow that is safe by collateral ratio but cannot cover the complete repayment obligation.
 
 ## NEAR tests
 
@@ -111,6 +122,43 @@
 9. Duplicate execute requests and duplicate queue deliveries.
 10. Simulated source or destination reorg.
 11. NEAR finalization temporarily fails and later resumes.
+
+## Refinancing feasibility test matrix
+
+The following cases are mandatory at unit, integration, and E2E levels where applicable:
+
+1. **Sufficient destination capacity:** the complete solver principal, fee, and financed costs fit
+   inside safe capacity; shortfall is zero and reservation may proceed.
+2. **Insufficient destination capacity:** `10,000 USDC` capacity cannot fund a `10,000 USDC`
+   principal plus `100 USDC` fee; the route is rejected before reservation.
+3. **Borrower-funded shortfall:** finalized `100 USDC` supplementary escrow plus a `10,000 USDC`
+   safe borrow pays the `10,100 USDC` obligation exactly.
+4. **Fee capitalization:** the fee enters destination debt only when safe capacity, liquidity, signed
+   debt cap, and post-state stress checks all cover it.
+5. **Borrower-funded partial debt repayment:** a finalized source prepayment reduces the refreshed
+   source payoff and solver principal without being counted again as settlement funding.
+6. **Collateral price decline during migration:** the pre-source checkpoint rejects without movement;
+   the post-source checkpoint enters recovery and never creates an unsafe loan.
+7. **Destination liquidity reduction:** a lower fresh `B_liquidity` produces the exact shortfall and
+   follows the pre- or post-source policy appropriate to the current phase.
+8. **Solver fee exceeds approved limits:** quote and execution-plan validation reject it even when
+   market capacity is sufficient.
+9. **Missing or unconfirmed supplementary funding:** pending transactions, wrong assets, wrong chains,
+   wrong escrows, expired deposits, and wallet-balance claims do not count as confirmed funding.
+10. **Failure to repay after collateral delivery:** proceeds remain isolated, exact payout retry is
+    idempotent, `SETTLED` is blocked, and the solver receivable and custody are visible.
+11. **Incomplete cross-chain migration recovery:** refund, ambiguous custody, target-open failure, and
+    capacity deterioration preserve balanced evidence and terminate only under a signed recovery
+    outcome.
+12. **Cost-classification mutation:** moving one cost between solver principal, capitalized cost, and
+    separately paid cost changes totals once; duplicating it is rejected.
+13. **Revalidation supersession:** a newer failed feasibility check blocks execution despite an older
+    passing quote.
+
+Property tests vary debt accrual, token decimals, fees, external funding, collateral price,
+liquidity, LTV/LLTV, and health-factor policy around boundary values. Equality at the safe capacity
+boundary is accepted only when every configured buffer has already been applied and integer rounding
+is conservative.
 
 ## Live canary verification
 

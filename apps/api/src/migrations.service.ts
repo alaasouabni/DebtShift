@@ -23,11 +23,17 @@ import {
 } from '@debtshift/domain';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { compareRoutes } from '@debtshift/optimizer';
 import { createPublicClient, http, isAddressEqual, type Address, type Hex } from 'viem';
 import { z } from 'zod';
 
 import { DatabaseService } from './database.service.js';
-import { LocalProtocolService } from './local-protocol.service.js';
+import {
+  MARKET_INTELLIGENCE_PORT,
+  PROTOCOL_DATA_PORT,
+  type MarketIntelligencePort,
+  type ProtocolDataPort,
+} from './market-data/ports.js';
 
 const signedIntentRequestSchema = z
   .object({
@@ -59,7 +65,9 @@ export class MigrationsService {
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
-    @Inject(LocalProtocolService) private readonly protocols: LocalProtocolService,
+    @Inject(PROTOCOL_DATA_PORT) private readonly protocols: ProtocolDataPort,
+    @Inject(MARKET_INTELLIGENCE_PORT)
+    private readonly marketTools: MarketIntelligencePort,
     @Inject(ConfigService) config: ConfigService,
   ) {
     this.#verifyingContract = config.getOrThrow<Address>('EIP712_VERIFYING_CONTRACT');
@@ -71,6 +79,9 @@ export class MigrationsService {
   async execute(input: unknown) {
     try {
       const parsed = executeMigrationRequestSchema.parse(input);
+      if (this.protocols.route.execution.kind !== 'SIMULATOR') {
+        throw new Error('Funded migration execution is disabled outside the simulator workflow.');
+      }
       const signedIntent = {
         ...parsed.signedIntent,
         intentHash: parsed.signedIntent.intentHash as Hex,
@@ -86,6 +97,7 @@ export class MigrationsService {
         throw new Error('Transport quote was not issued and persisted by this DebtShift API.');
       }
       await this.protocols.verifySourceSnapshot(parsed.sourceSnapshot);
+      await this.revalidateFinancing(parsed.sourceSnapshot, signedPlan.plan);
 
       const eip1271Reader = {
         readIsValidSignature: async (
@@ -149,6 +161,61 @@ export class MigrationsService {
 
   listMarkets() {
     return listEnabledMarkets(this.database.db);
+  }
+
+  private async revalidateFinancing(
+    snapshot: z.infer<typeof positionSnapshotSchema>,
+    plan: z.infer<typeof executionPlanSchema>,
+  ): Promise<void> {
+    const evaluatedAt = new Date().toISOString();
+    const candidates = await this.marketTools.getRouteCandidates(snapshot, evaluatedAt);
+    const candidate = candidates.find((route) =>
+      sameMarket(route.market.market, plan.targetMarket),
+    );
+    if (candidate === undefined) {
+      throw new Error(
+        'The signed target market is no longer available for financing revalidation.',
+      );
+    }
+    const comparison = compareRoutes({
+      sourcePosition: snapshot,
+      candidates: [candidate],
+      policy: this.marketTools.createPolicy(evaluatedAt),
+    });
+    const current = comparison.evaluations[0];
+    if (current === undefined || !current.eligible) {
+      const reasons =
+        current?.rejections.map((rejection) => rejection.code).join(', ') ?? 'UNKNOWN';
+      throw new Error(`Financing revalidation failed before reservation: ${reasons}.`);
+    }
+    const signed = plan.financing;
+    const exactFields = [
+      'sourceDebtPayoffAssetUnits',
+      'sourceDebtPayoffUnits',
+      'borrowerDebtPrepaymentUnits',
+      'solverAdvancedCostUnits',
+      'solverPrincipalUnits',
+      'solverFeeUnits',
+      'capitalizedCostUnits',
+      'separatelyPaidCostUnits',
+      'totalRequiredRepaymentAndFinancedCostUnits',
+      'confirmedExternalFundingUnits',
+      'requiredDestinationBorrowUnits',
+    ] as const;
+    for (const field of exactFields) {
+      if (current.financing[field] !== signed[field]) {
+        throw new Error(`Financing revalidation changed signed field ${field}.`);
+      }
+    }
+    if (
+      BigInt(current.financing.maximumSafeBorrowingCapacityUnits) <
+      BigInt(signed.requiredDestinationBorrowUnits)
+    ) {
+      throw new Error('Fresh maximum safe borrowing capacity is below the signed requirement.');
+    }
+    if (current.financing.fundingShortfallUnits !== '0') {
+      throw new Error('Fresh financing evidence has a non-zero funding shortfall.');
+    }
   }
 
   private assertBindings(
@@ -245,16 +312,16 @@ export class MigrationsService {
     if (BigInt(signedPlan.plan.feeMaxUnits) > BigInt(signedIntent.intent.maxTotalFeeUnits)) {
       throw new Error('Execution fee exceeds the signed intent cap.');
     }
+    if (!sameToken(signedIntent.intent.feeAsset, signedPlan.plan.financing.settlementAsset)) {
+      throw new Error('Signed intent fee asset does not match the settlement asset.');
+    }
+    if (signedPlan.plan.financing.fundingShortfallUnits !== '0') {
+      throw new Error('Execution financing has a non-zero funding shortfall.');
+    }
     if (
       BigInt(signedPlan.plan.principalMaxUnits) > BigInt(signedPlan.plan.sourceRepaymentMaxUnits)
     ) {
       throw new Error('Reserved principal exceeds the source repayment authorization.');
-    }
-    if (
-      BigInt(signedPlan.plan.principalMaxUnits) + BigInt(signedPlan.plan.feeMaxUnits) >
-      BigInt(signedPlan.plan.targetDebtMaxUnits)
-    ) {
-      throw new Error('Target debt cap cannot cover authorized principal and fee.');
     }
     if (!sameToken(signedPlan.plan.sourceDebtAsset, signedIntent.intent.sourcePosition.debtAsset)) {
       throw new Error('Execution plan source debt asset does not match the signed intent.');

@@ -7,6 +7,12 @@ import {
 } from '@debtshift/domain';
 import { z } from 'zod';
 
+import {
+  feasibilityRejectionCodes,
+  refinancingFeasibilityInputSchema,
+  type RefinancingFeasibilityResult,
+} from './feasibility.js';
+
 export const usdMicroSchema = baseUnitAmountSchema.describe(
   'Unsigned USD amount with six decimals',
 );
@@ -68,6 +74,7 @@ export const routeCandidateSchema = z
     assetRouteSupported: z.boolean(),
     adapterVersionApproved: z.boolean(),
     transportMinimumMet: z.boolean(),
+    financing: refinancingFeasibilityInputSchema,
   })
   .strict();
 
@@ -96,7 +103,7 @@ export const compareRoutesInputSchema = z
   })
   .strict();
 
-export const rejectionCodeSchema = z.enum([
+const routeRiskRejectionCodes = [
   'ADAPTER_VERSION_UNAPPROVED',
   'APR_REDUCTION_BELOW_MINIMUM',
   'COST_ABOVE_MAXIMUM',
@@ -110,6 +117,12 @@ export const rejectionCodeSchema = z.enum([
   'TRANSPORT_MINIMUM_NOT_MET',
   'UNSAFE_POST_STATE',
   'UNSAFE_STRESS_STATE',
+  'REQUESTED_BORROW_MISMATCH',
+] as const;
+
+export const rejectionCodeSchema = z.enum([
+  ...routeRiskRejectionCodes,
+  ...feasibilityRejectionCodes,
 ]);
 
 export type RouteCostBreakdown = z.infer<typeof routeCostBreakdownSchema>;
@@ -165,6 +178,7 @@ export interface RouteEvaluation {
   readonly scoreUsdMicro: string;
   readonly economics: RouteEconomics;
   readonly safety: RouteSafety;
+  readonly financing: RefinancingFeasibilityResult;
   readonly rejections: readonly RouteRejection[];
   readonly provenance: {
     readonly sourceSnapshotId: string;

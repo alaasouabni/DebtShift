@@ -41,7 +41,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
 import { createSimulatedWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
-import { ViemLocalExecutionPort } from './local-execution.js';
+import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
 import { DurableCommandProcessor, PostgresCommandPersistence } from './processor.js';
 
 const ANVIL_PATH = resolveAnvilPath();
@@ -78,6 +78,10 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
         expect(details?.commands.filter((command) => command.status === 'SUCCEEDED')).toHaveLength(
           6,
         );
+        const reservations = await database
+          .select({ status: debtShiftSchema.liquidityReservations.status })
+          .from(debtShiftSchema.liquidityReservations);
+        expect(reservations[0]?.status).toBe('SETTLED');
 
         const targetArtifact = await import('@debtshift/protocols').then(
           ({ loadFoundryArtifact }) => loadFoundryArtifact('MockTargetLending'),
@@ -182,7 +186,7 @@ async function withWorkflow(
         new PostgresCommandPersistence(database),
         createSimulatedWorkflowHandlers(
           new PostgresWorkflowContextStore(database),
-          new ViemLocalExecutionPort(environment),
+          new DualAnvilSimulationExecutionPort(environment),
           simulator,
         ),
       );
@@ -204,6 +208,12 @@ async function createMigration(
   const block = await source.publicClient.getBlock({ blockTag: 'latest' });
   if (block.hash === null) throw new Error('Latest source block was not finalized.');
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const destinationDebtAsset = {
+    chainId: 31_338,
+    address: deployment.destination.debtToken,
+    decimals: 6,
+    symbol: 'dUSDC',
+  } as const;
   const intent = refinanceIntentSchema.parse({
     borrower: deployment.borrower,
     accountType: 'EOA',
@@ -236,12 +246,7 @@ async function createMigration(
         marketId: `0x${'22'.repeat(32)}`,
       },
     ],
-    feeAsset: {
-      chainId: 31_337,
-      address: deployment.source.debtToken,
-      decimals: 6,
-      symbol: 'sUSDC',
-    },
+    feeAsset: destinationDebtAsset,
     maxSourceDebtUnits: '10000000000',
     minSourceCollateralUnits: '10000000000000000000',
     maxTotalFeeUnits: '100000000',
@@ -279,6 +284,7 @@ async function createMigration(
   );
   const planNonce = outcome === 'SUCCESS' ? 2n : outcome === 'REFUNDED' ? 4n : 6n;
   const migrationId = computeMigrationId(intentHash, quote.quoteHash, planNonce);
+  const planDeadline = nowSeconds + (outcome === 'TIMEOUT' ? 5 : 300);
   const unsignedPlan = executionPlanSchema.parse({
     intentHash,
     migrationId,
@@ -288,16 +294,11 @@ async function createMigration(
     targetMarket: intent.allowedTargets[0],
     sourceDebtAsset: intent.sourcePosition.debtAsset,
     sourceCollateralAsset: intent.sourcePosition.collateralAsset,
-    destinationDebtAsset: {
-      chainId: 31_338,
-      address: deployment.destination.debtToken,
-      decimals: 6,
-      symbol: 'dUSDC',
-    },
+    destinationDebtAsset,
     destinationCollateralAsset: quote.outputAsset,
     sourceRepaymentMaxUnits: '10000000000',
     sourceCollateralMinUnits: '10000000000000000000',
-    targetDebtMaxUnits: '10100000000',
+    targetDebtMaxUnits: '10050000000',
     minDestinationCollateralUnits: '9800000000000000000',
     transportProvider: 'DEBTSHIFT_SIMULATOR',
     transportQuoteHash: quote.quoteHash,
@@ -306,12 +307,42 @@ async function createMigration(
     refundReceiver: deployment.borrower,
     fundingProvider: deployment.source.vault,
     reservationHash: hashCanonicalText(`reservation:${migrationId}`),
-    payoutAsset: intent.sourcePosition.debtAsset,
+    payoutAsset: destinationDebtAsset,
     payoutReceiver: deployment.deployer,
     principalMaxUnits: '10000000000',
     feeMaxUnits: '50000000',
+    financing: {
+      modelVersion: 1,
+      evaluatedAt: new Date(nowSeconds * 1_000).toISOString(),
+      validUntil: planDeadline.toString(),
+      capacityEvidenceHash: hashCanonicalText(`capacity:${migrationId}`),
+      liquidityBufferBps: 1000,
+      stressCollateralDropBps: 1000,
+      settlementAsset: destinationDebtAsset,
+      sourceDebtPayoffAssetUnits: '10000000000',
+      sourceDebtPayoffUnits: '10000000000',
+      sourceConversionQuoteHash: hashCanonicalText(`conversion:${migrationId}`),
+      borrowerDebtPrepaymentAssetUnits: '0',
+      borrowerDebtPrepaymentUnits: '0',
+      costs: [],
+      solverAdvancedCostUnits: '0',
+      solverPrincipalUnits: '10000000000',
+      solverFeeUnits: '50000000',
+      capitalizedCostUnits: '0',
+      separatelyPaidCostUnits: '0',
+      totalRequiredRepaymentAndFinancedCostUnits: '10050000000',
+      externalFunding: [],
+      confirmedExternalFundingUnits: '0',
+      protocolBorrowCapacityUnits: '12000000000',
+      policyBorrowCapacityUnits: '11000000000',
+      liquidityBorrowCapacityUnits: '13000000000',
+      signedBorrowCapacityUnits: '10050000000',
+      maximumSafeBorrowingCapacityUnits: '10050000000',
+      requiredDestinationBorrowUnits: '10050000000',
+      fundingShortfallUnits: '0',
+    },
     routeHash: `0x${'00'.repeat(32)}`,
-    deadline: (nowSeconds + (outcome === 'TIMEOUT' ? 5 : 300)).toString(),
+    deadline: planDeadline.toString(),
     nonce: planNonce.toString(),
   });
   const plan = executionPlanSchema.parse({

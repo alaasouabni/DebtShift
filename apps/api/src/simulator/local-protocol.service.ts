@@ -1,29 +1,20 @@
 import {
   hashCanonicalText,
   positionSnapshotSchema,
-  type MarketReference,
   type PositionSnapshot,
-  type TokenReference,
 } from '@debtshift/domain';
 import { loadFoundryArtifact } from '@debtshift/protocols';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, getAddress, http, type Address, type PublicClient } from 'viem';
 
-export interface LocalRouteDefinition {
-  readonly sourceMarket: MarketReference;
-  readonly targetMarket: MarketReference;
-  readonly sourceDebtAsset: TokenReference;
-  readonly sourceCollateralAsset: TokenReference;
-  readonly destinationDebtAsset: TokenReference;
-  readonly destinationCollateralAsset: TokenReference;
-  readonly destinationEscrow: Address;
-  readonly sourceVault: Address;
-  readonly executor: Address;
-}
+import type { DebtShiftRouteDefinition, ProtocolDataPort } from '../market-data/ports.js';
+
+export type LocalRouteDefinition = DebtShiftRouteDefinition;
 
 @Injectable()
-export class LocalProtocolService {
+export class LocalProtocolService implements ProtocolDataPort {
+  readonly provider = 'SIMULATOR' as const;
   readonly #client: PublicClient;
   readonly #sourceLending: Address;
   readonly #environment: string;
@@ -75,9 +66,12 @@ export class LocalProtocolService {
         decimals: 18,
         symbol: 'dWETH',
       },
-      destinationEscrow: config.getOrThrow<Address>('DESTINATION_ESCROW_ADDRESS'),
-      sourceVault: config.getOrThrow<Address>('SOURCE_VAULT_ADDRESS'),
-      executor: config.getOrThrow<Address>('LOCAL_EXECUTOR_ADDRESS'),
+      execution: {
+        kind: 'SIMULATOR',
+        destinationEscrow: config.getOrThrow<Address>('DESTINATION_ESCROW_ADDRESS'),
+        sourceVault: config.getOrThrow<Address>('SOURCE_VAULT_ADDRESS'),
+        executor: config.getOrThrow<Address>('LOCAL_EXECUTOR_ADDRESS'),
+      },
     };
   }
 

@@ -76,6 +76,8 @@ export const reservationStatusEnum = pgEnum('reservation_status', [
   'PENDING',
   'ACTIVE',
   'CONSUMED',
+  'DRAWN',
+  'SETTLED',
   'RELEASED',
   'EXPIRED',
 ]);
@@ -290,6 +292,39 @@ export const providerQuotes = pgTable(
       'provider_quotes_min_lte_expected',
       sql`${table.minimumAmountOutUnits} <= ${table.expectedAmountOutUnits}`,
     ),
+  ],
+);
+
+export const providerObservations = pgTable(
+  'provider_observations',
+  {
+    observationId: bytes32('observation_id').primaryKey(),
+    provider: varchar('provider', { length: 64 }).notNull(),
+    operation: varchar('operation', { length: 64 }).notNull(),
+    requestHash: bytes32('request_hash').notNull(),
+    responseHash: bytes32('response_hash').notNull(),
+    requestPayload: jsonb('request_payload').$type<Record<string, unknown>>().notNull(),
+    responsePayload: jsonb('response_payload').$type<Record<string, unknown>>().notNull(),
+    correlationId: varchar('correlation_id', { length: 256 }),
+    observedAt: timestamp('observed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique('provider_observations_response_unique').on(
+      table.provider,
+      table.operation,
+      table.responseHash,
+    ),
+    check('provider_observations_id_format', sql`${table.observationId} ~ '^0x[0-9a-f]{64}$'`),
+    check(
+      'provider_observations_request_hash_format',
+      sql`${table.requestHash} ~ '^0x[0-9a-f]{64}$'`,
+    ),
+    check(
+      'provider_observations_response_hash_format',
+      sql`${table.responseHash} ~ '^0x[0-9a-f]{64}$'`,
+    ),
+    index('provider_observations_provider_time_idx').on(table.provider, table.observedAt),
   ],
 );
 

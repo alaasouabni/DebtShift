@@ -18,6 +18,9 @@ export interface StartAnvilOptions {
   readonly chainId: number;
   readonly port: number;
   readonly anvilPath?: string;
+  /** Optional upstream used only to create an immutable local fork. */
+  readonly forkUrl?: string;
+  readonly forkBlockNumber?: bigint;
 }
 
 type AnvilProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -30,19 +33,28 @@ export async function startAnvil(options: StartAnvilOptions): Promise<LocalAnvil
     nativeCurrency: { name: 'Local Ether', symbol: 'ETH', decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
   });
-  const child = spawn(
-    resolveAnvilPath(options.anvilPath),
-    [
-      '--port',
-      String(options.port),
-      '--chain-id',
-      String(options.chainId),
-      '--host',
-      '127.0.0.1',
-      '--silent',
-    ],
-    { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
-  );
+  if (options.forkBlockNumber !== undefined && options.forkUrl === undefined) {
+    throw new Error('An Anvil fork block requires a fork URL.');
+  }
+  const argumentsList = [
+    '--port',
+    String(options.port),
+    '--chain-id',
+    String(options.chainId),
+    '--host',
+    '127.0.0.1',
+    '--silent',
+  ];
+  if (options.forkUrl !== undefined) {
+    argumentsList.push('--fork-url', options.forkUrl);
+    if (options.forkBlockNumber !== undefined) {
+      argumentsList.push('--fork-block-number', options.forkBlockNumber.toString());
+    }
+  }
+  const child = spawn(resolveAnvilPath(options.anvilPath), argumentsList, {
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   const errors: string[] = [];
   child.stderr.on('data', (chunk: Buffer) => errors.push(chunk.toString('utf8')));
   const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });

@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createSimulatedWorkflowHandlers,
   type FinalizedChainAction,
-  type LocalExecutionPort,
+  type MigrationExecutionPort,
   type WorkflowContextStore,
 } from './handlers.js';
 import { RetryableCommandError, type CommandHandler } from './processor.js';
@@ -148,6 +148,7 @@ describe('simulated workflow handlers', () => {
     );
 
     expect(records.map((record) => record.type)).toEqual([
+      'FINANCING_REVALIDATION',
       'LIQUIDITY_SETTLEMENT',
       'LEDGER_RECONCILIATION',
     ]);
@@ -235,7 +236,7 @@ async function buildContext(
   };
 }
 
-function fakeExecution(): LocalExecutionPort {
+function fakeExecution(): MigrationExecutionPort {
   const perform = vi.fn(async (): Promise<FinalizedChainAction> => action());
   return {
     reserve: perform,

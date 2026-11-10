@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { evmAddressSchema } from '../primitives.js';
+import { parseLiveMarketConfiguration } from './live-market.js';
 
 const booleanString = z
   .enum(['true', 'false'])
@@ -19,6 +20,8 @@ export const debtShiftEnvironmentSchema = z
     DEBTSHIFT_ENV: z
       .enum(['local', 'ci', 'testnet', 'mainnet-readonly', 'mainnet-canary', 'mainnet-controlled'])
       .default('local'),
+    MARKET_DATA_PROVIDER: z.enum(['SIMULATOR', 'LIVE_READ_ONLY', 'DISABLED']).default('SIMULATOR'),
+    LIVE_MARKET_CONFIG_JSON: optionalString,
     WEB_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     API_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
     WEB_PUBLIC_URL: z.url().default('http://localhost:3000'),
@@ -69,6 +72,27 @@ export const debtShiftEnvironmentSchema = z
       .default('simulated'),
     INTENTS_BASE_URL: z.url().default('https://1click.chaindefuser.com'),
     INTENTS_AUTH_TOKEN: optionalString,
+    INTENTS_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(8_000),
+    INTENTS_RESPONSE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1_024)
+      .max(10_000_000)
+      .default(1_000_000),
+    INTENTS_CATALOG_CACHE_TTL_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(86_400_000)
+      .default(600_000),
+    INTENTS_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+    INTENTS_RETRY_BASE_DELAY_MS: z.coerce.number().int().min(1).max(60_000).default(200),
+    INTENTS_RETRY_MAX_DELAY_MS: z.coerce.number().int().min(1).max(120_000).default(2_000),
+    INTENTS_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(100).default(5),
+    INTENTS_CIRCUIT_RESET_MS: z.coerce.number().int().min(100).max(600_000).default(30_000),
+    INTENTS_RATE_LIMIT_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(10),
+    INTENTS_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
+    INTENTS_CACHE_MAX_ENTRIES: z.coerce.number().int().min(1).max(10_000).default(100),
     SIMULATOR_TERMINAL_OUTCOME: z
       .enum([
         'SUCCESS',
@@ -99,6 +123,41 @@ export const debtShiftEnvironmentSchema = z
   .superRefine((environment, context) => {
     const simulatedEnvironment = ['local', 'ci', 'testnet'].includes(environment.DEBTSHIFT_ENV);
 
+    if (environment.INTENTS_RETRY_MAX_DELAY_MS < environment.INTENTS_RETRY_BASE_DELAY_MS) {
+      context.addIssue({
+        code: 'custom',
+        message: '1Click maximum retry delay cannot be lower than its base retry delay.',
+        path: ['INTENTS_RETRY_MAX_DELAY_MS'],
+      });
+    }
+
+    if (simulatedEnvironment && environment.MARKET_DATA_PROVIDER !== 'SIMULATOR') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Local, CI, and testnet environments require simulator market data.',
+        path: ['MARKET_DATA_PROVIDER'],
+      });
+    }
+
+    if (environment.MARKET_DATA_PROVIDER === 'LIVE_READ_ONLY') {
+      try {
+        parseLiveMarketConfiguration(environment.LIVE_MARKET_CONFIG_JSON);
+      } catch (error) {
+        context.addIssue({
+          code: 'custom',
+          message: error instanceof Error ? error.message : 'Live market configuration is invalid.',
+          path: ['LIVE_MARKET_CONFIG_JSON'],
+        });
+      }
+      if (environment.INTENTS_AUTH_TOKEN.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Live read-only quotes require an INTENTS_AUTH_TOKEN.',
+          path: ['INTENTS_AUTH_TOKEN'],
+        });
+      }
+    }
+
     if (
       simulatedEnvironment &&
       (environment.TRANSPORT_PROVIDER !== 'DEBTSHIFT_SIMULATOR' ||
@@ -114,11 +173,12 @@ export const debtShiftEnvironmentSchema = z
     if (
       environment.DEBTSHIFT_ENV === 'mainnet-readonly' &&
       (environment.TRANSPORT_PROVIDER !== 'NEAR_INTENTS_1CLICK' ||
-        environment.INTENTS_MODE !== 'mainnet-readonly')
+        environment.INTENTS_MODE !== 'mainnet-readonly' ||
+        environment.MARKET_DATA_PROVIDER !== 'LIVE_READ_ONLY')
     ) {
       context.addIssue({
         code: 'custom',
-        message: 'Mainnet read-only mode must use 1Click with dry quotes only.',
+        message: 'Mainnet read-only mode must use live market data and 1Click dry quotes only.',
         path: ['INTENTS_MODE'],
       });
     }
@@ -134,6 +194,7 @@ export const debtShiftEnvironmentSchema = z
     if (environment.DEBTSHIFT_ENV === 'mainnet-canary') {
       const configured =
         environment.MAINNET_CANARY_ENABLED &&
+        environment.MARKET_DATA_PROVIDER === 'DISABLED' &&
         environment.TRANSPORT_PROVIDER === 'NEAR_INTENTS_1CLICK' &&
         environment.INTENTS_MODE === 'mainnet-canary' &&
         BigInt(environment.MAINNET_CANARY_MAX_INPUT_UNITS) > 0n &&
@@ -145,7 +206,8 @@ export const debtShiftEnvironmentSchema = z
       if (!configured) {
         context.addIssue({
           code: 'custom',
-          message: 'Mainnet canary mode requires an enabled, capped, fully allowlisted route.',
+          message:
+            'Mainnet canary mode requires disabled lending data and an enabled, capped, fully allowlisted route.',
           path: ['MAINNET_CANARY_ENABLED'],
         });
       }

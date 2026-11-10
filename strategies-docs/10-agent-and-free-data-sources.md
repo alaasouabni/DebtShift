@@ -27,6 +27,11 @@ Changing modes never re-runs or modifies the financial decision. It only changes
 - Discover supported destination markets.
 - Reject stale, illiquid, unsupported, or unsafe routes.
 - Calculate projected rates, costs, stress outcomes, and break-even time.
+- Reconcile solver principal, fees, financed and separately paid costs, borrower debt prepayment, and
+  confirmed supplementary funding without double counting.
+- Calculate protocol capacity, DebtShift policy capacity, safe market liquidity, required destination
+  borrowing, and exact funding shortfall.
+- Return only secured shortfall-resolution alternatives and reject unresolved plans.
 - Rank only routes that pass deterministic policy.
 - Monitor source and target safety during execution.
 - Prepare unsigned intent and execution-plan data for explicit wallet review.
@@ -43,6 +48,7 @@ Changing modes never re-runs or modifies the financial decision. It only changes
 - `getOneClickTokenCatalog()`
 - `getOneClickDryQuote(request)`
 - `compareRoutes(position, candidates, policy)`
+- `analyzeRefinancingFeasibility(position, market, quote, fundingEvidence, policy)`
 - `getMigrationEvidence(migrationId)`
 - `prepareUnsignedIntent(route, limits)`
 
@@ -56,6 +62,7 @@ Changing modes never re-runs or modifies the financial decision. It only changes
 - Contract writes.
 - Receiver or refund-address substitution.
 - Risk-policy modification.
+- Treating pending transfers, wallet balances, promises, or forecast capacity as confirmed funding.
 - Marking a migration phase complete.
 
 The execution API invokes write commands only after explicit user authorization and independent deterministic validation. It never accepts an LLM statement as evidence.
@@ -124,6 +131,7 @@ Every optional AI provider returns schema-validated fields:
 - Main risks.
 - Break-even explanation.
 - Safety explanation.
+- Financing-coverage and shortfall explanation.
 - Data-freshness warning.
 - Explicit statement that the user must review and sign.
 
@@ -131,21 +139,22 @@ Invalid, incomplete, or unsupported output is discarded and replaced by determin
 
 ## Free data-source matrix
 
-| Data                           | Primary free source                                                         | Execution authority                  | Fallback / verification                                           |
-| ------------------------------ | --------------------------------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------- |
-| Base chain state               | `https://mainnet.base.org` and `https://sepolia.base.org`                   | Direct RPC reads and receipts        | Configurable secondary free-tier RPC; fail closed                 |
-| Arbitrum chain state           | `https://arb1.arbitrum.io/rpc` and `https://sepolia-rollup.arbitrum.io/rpc` | Direct RPC reads and receipts        | Configurable secondary free-tier RPC; fail closed                 |
-| Aave discovery and UI data     | `https://api.v3.aave.com/graphql`                                           | No                                   | Direct Pool, data-provider, oracle, aToken, and debt-token reads  |
-| Aave deployments               | Official Aave address book / supported-chain data                           | No                                   | Runtime bytecode and chain-ID validation                          |
-| Morpho discovery and analytics | `https://api.morpho.org` REST                                               | No                                   | Morpho SDK and direct contract/oracle reads                       |
-| Morpho market identity         | Official API/SDK using all five market parameters                           | Market ID is re-derived locally      | Direct Morpho contract state                                      |
-| 1Click assets and preview      | `https://1click.chaindefuser.com/v0/tokens` and `dry: true` quote           | No                                   | Runtime schema validation; unavailable means no live route        |
-| 1Click canary status           | Production `/v0/status` plus returned transaction data                      | Provider observation only            | Independent origin/destination RPC receipts and balances          |
-| NEAR testnet registry          | `https://test.rpc.fastnear.com`                                             | NEAR receipt and contract view       | `https://archival-rpc.testnet.near.org` with strict rate limiting |
-| Token prices for authorization | Protocol-native Aave and Morpho oracles                                     | Yes, within protocol-specific policy | Cross-check indexed values; mismatch fails closed                 |
-| USD values for display         | Aave/Morpho public APIs derived from their market data                      | No                                   | Hide USD view when unavailable                                    |
-| Gas price and gas usage        | `eth_estimateGas`, `eth_feeHistory`, and receipts                           | Quote input only                     | Conservative configured buffer                                    |
-| Historical application events  | DebtShift PostgreSQL indexer using `eth_getLogs`                            | Verified against RPC block hashes    | Re-index from last finalized cursor                               |
+| Data                           | Primary free source                                                         | Execution authority                  | Fallback / verification                                            |
+| ------------------------------ | --------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------ |
+| Base chain state               | `https://mainnet.base.org` and `https://sepolia.base.org`                   | Direct RPC reads and receipts        | Configurable secondary free-tier RPC; fail closed                  |
+| Arbitrum chain state           | `https://arb1.arbitrum.io/rpc` and `https://sepolia-rollup.arbitrum.io/rpc` | Direct RPC reads and receipts        | Configurable secondary free-tier RPC; fail closed                  |
+| Aave discovery and UI data     | `https://api.v3.aave.com/graphql`                                           | No                                   | Direct Pool, data-provider, oracle, aToken, and debt-token reads   |
+| Aave deployments               | Official Aave address book / supported-chain data                           | No                                   | Runtime bytecode and chain-ID validation                           |
+| Morpho discovery and analytics | `https://api.morpho.org` REST                                               | No                                   | Morpho SDK and direct contract/oracle reads                        |
+| Morpho market identity         | Official API/SDK using all five market parameters                           | Market ID is re-derived locally      | Direct Morpho contract state                                       |
+| 1Click assets and preview      | `https://1click.chaindefuser.com/v0/tokens` and `dry: true` quote           | No                                   | Runtime schema validation; unavailable means no live route         |
+| 1Click canary status           | Production `/v0/status` plus returned transaction data                      | Provider observation only            | Independent origin/destination RPC receipts and balances           |
+| NEAR testnet registry          | `https://test.rpc.fastnear.com`                                             | NEAR receipt and contract view       | `https://archival-rpc.testnet.near.org` with strict rate limiting  |
+| Token prices for authorization | Protocol-native Aave and Morpho oracles                                     | Yes, within protocol-specific policy | Cross-check indexed values; mismatch fails closed                  |
+| USD values for display         | Aave/Morpho public APIs derived from their market data                      | No                                   | Hide USD view when unavailable                                     |
+| Gas price and gas usage        | `eth_estimateGas`, `eth_feeHistory`, and receipts                           | Quote input only                     | Conservative configured buffer                                     |
+| Supplementary funding          | Migration escrow balance and finalized deposit receipt                      | Yes, for confirmed external funding  | Execution-plan binding plus independent balance-delta verification |
+| Historical application events  | DebtShift PostgreSQL indexer using `eth_getLogs`                            | Verified against RPC block hashes    | Re-index from last finalized cursor                                |
 
 ## Data precedence
 
@@ -172,6 +181,7 @@ Initial defaults are conservative and configurable:
 | Market rate and liquidity snapshot | Maximum age 15 seconds for quoting                                       |
 | Position snapshot                  | Maximum age 15 seconds for quoting; re-read immediately before execution |
 | Oracle snapshot                    | Route-specific maximum, re-read before execution                         |
+| Feasibility and funding evidence   | Revalidate before reservation, source close, target borrow, and payout   |
 | Token metadata                     | Cache by chain, address, and observed bytecode hash                      |
 | Chain receipt                      | Poll with bounded exponential backoff until finality or timeout          |
 | NEAR registry view                 | Cache 5 seconds in UI; never cache write confirmation                    |
@@ -211,6 +221,10 @@ NEAR testnet deployment uses test tokens. Local chains, simulators, PostgreSQL, 
 - [ ] Implement 1Click catalog, dry quote, and isolated canary adapters.
 - [ ] Implement NEAR testnet RPC failover.
 - [ ] Add provider health, caching, rate limiting, and circuit breakers.
+- [ ] Implement the canonical sources-and-uses feasibility analysis and exclusive cost-component
+      classification.
+- [ ] Implement direct capacity, confirmed-funding, required-borrow, and zero-shortfall tools with
+      checkpoint revalidation.
 - [x] Implement Route/Risk Agent tools and capability tests.
 - [x] Implement deterministic, Ollama, and user-API explanation providers behind one interface.
 - [x] Implement provider selection and memory-only credential UI.

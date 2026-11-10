@@ -18,6 +18,9 @@ export interface PhaseEvidence {
   readonly routeQuote: boolean;
   readonly intentAuthorization: boolean;
   readonly executionPlanAuthorization: boolean;
+  readonly financingFeasibility: boolean;
+  readonly financingRevalidation: boolean;
+  readonly supplementaryFunding: boolean;
   readonly liquidityReservation: boolean;
   readonly sourceClose: boolean;
   readonly transportOrigin: boolean;
@@ -36,6 +39,9 @@ const evidenceFieldByType: Readonly<Record<EvidenceType, keyof PhaseEvidence>> =
   ROUTE_QUOTE: 'routeQuote',
   INTENT_AUTHORIZATION: 'intentAuthorization',
   EXECUTION_PLAN_AUTHORIZATION: 'executionPlanAuthorization',
+  FINANCING_FEASIBILITY: 'financingFeasibility',
+  FINANCING_REVALIDATION: 'financingRevalidation',
+  SUPPLEMENTARY_FUNDING: 'supplementaryFunding',
   LIQUIDITY_RESERVATION: 'liquidityReservation',
   SOURCE_CLOSE: 'sourceClose',
   TRANSPORT_ORIGIN: 'transportOrigin',
@@ -55,6 +61,9 @@ export function phaseEvidenceFromRecords(records: readonly Evidence[]): PhaseEvi
     routeQuote: false,
     intentAuthorization: false,
     executionPlanAuthorization: false,
+    financingFeasibility: false,
+    financingRevalidation: false,
+    supplementaryFunding: false,
     liquidityReservation: false,
     sourceClose: false,
     transportOrigin: false,
@@ -94,7 +103,10 @@ export function deriveMigrationPhase(evidence: PhaseEvidence): MigrationPhase {
     return 'EXPIRED';
   }
 
-  const authorized = evidence.intentAuthorization && evidence.executionPlanAuthorization;
+  const authorized =
+    evidence.intentAuthorization &&
+    evidence.executionPlanAuthorization &&
+    evidence.financingFeasibility;
   const settled = evidence.liquiditySettlement && evidence.ledgerReconciliation;
   const predicates: readonly [MigrationPhase, boolean][] = [
     ['QUOTED', evidence.routeQuote],

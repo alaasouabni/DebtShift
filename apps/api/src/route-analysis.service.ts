@@ -8,7 +8,7 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { z } from 'zod';
 
-import { LocalMarketToolsService, localRoutePolicy } from './local-market-tools.service.js';
+import { MARKET_INTELLIGENCE_PORT, type MarketIntelligencePort } from './market-data/ports.js';
 
 const routeAnalysisRequestSchema = z
   .object({
@@ -24,7 +24,8 @@ export class RouteAnalysisService {
   readonly #sourceChainId: number;
 
   constructor(
-    @Inject(LocalMarketToolsService) tools: LocalMarketToolsService,
+    @Inject(MARKET_INTELLIGENCE_PORT)
+    private readonly tools: MarketIntelligencePort,
     @Inject(ConfigService) config: ConfigService,
   ) {
     this.#agent = new DeterministicRouteRiskAgent(tools);
@@ -41,7 +42,7 @@ export class RouteAnalysisService {
       const analysis = await this.#agent.analyzeWallet({
         wallet: request.wallet,
         sourceChainIds: [this.#sourceChainId],
-        policy: localRoutePolicy(evaluatedAt),
+        policy: this.tools.createPolicy(evaluatedAt),
       });
       if (analysis.analyses.length === 0) {
         throw new Error('No supported source position was found for this wallet.');
