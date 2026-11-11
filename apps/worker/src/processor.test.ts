@@ -119,4 +119,16 @@ describe('durable command processor', () => {
     expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, expect.any(Error), false);
     expect(store.complete).not.toHaveBeenCalled();
   });
+
+  it('accepts requote-required as the terminal alternative to source-close evidence', async () => {
+    const store = persistence({ begin: vi.fn(async () => command('CLOSE_SOURCE')) });
+    const execute = vi.fn(async () => [evidence('REQUOTE_REQUIRED')]);
+    const processor = new DurableCommandProcessor(store, new Map([['CLOSE_SOURCE', { execute }]]));
+
+    await processor.process(envelope());
+
+    expect(store.advance).toHaveBeenCalledOnce();
+    expect(store.complete).toHaveBeenCalledWith(COMMAND_ID);
+    expect(store.fail).not.toHaveBeenCalled();
+  });
 });

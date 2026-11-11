@@ -30,6 +30,7 @@ export interface PhaseEvidence {
   readonly ledgerReconciliation: boolean;
   readonly nearReceipt: boolean;
   readonly expired: boolean;
+  readonly requoteRequired: boolean;
   readonly recoveryOpened: boolean;
   readonly recoveryCompleted: boolean;
 }
@@ -51,6 +52,7 @@ const evidenceFieldByType: Readonly<Record<EvidenceType, keyof PhaseEvidence>> =
   LEDGER_RECONCILIATION: 'ledgerReconciliation',
   NEAR_RECEIPT: 'nearReceipt',
   MIGRATION_EXPIRED: 'expired',
+  REQUOTE_REQUIRED: 'requoteRequired',
   RECOVERY_OPENED: 'recoveryOpened',
   RECOVERY_COMPLETED: 'recoveryCompleted',
 };
@@ -73,11 +75,18 @@ export function phaseEvidenceFromRecords(records: readonly Evidence[]): PhaseEvi
     ledgerReconciliation: false,
     nearReceipt: false,
     expired: false,
+    requoteRequired: false,
     recoveryOpened: false,
     recoveryCompleted: false,
   };
 
+  const supersededEvidenceIds = new Set(
+    records.flatMap((record) =>
+      record.supersedesEvidenceId === undefined ? [] : [record.supersedesEvidenceId],
+    ),
+  );
   for (const record of records) {
+    if (supersededEvidenceIds.has(record.evidenceId)) continue;
     if (record.verificationState === 'FINALIZED') {
       result[evidenceFieldByType[record.type]] = true;
     }
@@ -97,6 +106,13 @@ export function deriveMigrationPhase(evidence: PhaseEvidence): MigrationPhase {
 
   if (evidence.recoveryOpened || (evidence.expired && evidence.sourceClose)) {
     return 'RECOVERY';
+  }
+
+  if (evidence.requoteRequired) {
+    if (evidence.sourceClose) {
+      throw new Error('A requote-required outcome cannot coexist with source-close evidence.');
+    }
+    return 'REQUOTE_REQUIRED';
   }
 
   if (evidence.expired) {
@@ -179,8 +195,8 @@ export function deriveMigrationPhase(evidence: PhaseEvidence): MigrationPhase {
 const allowedTransitions: Readonly<Record<MigrationPhase, readonly MigrationPhase[]>> = {
   DRAFT: ['QUOTED', 'EXPIRED'],
   QUOTED: ['AUTHORIZED', 'EXPIRED'],
-  AUTHORIZED: ['RESERVED', 'EXPIRED'],
-  RESERVED: ['SOURCE_CLOSED', 'EXPIRED', 'RECOVERY'],
+  AUTHORIZED: ['RESERVED', 'EXPIRED', 'REQUOTE_REQUIRED'],
+  RESERVED: ['SOURCE_CLOSED', 'EXPIRED', 'RECOVERY', 'REQUOTE_REQUIRED'],
   SOURCE_CLOSED: ['ROUTING', 'RECOVERY'],
   ROUTING: ['DEST_FUNDED', 'RECOVERY'],
   DEST_FUNDED: ['TARGET_OPEN', 'RECOVERY'],
@@ -189,6 +205,7 @@ const allowedTransitions: Readonly<Record<MigrationPhase, readonly MigrationPhas
   COMPLETED: [],
   RECOVERY: ['SETTLED', 'FAILED_SAFE'],
   FAILED_SAFE: [],
+  REQUOTE_REQUIRED: [],
   EXPIRED: [],
 };
 

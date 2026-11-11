@@ -116,7 +116,8 @@ All application routes use the `/v1` prefix. JSON requests must send
 
 There is currently no WebSocket or server-sent-event endpoint. Poll migration details while a
 migration is non-terminal. Start around 1.5-2 seconds, pause polling when the tab is hidden, use
-backoff after transient failures, and stop at `COMPLETED`, `FAILED_SAFE`, or `EXPIRED`.
+backoff after transient failures, and stop at `COMPLETED`, `FAILED_SAFE`, `REQUOTE_REQUIRED`, or
+`EXPIRED`.
 
 ### Route analysis request
 
@@ -330,8 +331,8 @@ the corresponding wallet flow is verified end to end.
 8. **Review plan:** show exact execution authorization and request the plan signature.
 9. **Submit:** send both signatures and retain the returned migration ID.
 10. **Monitor:** show phase, commands, evidence verification, transactions, and timestamps.
-11. **Finish:** distinguish `COMPLETED`, `FAILED_SAFE`, and `EXPIRED`; expose recovery evidence and
-    residual/refund information when present.
+11. **Finish:** distinguish `COMPLETED`, `FAILED_SAFE`, `REQUOTE_REQUIRED`, and `EXPIRED`; expose
+    recovery evidence and residual/refund information when present.
 
 If the quote, intent, or plan expires before submission, discard both signatures and prepare again.
 
@@ -349,6 +350,10 @@ Exceptional terminal/recovery phases are:
 - `RECOVERY`: recovery is active and must not be presented as finished.
 - `FAILED_SAFE`: execution did not complete, but the persisted evidence shows the safe recovery
   outcome.
+- `REQUOTE_REQUIRED`: a pre-source feasibility check failed, the undrawn liquidity reservation was
+  released atomically, and the source position was left unchanged. Tell the user that market
+  capacity changed and a new plan is required. Never silently retry, reuse either signature, or
+  imply that funds entered recovery.
 - `EXPIRED`: the authorized window ended without a successful completion.
 
 The frontend does not derive or advance phases. It renders the authoritative phase returned by the
@@ -464,6 +469,8 @@ prepared authorization payloads, user API keys, or provider secrets.
 - Reject either signature without submitting.
 - Sign both payloads, start the migration, and reach `COMPLETED`.
 - Exercise the refund/recovery scenario and reach `FAILED_SAFE` with recovery evidence.
+- Deteriorate destination liquidity before source close and reach `REQUOTE_REQUIRED`; verify that
+  the UI asks for a fresh plan instead of showing recovery or retrying the signed plan.
 - Refresh during monitoring and resume from a retained migration ID.
 - Confirm that no provider success alone is displayed as a completed refinance.
 

@@ -17,6 +17,7 @@ import {
   liquidityReservations,
   migrations,
   outboxMessages,
+  recoveryCases,
 } from './schema.js';
 import { lockMigration } from './transaction.js';
 
@@ -99,7 +100,7 @@ export async function advanceMigrationWithEvidence(
         .limit(1);
       if (migration === undefined) throw new Error('Migration disappeared while locked.');
 
-      await transaction
+      const insertedEvidence = await transaction
         .insert(evidenceTable)
         .values({
           evidenceId: parsedEvidence.evidenceId,
@@ -120,8 +121,10 @@ export async function advanceMigrationWithEvidence(
           verificationState: parsedEvidence.verificationState,
           verificationMethod: parsedEvidence.verificationMethod,
           verifierVersion: parsedEvidence.verifierVersion,
+          supersedesEvidenceId: parsedEvidence.supersedesEvidenceId ?? null,
         })
-        .onConflictDoNothing({ target: evidenceTable.evidenceId });
+        .onConflictDoNothing({ target: evidenceTable.evidenceId })
+        .returning({ evidenceId: evidenceTable.evidenceId });
 
       if (parsedEvidence.verificationState === 'FINALIZED') {
         if (parsedEvidence.type === 'LIQUIDITY_RESERVATION') {
@@ -171,6 +174,48 @@ export async function advanceMigrationWithEvidence(
               ),
             );
         }
+        if (parsedEvidence.type === 'REQUOTE_REQUIRED') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'RELEASED', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                eq(liquidityReservations.status, 'ACTIVE'),
+              ),
+            );
+        }
+        if (parsedEvidence.type === 'RECOVERY_OPENED') {
+          await openRecoveryCase(transaction, parsedEvidence, insertedEvidence.length !== 0);
+        }
+        if (parsedEvidence.type === 'RECOVERY_COMPLETED') {
+          const resolved = await transaction
+            .update(recoveryCases)
+            .set({
+              status: 'RESOLVED_FAILED_SAFE',
+              resolvedAt: new Date(parsedEvidence.observedAt),
+              updatedAt: new Date(parsedEvidence.observedAt),
+            })
+            .where(eq(recoveryCases.migrationId, parsedEvidence.migrationId))
+            .returning({ recoveryId: recoveryCases.recoveryId });
+          if (resolved.length === 0) {
+            throw new Error('Recovery cannot complete without a durable recovery case.');
+          }
+        }
+      }
+      if (
+        parsedEvidence.verificationState === 'RETRACTED' &&
+        parsedEvidence.type === 'LIQUIDITY_RESERVATION'
+      ) {
+        await transaction
+          .update(liquidityReservations)
+          .set({ status: 'RELEASED', updatedAt: new Date(parsedEvidence.observedAt) })
+          .where(
+            and(
+              eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+              eq(liquidityReservations.status, 'ACTIVE'),
+            ),
+          );
       }
 
       const storedEvidence = await transaction
@@ -224,7 +269,13 @@ export async function advanceMigrationWithEvidence(
         observedAt: new Date(parsedEvidence.observedAt),
       });
 
-      const nextCommand = planNextCommand(migration.migrationId, derivedPhase);
+      const requiresManualReview =
+        derivedPhase === 'RECOVERY' &&
+        parsedEvidence.type === 'RECOVERY_OPENED' &&
+        parsedEvidence.normalizedPayload.requiresManualReview === true;
+      const nextCommand = requiresManualReview
+        ? undefined
+        : planNextCommand(migration.migrationId, derivedPhase);
       if (nextCommand !== undefined) {
         const commandId = hashCanonicalText(`debtshift.command.v1:${nextCommand.idempotencyKey}`);
         await insertCommandInTransaction(
@@ -239,6 +290,72 @@ export async function advanceMigrationWithEvidence(
     },
     { isolationLevel: 'serializable', accessMode: 'read write', deferrable: false },
   );
+}
+
+async function openRecoveryCase(
+  transaction: Parameters<Parameters<DebtShiftDatabase['transaction']>[0]>[0],
+  record: Evidence,
+  isNewEvidence: boolean,
+): Promise<void> {
+  const metadata = recoveryMetadata(record);
+  const observedAt = new Date(record.observedAt);
+  const recoveryId = hashCanonicalText(`debtshift.recovery.v1:${record.migrationId}`);
+  await transaction
+    .insert(recoveryCases)
+    .values({
+      recoveryId,
+      migrationId: record.migrationId,
+      policy: metadata.policy,
+      status: 'OPEN',
+      reason: metadata.reason,
+      residualAssets: metadata.residualAssets,
+      openedAt: observedAt,
+    })
+    .onConflictDoNothing({ target: recoveryCases.migrationId });
+
+  if (!isNewEvidence) return;
+  await transaction
+    .update(recoveryCases)
+    .set({
+      policy: metadata.policy,
+      reason: metadata.reason,
+      residualAssets: metadata.residualAssets,
+      updatedAt: observedAt,
+    })
+    .where(
+      and(eq(recoveryCases.migrationId, record.migrationId), eq(recoveryCases.status, 'OPEN')),
+    );
+}
+
+function recoveryMetadata(record: Evidence): {
+  readonly policy: string;
+  readonly reason: string;
+  readonly residualAssets: ReadonlyArray<Record<string, unknown>>;
+} {
+  const payload = record.normalizedPayload;
+  const policy =
+    typeof payload.policy === 'string' && payload.policy.length !== 0
+      ? payload.policy
+      : 'DETERMINISTIC_RECOVERY_POLICY';
+  const reason =
+    typeof payload.reason === 'string' && payload.reason.length !== 0
+      ? payload.reason
+      : 'RECOVERY_OPENED';
+  const residualAssets = Array.isArray(payload.residualAssets)
+    ? payload.residualAssets.filter(isRecord)
+    : [];
+  return {
+    policy,
+    reason,
+    residualAssets:
+      residualAssets.length === 0
+        ? [{ kind: 'RECOVERY_EVIDENCE', normalizedPayload: payload }]
+        : residualAssets,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function publishPendingOutbox(
@@ -321,7 +438,34 @@ function databaseEvidenceToDomain(row: typeof evidenceTable.$inferSelect): Evide
     verificationState: row.verificationState,
     verificationMethod: row.verificationMethod,
     verifierVersion: row.verifierVersion,
+    ...(row.supersedesEvidenceId === null
+      ? {}
+      : { supersedesEvidenceId: row.supersedesEvidenceId }),
   });
+}
+
+export async function listActiveFinalizedChainEvidence(
+  database: DebtShiftDatabase,
+  migrationId: string,
+): Promise<readonly Evidence[]> {
+  const rows = await database
+    .select()
+    .from(evidenceTable)
+    .where(eq(evidenceTable.migrationId, migrationId));
+  const records = rows.map(databaseEvidenceToDomain);
+  const supersededEvidenceIds = new Set(
+    records.flatMap((record) =>
+      record.supersedesEvidenceId === undefined ? [] : [record.supersedesEvidenceId],
+    ),
+  );
+  return records.filter(
+    (record) =>
+      record.verificationState === 'FINALIZED' &&
+      record.chainId !== undefined &&
+      record.blockNumber !== undefined &&
+      record.blockHash !== undefined &&
+      !supersededEvidenceIds.has(record.evidenceId),
+  );
 }
 
 export async function enqueueCommandInTransaction(

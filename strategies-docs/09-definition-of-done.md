@@ -40,30 +40,36 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] Insufficient quote-time capacity rejects the migration before reservation or source movement.
 - [ ] Missing, pending, mismatched, expired, or unconfirmed supplementary funding cannot satisfy the
       feasibility predicate.
-- [ ] Collateral-price or liquidity deterioration before source close releases the reservation and
+- [x] Collateral-price or liquidity deterioration before source close releases the reservation and
       requires a requote.
-- [ ] Capacity deterioration after source close never creates an unsafe loan and opens a recovery case
+  - [x] Destination-liquidity deterioration is verified end to end with an atomic proof/release,
+        unchanged source position, zero solver receivable, and terminal `REQUOTE_REQUIRED` evidence.
+  - [x] Collateral-price deterioration is verified with a mutable protocol-state fixture and exact
+        safe-capacity/shortfall evidence.
+- [x] Capacity deterioration after source close never creates an unsafe loan and opens a recovery case
       with collateral custody and solver exposure recorded.
 - [ ] Failed provider payout preserves proceeds and retries idempotently.
 - [ ] Failure to repay the solver after collateral delivery blocks `SETTLED` and preserves exact
       proceeds, receivable, and recovery evidence.
 - [ ] Unknown provider status stops advancement and alerts.
-- [ ] Simulated reorg retracts provisional evidence and re-derives state.
+- [x] Simulated source receipt disappearance and destination block replacement append retractions,
+      halt the next financial action, re-derive recovery state, and require manual reconciliation.
 - [ ] Worker/API/Redis interruption does not duplicate asset movement.
 
 ## Contract safety
 
-- [ ] TypeScript and Solidity hashes match fixed fixtures.
-- [ ] EOA and EIP-1271 signatures are supported as designed.
-- [ ] Nonce replay, expiry, and mutated route tests fail.
+- [x] TypeScript and Solidity hashes match fixed fixtures.
+- [x] EOA and EIP-1271 signatures are supported as designed.
+- [x] Nonce replay, expiry, and mutated route tests fail.
 - [ ] Chain, market, token, receiver, principal, fee, and slippage caps are enforced.
-- [ ] Supplementary-funding escrow enforces migration, asset, chain, amount, use, deadline, and refund
+- [x] Supplementary-funding escrow enforces migration, asset, chain, amount, use, deadline, and refund
       receiver isolation.
-- [ ] The liquidity vault rejects reservations with stale, mismatched, or non-zero-shortfall
+- [x] The liquidity vault rejects reservations with stale, mismatched, or non-zero-shortfall
       feasibility evidence.
-- [ ] Reentrancy and cross-migration escrow isolation invariants pass.
-- [ ] Administrative roles cannot sweep active migration balances.
-- [ ] Pinned Aave source and Morpho destination fork tests pass.
+- [x] Reentrancy and cross-migration escrow isolation invariants pass.
+- [x] Administrative roles cannot sweep active migration balances.
+- [x] The production Aave source and Morpho destination modules pass their atomic rollback tests and
+      the complete signed-adapter workflow at pinned Base block `55,600,000`.
 
 ## Data and orchestration
 

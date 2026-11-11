@@ -13,8 +13,16 @@ import { MockTargetLending } from "../src/mocks/MockTargetLending.sol";
 import { TestToken } from "../src/mocks/TestToken.sol";
 
 interface Vm {
+    struct Log {
+        bytes32[] topics;
+        bytes data;
+        address emitter;
+    }
+
     function addr(uint256 privateKey) external returns (address);
+    function getRecordedLogs() external returns (Log[] memory logs);
     function prank(address sender) external;
+    function recordLogs() external;
     function sign(uint256 privateKey, bytes32 digest)
         external
         returns (uint8 v, bytes32 r, bytes32 s);
@@ -30,6 +38,14 @@ contract SimulatedRefinanceTest {
     uint256 internal constant DESTINATION_COLLATERAL = 9.9 ether;
     uint256 internal constant DESTINATION_DEBT = 10_050_000_000;
     uint256 internal constant SOLVER_FEE = 50_000_000;
+
+    struct CanonicalEventContext {
+        DebtShiftHashing.ExecutionPlanHashInput plan;
+        bytes32 planHash;
+        bytes32 fundingMigrationId;
+        bytes32 fundingEvidenceHash;
+        MigrationEscrow.FundingRecord fundingRecord;
+    }
 
     address internal borrower;
     bytes32 internal migrationId;
@@ -167,6 +183,14 @@ contract SimulatedRefinanceTest {
             sourceDebtToken.balanceOf(address(vault)) == 30_000_000_000 + SOLVER_FEE,
             "vault settlement mismatch"
         );
+    }
+
+    function testCanonicalContractEventsCarryExactIdentityAndAmounts() public {
+        vm.recordLogs();
+        CanonicalEventContext memory context = _executeCanonicalEventPath();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        _assertSourceCanonicalLogs(logs, context);
+        _assertDestinationCanonicalLogs(logs, context);
     }
 
     function testSupplementaryFundingIsSecuredBeforeReservationAndSettledExactly() public {
@@ -410,6 +434,34 @@ contract SimulatedRefinanceTest {
         );
     }
 
+    function testAtomicReleaseForFeasibilityFailureBeforeSourceClose() public {
+        vm.warp(block.timestamp + 1);
+        TestLiquidityVault.FeasibilityEvidence memory failed =
+            _feasibility(planHash, uint64(block.timestamp), 2);
+        failed.maximumSafeBorrowingCapacityUnits = SOURCE_DEBT;
+        failed.fundingShortfallUnits = SOLVER_FEE;
+
+        bytes32 failedHash = vault.recordFailedFeasibilityAndRelease(migrationId, failed);
+
+        require(failedHash == vault.latestFeasibilityHash(migrationId), "failure not recorded");
+        require(
+            _reservationStatus(migrationId) == TestLiquidityVault.ReservationStatus.RELEASED,
+            "reservation not released"
+        );
+        require(vault.reservedUndrawn(address(sourceDebtToken)) == 0, "liquidity still reserved");
+        require(
+            vault.principalReceivable(address(sourceDebtToken)) == 0,
+            "released reservation created receivable"
+        );
+        (uint256 collateralUnits, uint256 debtUnits) = sourceLending.positions(borrower);
+        require(collateralUnits == SOURCE_COLLATERAL, "source collateral moved");
+        require(debtUnits == SOURCE_DEBT, "source debt moved");
+
+        (bool success,) = address(sourceAdapter)
+            .call(abi.encodeCall(SourceAdapter.closeSource, (plan, _sign(planHash))));
+        require(!success, "released failing reservation closed source");
+    }
+
     function testExpiredPlanCannotDrawLiquidity() public {
         vm.warp(uint256(plan.deadline) + 1);
         (bool success,) = address(sourceAdapter)
@@ -650,7 +702,8 @@ contract SimulatedRefinanceTest {
             solverPrincipalUnits: SOURCE_DEBT,
             solverFeeUnits: SOLVER_FEE,
             capitalizedCostUnits: 0,
-            capitalizedCostReceiver: address(0)
+            capitalizedCostReceiver: address(0),
+            lendingAuthorization: bytes("")
         });
     }
 
@@ -684,6 +737,169 @@ contract SimulatedRefinanceTest {
                 deadline: fundedPlan.deadline
             })
         );
+    }
+
+    function _executeCanonicalEventPath() private returns (CanonicalEventContext memory context) {
+        context.plan = _plan(borrower, 2);
+        context.planHash = _planHash(context.plan);
+        DebtShiftHashing.ExecutionPlanHashInput memory fundingPlan = _plan(borrower, 3);
+        context.fundingMigrationId = fundingPlan.migrationId;
+        context.fundingEvidenceHash = _secureSupplementaryFee(fundingPlan);
+        context.fundingRecord = destinationEscrow.fundingRecord(context.fundingMigrationId);
+
+        bytes32 eventFeasibilityHash =
+            _recordPassingFeasibility(context.plan, context.planHash, uint64(block.timestamp));
+        vault.reserve(
+            context.plan.migrationId,
+            IERC20(address(sourceDebtToken)),
+            address(sourceAdapter),
+            context.planHash,
+            eventFeasibilityHash,
+            SOURCE_DEBT,
+            SOLVER_FEE,
+            context.plan.deadline
+        );
+
+        bytes memory signature = _sign(context.planHash);
+        sourceAdapter.closeSource(context.plan, signature);
+        destinationCollateralToken.mint(address(this), DESTINATION_COLLATERAL);
+        destinationCollateralToken.approve(address(destinationEscrow), DESTINATION_COLLATERAL);
+        destinationEscrow.assign(
+            context.plan.migrationId,
+            IERC20(address(destinationCollateralToken)),
+            address(this),
+            DESTINATION_COLLATERAL
+        );
+        bytes32 destinationFeasibilityHash = destinationAdapter.recordFeasibility(
+            context.plan.migrationId,
+            _destinationFeasibility(context.planHash, bytes32(0), 0, DESTINATION_DEBT, 1)
+        );
+        destinationAdapter.openDestination(
+            context.plan,
+            signature,
+            _openTerms(destinationFeasibilityHash, bytes32(0), DESTINATION_DEBT)
+        );
+        sourceDebtToken.mint(address(this), SOURCE_DEBT + SOLVER_FEE);
+        sourceDebtToken.approve(address(vault), SOURCE_DEBT + SOLVER_FEE);
+        vault.settle(context.plan.migrationId, address(this), SOLVER_FEE);
+    }
+
+    function _assertSourceCanonicalLogs(Vm.Log[] memory logs, CanonicalEventContext memory context)
+        private
+        view
+    {
+        _assertLog(
+            logs,
+            address(vault),
+            keccak256("LiquidityReserved(bytes32,address,address,uint256,uint256,uint64)"),
+            context.plan.migrationId,
+            _addressTopic(address(sourceDebtToken)),
+            _addressTopic(address(sourceAdapter)),
+            3,
+            abi.encode(SOURCE_DEBT, SOLVER_FEE, context.plan.deadline)
+        );
+        _assertLog(
+            logs,
+            address(sourceAdapter),
+            keccak256("MigrationAuthorized(bytes32,bytes32,address,uint256)"),
+            context.plan.migrationId,
+            context.planHash,
+            _addressTopic(borrower),
+            3,
+            abi.encode(context.plan.nonce)
+        );
+        _assertLog(
+            logs,
+            address(sourceAdapter),
+            keccak256("SourceClosed(bytes32,address,uint256,uint256)"),
+            context.plan.migrationId,
+            _addressTopic(borrower),
+            bytes32(0),
+            2,
+            abi.encode(SOURCE_DEBT, SOURCE_COLLATERAL)
+        );
+        _assertLog(
+            logs,
+            address(vault),
+            keccak256("LiquiditySettled(bytes32,uint256,uint256)"),
+            context.plan.migrationId,
+            bytes32(0),
+            bytes32(0),
+            1,
+            abi.encode(SOURCE_DEBT, SOLVER_FEE)
+        );
+    }
+
+    function _assertDestinationCanonicalLogs(
+        Vm.Log[] memory logs,
+        CanonicalEventContext memory context
+    ) private view {
+        _assertLog(
+            logs,
+            address(destinationEscrow),
+            keccak256(
+                "SupplementaryFundingSecured(bytes32,address,bytes32,address,address,uint256,bytes32,uint64)"
+            ),
+            context.fundingMigrationId,
+            _addressTopic(address(destinationDebtToken)),
+            context.fundingEvidenceHash,
+            3,
+            abi.encode(
+                context.fundingRecord.depositor,
+                context.fundingRecord.refundReceiver,
+                context.fundingRecord.amountUnits,
+                context.fundingRecord.authorizedUseHash,
+                context.fundingRecord.deadline
+            )
+        );
+        _assertLog(
+            logs,
+            address(destinationEscrow),
+            keccak256("CollateralAssigned(bytes32,address,address,uint256)"),
+            context.plan.migrationId,
+            _addressTopic(address(destinationCollateralToken)),
+            _addressTopic(address(this)),
+            3,
+            abi.encode(DESTINATION_COLLATERAL)
+        );
+        _assertLog(
+            logs,
+            address(destinationAdapter),
+            keccak256("DestinationOpened(bytes32,address,bytes32,uint256,uint256)"),
+            context.plan.migrationId,
+            _addressTopic(borrower),
+            context.planHash,
+            3,
+            abi.encode(DESTINATION_COLLATERAL, DESTINATION_DEBT)
+        );
+    }
+
+    function _assertLog(
+        Vm.Log[] memory logs,
+        address emitter,
+        bytes32 signatureTopic,
+        bytes32 indexedTopic1,
+        bytes32 indexedTopic2,
+        bytes32 indexedTopic3,
+        uint256 indexedCount,
+        bytes memory expectedData
+    ) private pure {
+        for (uint256 index = 0; index < logs.length; index++) {
+            Vm.Log memory candidate = logs[index];
+            if (
+                candidate.emitter != emitter || candidate.topics.length != indexedCount + 1
+                    || candidate.topics[0] != signatureTopic || candidate.topics[1] != indexedTopic1
+                    || (indexedCount > 1 && candidate.topics[2] != indexedTopic2)
+                    || (indexedCount > 2 && candidate.topics[3] != indexedTopic3)
+            ) continue;
+            require(keccak256(candidate.data) == keccak256(expectedData), "event data mismatch");
+            return;
+        }
+        revert("canonical event missing");
+    }
+
+    function _addressTopic(address value) private pure returns (bytes32) {
+        return bytes32(uint256(uint160(value)));
     }
 
     function _reservationStatus(bytes32 id)

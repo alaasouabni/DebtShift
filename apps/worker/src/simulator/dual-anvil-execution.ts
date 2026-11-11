@@ -1,5 +1,9 @@
 import type { MigrationExecutionContext } from '@debtshift/database';
-import { getExecutionPlanTypedData, type DebtShiftEnvironment } from '@debtshift/domain';
+import {
+  getExecutionPlanTypedData,
+  type DebtShiftEnvironment,
+  type Evidence,
+} from '@debtshift/domain';
 import type { TransportObservation } from '@debtshift/intents';
 import { loadFoundryArtifact, type FoundryArtifact } from '@debtshift/protocols';
 import {
@@ -21,7 +25,13 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import type { FinalizedChainAction, MigrationExecutionPort } from '../handlers.js';
+import {
+  PostSourceCapacityDeteriorationError,
+  PreSourceCapacityDeteriorationError,
+  type ChainCanonicalityFailure,
+  type FinalizedChainAction,
+  type MigrationExecutionPort,
+} from '../handlers.js';
 
 type LocalPublicClient = PublicClient<Transport, Chain>;
 type LocalWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
@@ -52,7 +62,12 @@ interface FinancingRevalidation extends Readonly<Record<string, unknown>> {
   readonly originalCapacityEvidenceHash: string;
   readonly sourceState: 'OPEN_MATCHED' | 'CLOSED';
   readonly destinationCollateralUnits: string;
+  readonly collateralPriceInDebtWad: string;
   readonly collateralValueUnits: string;
+  readonly protocolMaximumLtvBps: number;
+  readonly observedTargetBorrowAprBps: number;
+  readonly maximumTargetBorrowAprBps: number;
+  readonly policyFailureCodes: readonly string[];
   readonly protocolBorrowCapacityUnits: string;
   readonly policyBorrowCapacityUnits: string;
   readonly liquidityBorrowCapacityUnits: string;
@@ -75,6 +90,41 @@ interface EscrowFundingRecord {
   readonly status: number;
 }
 
+interface SolverExposure {
+  readonly principalReceivableUnits: bigint;
+  readonly feeClaimUnits: bigint;
+  readonly totalClaimUnits: bigint;
+  readonly reservationStatus: number;
+}
+
+interface SourceFeasibilityEvidenceInput {
+  readonly planHash: Hex;
+  readonly analysisHash: Hex;
+  readonly externalFundingEvidenceHash: Hex;
+  readonly liquidityAsset: Address;
+  readonly solverPrincipalUnits: bigint;
+  readonly solverFeeUnits: bigint;
+  readonly capitalizedCostUnits: bigint;
+  readonly totalRequiredUnits: bigint;
+  readonly confirmedExternalFundingUnits: bigint;
+  readonly maximumSafeBorrowingCapacityUnits: bigint;
+  readonly requiredDestinationBorrowUnits: bigint;
+  readonly fundingShortfallUnits: bigint;
+  readonly sequence: bigint;
+  readonly evaluatedAt: bigint;
+  readonly validUntil: bigint;
+}
+
+class FinancingCapacityFailure extends Error {
+  override readonly name = 'FinancingCapacityFailure';
+
+  constructor(readonly revalidation: FinancingRevalidation) {
+    super(
+      `Fresh financing has ${revalidation.fundingShortfallUnits} settlement units of shortfall at ${revalidation.checkpoint}.`,
+    );
+  }
+}
+
 const eventTopics = {
   liquidityReserved: eventTopic(
     'LiquidityReserved(bytes32,address,address,uint256,uint256,uint64)',
@@ -84,6 +134,7 @@ const eventTopics = {
   collateralAssigned: eventTopic('CollateralAssigned(bytes32,address,address,uint256)'),
   destinationOpened: eventTopic('DestinationOpened(bytes32,address,bytes32,uint256,uint256)'),
   liquiditySettled: eventTopic('LiquiditySettled(bytes32,uint256,uint256)'),
+  reservationReleased: eventTopic('ReservationReleased(bytes32)'),
 } as const;
 
 /**
@@ -150,6 +201,108 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       transport: http(environment.DESTINATION_RPC_URL),
     });
     this.#artifacts = loadArtifacts();
+  }
+
+  async verifyCanonicalEvidence(
+    records: readonly Evidence[],
+  ): Promise<readonly ChainCanonicalityFailure[]> {
+    const failures: ChainCanonicalityFailure[] = [];
+    for (const evidence of records) {
+      if (
+        evidence.chainId === undefined ||
+        evidence.blockNumber === undefined ||
+        evidence.blockHash === undefined
+      ) {
+        continue;
+      }
+      const client = this.#clientForChain(evidence.chainId);
+      const requiredConfirmations = this.#confirmationsForChain(evidence.chainId);
+      const observedAt = new Date().toISOString();
+      if (client === undefined || requiredConfirmations === undefined) {
+        failures.push({
+          evidence,
+          reason: 'UNSUPPORTED_CHAIN_ID',
+          observedAt,
+          requiredConfirmations: 0,
+          observedTipBlockNumber: '0',
+        });
+        continue;
+      }
+      const observedTip = await client.getBlockNumber();
+      let observedBlockHash: Hex | undefined;
+      try {
+        const block = await client.getBlock({ blockNumber: BigInt(evidence.blockNumber) });
+        observedBlockHash = block.hash ?? undefined;
+      } catch {
+        failures.push({
+          evidence,
+          reason: 'CANONICAL_BLOCK_NOT_FOUND',
+          observedAt,
+          requiredConfirmations,
+          observedTipBlockNumber: observedTip.toString(),
+        });
+        continue;
+      }
+      if (observedBlockHash?.toLowerCase() !== evidence.blockHash.toLowerCase()) {
+        failures.push({
+          evidence,
+          reason: 'CANONICAL_BLOCK_HASH_MISMATCH',
+          observedAt,
+          requiredConfirmations,
+          observedTipBlockNumber: observedTip.toString(),
+          ...(observedBlockHash === undefined ? {} : { observedBlockHash }),
+        });
+        continue;
+      }
+      const observedConfirmations =
+        observedTip >= BigInt(evidence.blockNumber)
+          ? observedTip - BigInt(evidence.blockNumber) + 1n
+          : 0n;
+      if (observedConfirmations < BigInt(requiredConfirmations)) {
+        failures.push({
+          evidence,
+          reason: 'FINALITY_DEPTH_LOST',
+          observedAt,
+          requiredConfirmations,
+          observedTipBlockNumber: observedTip.toString(),
+          observedBlockHash,
+        });
+        continue;
+      }
+      if (evidence.transactionHash === undefined) continue;
+      try {
+        const receipt = await client.getTransactionReceipt({ hash: evidence.transactionHash });
+        if (
+          receipt.status !== 'success' ||
+          receipt.blockNumber.toString() !== evidence.blockNumber ||
+          receipt.blockHash.toLowerCase() !== evidence.blockHash.toLowerCase()
+        ) {
+          failures.push({
+            evidence,
+            reason:
+              receipt.status === 'success'
+                ? 'TRANSACTION_RECEIPT_MOVED_OR_REPLACED'
+                : 'TRANSACTION_RECEIPT_REVERTED',
+            observedAt,
+            requiredConfirmations,
+            observedTipBlockNumber: observedTip.toString(),
+            observedBlockHash,
+            observedReceiptBlockNumber: receipt.blockNumber.toString(),
+            observedReceiptBlockHash: receipt.blockHash,
+          });
+        }
+      } catch {
+        failures.push({
+          evidence,
+          reason: 'TRANSACTION_RECEIPT_NOT_FOUND',
+          observedAt,
+          requiredConfirmations,
+          observedTipBlockNumber: observedTip.toString(),
+          observedBlockHash,
+        });
+      }
+    }
+    return failures;
   }
 
   async reserve(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
@@ -227,11 +380,19 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       );
     }
 
-    const financingRevalidation = await this.#revalidateFinancing(
-      context,
-      artifacts,
-      'BEFORE_SOURCE_CLOSE',
-    );
+    let financingRevalidation: FinancingRevalidation;
+    try {
+      financingRevalidation = await this.#revalidateFinancing(
+        context,
+        artifacts,
+        'BEFORE_SOURCE_CLOSE',
+      );
+    } catch (error) {
+      if (!(error instanceof FinancingCapacityFailure)) throw error;
+      throw new PreSourceCapacityDeteriorationError(
+        await this.#releaseFailedReservation(context, artifacts, error.revalidation),
+      );
+    }
     const proof = await this.#recordFeasibility(context, artifacts, financingRevalidation);
     const authorization = getExecutionPlanTypedData(
       plan,
@@ -382,11 +543,19 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     if (context.transportLeg.observedOutputUnits === null) {
       throw new Error('Destination collateral has not been independently observed.');
     }
-    const financingRevalidation = await this.#revalidateFinancing(
-      context,
-      artifacts,
-      'BEFORE_TARGET_BORROW',
-    );
+    let financingRevalidation: FinancingRevalidation;
+    try {
+      financingRevalidation = await this.#revalidateFinancing(
+        context,
+        artifacts,
+        'BEFORE_TARGET_BORROW',
+      );
+    } catch (error) {
+      if (!(error instanceof FinancingCapacityFailure)) throw error;
+      throw new PostSourceCapacityDeteriorationError(
+        await this.#recordCapacityDeterioration(context, artifacts, error.revalidation),
+      );
+    }
     const proof = await this.#recordDestinationFeasibility(
       context,
       artifacts,
@@ -419,6 +588,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
           solverFeeUnits: BigInt(plan.financing.solverFeeUnits),
           capitalizedCostUnits: BigInt(plan.financing.capitalizedCostUnits),
           capitalizedCostReceiver: '0x0000000000000000000000000000000000000000',
+          lendingAuthorization: '0x',
         },
       ],
       {
@@ -507,7 +677,26 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     const artifacts = await this.#artifacts;
     const plan = context.signedPlan.plan;
     const migrationId = context.migration.migrationId as Hex;
-    const existing = await this.#eventAction(
+    const existingDestinationRelease = await this.#eventAction(
+      this.#destinationPublic,
+      this.#environment.DESTINATION_CHAIN_ID,
+      this.#environment.DESTINATION_ESCROW_ADDRESS,
+      eventTopics.balanceReleased,
+      [
+        migrationId,
+        addressTopic(this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS),
+        addressTopic(plan.refundReceiver),
+      ],
+      {
+        action: 'executeRecovery',
+        reason,
+        custodyLocation: 'DESTINATION_ESCROW',
+        reconciled: true,
+      },
+    );
+    if (existingDestinationRelease !== undefined) return existingDestinationRelease;
+
+    const existingSourceRelease = await this.#eventAction(
       this.#sourcePublic,
       this.#environment.SOURCE_CHAIN_ID,
       this.#environment.SOURCE_ESCROW_ADDRESS,
@@ -517,9 +706,55 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         addressTopic(this.#environment.SOURCE_COLLATERAL_TOKEN_ADDRESS),
         addressTopic(plan.refundReceiver),
       ],
-      { action: 'executeRecovery', reason, reconciled: true },
+      {
+        action: 'executeRecovery',
+        reason,
+        custodyLocation: 'SOURCE_ESCROW',
+        reconciled: true,
+      },
     );
-    if (existing !== undefined) return existing;
+    if (existingSourceRelease !== undefined) return existingSourceRelease;
+
+    const destinationCollateral = await this.#readBigInt(
+      this.#destinationPublic,
+      artifacts.escrow,
+      this.#environment.DESTINATION_ESCROW_ADDRESS,
+      'categorizedBalances',
+      [migrationId, this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS, 0],
+    );
+    if (destinationCollateral > 0n) {
+      const solverExposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+      return this.#writeAction(
+        this.#destinationWallet,
+        this.#destinationPublic,
+        this.#environment.DESTINATION_CHAIN_ID,
+        artifacts.escrow,
+        this.#environment.DESTINATION_ESCROW_ADDRESS,
+        'release',
+        [
+          migrationId,
+          this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS,
+          plan.refundReceiver,
+          destinationCollateral,
+        ],
+        {
+          action: 'executeRecovery',
+          reason,
+          policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+          custodyLocation: 'DESTINATION_ESCROW',
+          refundReceiver: plan.refundReceiver,
+          refundAsset: this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS,
+          refundUnits: destinationCollateral.toString(),
+          solverExposure: {
+            asset: this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+            principalUnits: solverExposure.principalReceivableUnits.toString(),
+            feeUnits: solverExposure.feeClaimUnits.toString(),
+            totalClaimUnits: solverExposure.totalClaimUnits.toString(),
+            disposition: 'UNSETTLED_EXPLICIT_CLAIM',
+          },
+        },
+      );
+    }
 
     const expectedRefund = BigInt(context.sourceSnapshot.collateralUnits);
     const currentlyAssigned = await this.#readBigInt(
@@ -757,7 +992,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     if (collateralUnits < BigInt(plan.minDestinationCollateralUnits)) {
       throw new Error(`Destination collateral is below the signed minimum at ${checkpoint}.`);
     }
-    const [priceWad, protocolMaximumLtv, currentLiquidity] = await Promise.all([
+    const [priceWad, protocolMaximumLtv, targetBorrowAprBps, currentLiquidity] = await Promise.all([
       this.#readBigInt(
         this.#destinationPublic,
         artifacts.targetLending,
@@ -770,6 +1005,13 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         artifacts.targetLending,
         this.#environment.DESTINATION_LENDING_ADDRESS,
         'maximumLtvBps',
+        [],
+      ),
+      this.#readUnsigned(
+        this.#destinationPublic,
+        artifacts.targetLending,
+        this.#environment.DESTINATION_LENDING_ADDRESS,
+        'borrowAprBps',
         [],
       ),
       this.#readBigInt(
@@ -794,7 +1036,22 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     const normalPolicyCapacity = (collateralValue * BigInt(safetyPolicy.maximumLtvBps)) / 10_000n;
     const stressPolicyCapacity =
       (stressedCollateralValue * BigInt(safetyPolicy.stressMaximumLtvBps)) / 10_000n;
-    const policyCapacity = minBigInt(normalPolicyCapacity, stressPolicyCapacity);
+    const maximumTargetBorrowAprBps = Math.max(
+      0,
+      context.sourceSnapshot.borrowAprBps - context.signedIntent.intent.minAprReductionBps,
+    );
+    const protocolMaximumLtvBps = Number(protocolMaximumLtv);
+    const observedTargetBorrowAprBps = Number(targetBorrowAprBps);
+    if (
+      !Number.isSafeInteger(protocolMaximumLtvBps) ||
+      !Number.isSafeInteger(observedTargetBorrowAprBps)
+    ) {
+      throw new Error(`Destination market parameters exceed safe integer bounds at ${checkpoint}.`);
+    }
+    const ratePolicyEligible = observedTargetBorrowAprBps <= maximumTargetBorrowAprBps;
+    const policyFailureCodes = ratePolicyEligible ? [] : ['TARGET_RATE_EXCEEDS_SIGNED_MAXIMUM'];
+    const collateralPolicyCapacity = minBigInt(normalPolicyCapacity, stressPolicyCapacity);
+    const policyCapacity = ratePolicyEligible ? collateralPolicyCapacity : 0n;
     const preBorrowLiquidity = targetAlreadyOpen
       ? currentLiquidity + requiredBorrow
       : currentLiquidity;
@@ -810,10 +1067,29 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     const totalRequired = BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits);
     const availableFunding = maximumSafeCapacity + escrowFunding;
     const shortfall = totalRequired > availableFunding ? totalRequired - availableFunding : 0n;
+    const revalidation: FinancingRevalidation = {
+      checkpoint,
+      observedAt: new Date().toISOString(),
+      originalCapacityEvidenceHash: financing.capacityEvidenceHash,
+      sourceState: afterSourceClose ? 'CLOSED' : 'OPEN_MATCHED',
+      destinationCollateralUnits: collateralUnits.toString(),
+      collateralPriceInDebtWad: priceWad.toString(),
+      collateralValueUnits: collateralValue.toString(),
+      protocolMaximumLtvBps,
+      observedTargetBorrowAprBps,
+      maximumTargetBorrowAprBps,
+      policyFailureCodes,
+      protocolBorrowCapacityUnits: protocolCapacity.toString(),
+      policyBorrowCapacityUnits: policyCapacity.toString(),
+      liquidityBorrowCapacityUnits: liquidityCapacity.toString(),
+      signedBorrowCapacityUnits: signedCapacity.toString(),
+      maximumSafeBorrowingCapacityUnits: maximumSafeCapacity.toString(),
+      confirmedExternalFundingUnits: escrowFunding.toString(),
+      requiredDestinationBorrowUnits: requiredBorrow.toString(),
+      fundingShortfallUnits: shortfall.toString(),
+    };
     if (requiredBorrow > maximumSafeCapacity || shortfall !== 0n) {
-      throw new Error(
-        `Fresh financing has ${shortfall.toString()} settlement units of shortfall at ${checkpoint}.`,
-      );
+      throw new FinancingCapacityFailure(revalidation);
     }
 
     if (checkpoint === 'BEFORE_SETTLEMENT' || checkpoint === 'AFTER_SETTLEMENT') {
@@ -829,21 +1105,209 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       }
     }
 
+    return revalidation;
+  }
+
+  async #recordCapacityDeterioration(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    revalidation: FinancingRevalidation,
+  ): Promise<FinalizedChainAction> {
+    const migrationId = context.migration.migrationId as Hex;
+    const proof = await this.#recordDestinationFeasibility(context, artifacts, revalidation);
+    const receipt = await this.#destinationPublic.waitForTransactionReceipt({
+      hash: proof.transactionHash,
+      confirmations: this.#environment.DESTINATION_FINALITY_CONFIRMATIONS,
+    });
+    if (receipt.status !== 'success') {
+      throw new Error(`Failed destination feasibility receipt reverted: ${proof.transactionHash}`);
+    }
+
+    const [collateralCustodyUnits, solverExposure] = await Promise.all([
+      this.#readBigInt(
+        this.#destinationPublic,
+        artifacts.escrow,
+        this.#environment.DESTINATION_ESCROW_ADDRESS,
+        'categorizedBalances',
+        [migrationId, this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS, 0],
+      ),
+      this.#readSolverExposure(artifacts.vault, migrationId),
+    ]);
+    const observedCollateral = BigInt(context.transportLeg.observedOutputUnits ?? '0');
+    if (collateralCustodyUnits !== observedCollateral || observedCollateral === 0n) {
+      throw new Error(
+        'Destination collateral custody does not match the finalized transport observation.',
+      );
+    }
+
+    const collateralCustody = {
+      kind: 'COLLATERAL_CUSTODY',
+      chainId: this.#environment.DESTINATION_CHAIN_ID,
+      escrow: this.#environment.DESTINATION_ESCROW_ADDRESS,
+      asset: this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS,
+      amountUnits: collateralCustodyUnits.toString(),
+      category: 'TRANSPORTED_COLLATERAL',
+      disposition: 'HELD_FOR_SIGNED_RECOVERY',
+    } as const;
+    const solverReceivable = {
+      kind: 'SOLVER_RECEIVABLE',
+      chainId: this.#environment.SOURCE_CHAIN_ID,
+      provider: this.#environment.SOURCE_VAULT_ADDRESS,
+      asset: this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+      principalUnits: solverExposure.principalReceivableUnits.toString(),
+      feeUnits: solverExposure.feeClaimUnits.toString(),
+      totalClaimUnits: solverExposure.totalClaimUnits.toString(),
+      reservationStatus: solverExposure.reservationStatus,
+      disposition: 'UNSETTLED_EXPLICIT_CLAIM',
+    } as const;
+    const supplementaryFunding = context.signedPlan.plan.financing.externalFunding.map(
+      (funding) => ({
+        kind: 'SUPPLEMENTARY_FUNDING_CUSTODY',
+        chainId: funding.asset.chainId,
+        escrow: funding.escrow,
+        asset: funding.asset.address,
+        amountUnits: funding.amountUnits,
+        evidenceId: funding.evidenceId,
+        refundReceiver: funding.refundReceiver,
+        deadline: funding.expiresAt,
+        disposition: 'LOCKED_UNTIL_SIGNED_REFUND_CONDITION',
+      }),
+    );
+
+    return finalizedAction(
+      this.#environment.DESTINATION_CHAIN_ID,
+      receipt,
+      this.#environment.DESTINATION_FINALITY_CONFIRMATIONS,
+      {
+        action: 'recordCapacityDeterioration',
+        reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
+        policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        failedFeasibility: {
+          feasibilityHash: proof.feasibilityHash,
+          transactionHash: proof.transactionHash,
+        },
+        financingRevalidation: revalidation,
+        collateralCustody,
+        solverExposure: solverReceivable,
+        supplementaryFunding,
+        residualAssets: [collateralCustody, solverReceivable, ...supplementaryFunding],
+      },
+    );
+  }
+
+  async #readSolverExposure(artifact: FoundryArtifact, migrationId: Hex): Promise<SolverExposure> {
+    const result = await this.#sourcePublic.readContract({
+      address: this.#environment.SOURCE_VAULT_ADDRESS,
+      abi: artifact.abi,
+      functionName: 'reservations',
+      args: [migrationId],
+    });
+    const values = Array.isArray(result) ? result : undefined;
+    const feeClaimUnits = values?.[4];
+    const reservationStatus = values?.[6];
+    const principalReceivableUnits = values?.[8];
+    if (
+      typeof feeClaimUnits !== 'bigint' ||
+      (typeof reservationStatus !== 'number' && typeof reservationStatus !== 'bigint') ||
+      typeof principalReceivableUnits !== 'bigint'
+    ) {
+      throw new Error('Unexpected source liquidity reservation response.');
+    }
     return {
-      checkpoint,
-      observedAt: new Date().toISOString(),
-      originalCapacityEvidenceHash: financing.capacityEvidenceHash,
-      sourceState: afterSourceClose ? 'CLOSED' : 'OPEN_MATCHED',
-      destinationCollateralUnits: collateralUnits.toString(),
-      collateralValueUnits: collateralValue.toString(),
-      protocolBorrowCapacityUnits: protocolCapacity.toString(),
-      policyBorrowCapacityUnits: policyCapacity.toString(),
-      liquidityBorrowCapacityUnits: liquidityCapacity.toString(),
-      signedBorrowCapacityUnits: signedCapacity.toString(),
-      maximumSafeBorrowingCapacityUnits: maximumSafeCapacity.toString(),
-      confirmedExternalFundingUnits: escrowFunding.toString(),
-      requiredDestinationBorrowUnits: requiredBorrow.toString(),
-      fundingShortfallUnits: shortfall.toString(),
+      principalReceivableUnits,
+      feeClaimUnits,
+      totalClaimUnits: principalReceivableUnits + feeClaimUnits,
+      reservationStatus: Number(reservationStatus),
+    };
+  }
+
+  async #releaseFailedReservation(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    revalidation: FinancingRevalidation,
+  ): Promise<FinalizedChainAction> {
+    const migrationId = context.migration.migrationId as Hex;
+    const existing = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      eventTopics.reservationReleased,
+      [migrationId],
+      { action: 'releaseFailedReservation', reconciled: true },
+    );
+    if (existing !== undefined) {
+      return this.#releasedReservationAction(context, artifacts, revalidation, existing);
+    }
+
+    const evidence = await this.#buildSourceFeasibilityEvidence(context, artifacts, revalidation);
+    const action = await this.#writeAction(
+      this.#sourceWallet,
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      artifacts.vault,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      'recordFailedFeasibilityAndRelease',
+      [migrationId, evidence],
+      { action: 'releaseFailedReservation' },
+    );
+    return this.#releasedReservationAction(context, artifacts, revalidation, action);
+  }
+
+  async #releasedReservationAction(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    revalidation: FinancingRevalidation,
+    action: FinalizedChainAction,
+  ): Promise<FinalizedChainAction> {
+    const migrationId = context.migration.migrationId as Hex;
+    const [feasibilityHash, reservation, sourcePosition] = await Promise.all([
+      this.#readHex(
+        this.#sourcePublic,
+        artifacts.vault,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'latestFeasibilityHash',
+        [migrationId],
+      ),
+      this.#readSolverExposure(artifacts.vault, migrationId),
+      this.#readPosition(
+        this.#sourcePublic,
+        artifacts.sourceLending,
+        this.#environment.SOURCE_LENDING_ADDRESS,
+        context.signedPlan.plan.borrower,
+      ),
+    ]);
+    if (reservation.reservationStatus !== 4 || reservation.principalReceivableUnits !== 0n) {
+      throw new Error('Failed feasibility did not release the undrawn source reservation.');
+    }
+    if (
+      sourcePosition[0] < BigInt(context.signedPlan.plan.sourceCollateralMinUnits) ||
+      sourcePosition[1] !== BigInt(context.signedPlan.plan.sourceRepaymentMaxUnits)
+    ) {
+      throw new Error('Source position changed during pre-source reservation release.');
+    }
+    return {
+      ...action,
+      payload: {
+        ...action.payload,
+        reason: 'DESTINATION_CAPACITY_DETERIORATED_BEFORE_SOURCE_CLOSE',
+        outcome: 'REQUOTE_REQUIRED',
+        feasibilityHash,
+        financingRevalidation: revalidation,
+        reservation: {
+          provider: this.#environment.SOURCE_VAULT_ADDRESS,
+          asset: this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+          principalUnits: context.signedPlan.plan.principalMaxUnits,
+          feeCapUnits: context.signedPlan.plan.feeMaxUnits,
+          status: 'RELEASED',
+          principalReceivableUnits: '0',
+        },
+        sourcePosition: {
+          borrower: context.signedPlan.plan.borrower,
+          collateralUnits: sourcePosition[0].toString(),
+          debtUnits: sourcePosition[1].toString(),
+          disposition: 'UNCHANGED',
+        },
+      },
     };
   }
 
@@ -852,35 +1316,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     artifacts: LocalArtifacts,
     revalidation: FinancingRevalidation,
   ): Promise<{ readonly feasibilityHash: Hex; readonly transactionHash: Hex }> {
-    const plan = context.signedPlan.plan;
-    const financing = plan.financing;
-    const externalFundingEvidenceHash = this.#fundingEvidenceHash(context);
-    const sequence =
-      (await this.#readBigInt(
-        this.#sourcePublic,
-        artifacts.vault,
-        this.#environment.SOURCE_VAULT_ADDRESS,
-        'latestFeasibilitySequence',
-        [context.migration.migrationId],
-      )) + 1n;
-    const evaluatedAt = (await this.#sourcePublic.getBlock()).timestamp;
-    const evidence = {
-      planHash: context.signedPlan.planHash,
-      analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
-      externalFundingEvidenceHash,
-      liquidityAsset: this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
-      solverPrincipalUnits: BigInt(financing.solverPrincipalUnits),
-      solverFeeUnits: BigInt(financing.solverFeeUnits),
-      capitalizedCostUnits: BigInt(financing.capitalizedCostUnits),
-      totalRequiredUnits: BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
-      confirmedExternalFundingUnits: BigInt(revalidation.confirmedExternalFundingUnits),
-      maximumSafeBorrowingCapacityUnits: BigInt(revalidation.maximumSafeBorrowingCapacityUnits),
-      requiredDestinationBorrowUnits: BigInt(revalidation.requiredDestinationBorrowUnits),
-      fundingShortfallUnits: BigInt(revalidation.fundingShortfallUnits),
-      sequence,
-      evaluatedAt,
-      validUntil: BigInt(financing.validUntil),
-    } as const;
+    const evidence = await this.#buildSourceFeasibilityEvidence(context, artifacts, revalidation);
     const transactionHash = await this.#writeHash(
       this.#sourceWallet,
       this.#sourcePublic,
@@ -897,6 +1333,42 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       [context.migration.migrationId],
     );
     return { feasibilityHash, transactionHash };
+  }
+
+  async #buildSourceFeasibilityEvidence(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    revalidation: FinancingRevalidation,
+  ): Promise<SourceFeasibilityEvidenceInput> {
+    const plan = context.signedPlan.plan;
+    const financing = plan.financing;
+    const externalFundingEvidenceHash = this.#fundingEvidenceHash(context);
+    const sequence =
+      (await this.#readBigInt(
+        this.#sourcePublic,
+        artifacts.vault,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'latestFeasibilitySequence',
+        [context.migration.migrationId],
+      )) + 1n;
+    const evaluatedAt = (await this.#sourcePublic.getBlock()).timestamp;
+    return {
+      planHash: context.signedPlan.planHash,
+      analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
+      externalFundingEvidenceHash,
+      liquidityAsset: this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+      solverPrincipalUnits: BigInt(financing.solverPrincipalUnits),
+      solverFeeUnits: BigInt(financing.solverFeeUnits),
+      capitalizedCostUnits: BigInt(financing.capitalizedCostUnits),
+      totalRequiredUnits: BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
+      confirmedExternalFundingUnits: BigInt(revalidation.confirmedExternalFundingUnits),
+      maximumSafeBorrowingCapacityUnits: BigInt(revalidation.maximumSafeBorrowingCapacityUnits),
+      requiredDestinationBorrowUnits: BigInt(revalidation.requiredDestinationBorrowUnits),
+      fundingShortfallUnits: BigInt(revalidation.fundingShortfallUnits),
+      sequence,
+      evaluatedAt,
+      validUntil: BigInt(financing.validUntil),
+    };
   }
 
   async #recordDestinationFeasibility(
@@ -1133,7 +1605,10 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       functionName,
       args,
     });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash });
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: transactionHash,
+      confirmations: this.#confirmationsForClient(publicClient),
+    });
     if (receipt.status !== 'success') {
       throw new Error(`${functionName} reverted: ${transactionHash}`);
     }
@@ -1158,11 +1633,15 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       functionName,
       args,
     });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash });
+    const confirmations = this.#confirmationsForClient(publicClient);
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: transactionHash,
+      confirmations,
+    });
     if (receipt.status !== 'success') {
       throw new Error(`${functionName} reverted: ${transactionHash}`);
     }
-    return finalizedAction(chainId, receipt, payload);
+    return finalizedAction(chainId, receipt, confirmations, payload);
   }
 
   async #eventAction(
@@ -1179,17 +1658,44 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       expectedTopics.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
     );
     if (existing === undefined) return undefined;
-    const receipt = await client.getTransactionReceipt({ hash: existing.transactionHash });
+    const confirmations = this.#confirmationsForClient(client);
+    const receipt = await client.waitForTransactionReceipt({
+      hash: existing.transactionHash,
+      confirmations,
+    });
     if (receipt.status !== 'success') {
       throw new Error(`Previously observed transaction reverted: ${existing.transactionHash}`);
     }
-    return finalizedAction(chainId, receipt, payload);
+    return finalizedAction(chainId, receipt, confirmations, payload);
+  }
+
+  #clientForChain(chainId: number): LocalPublicClient | undefined {
+    if (chainId === this.#environment.SOURCE_CHAIN_ID) return this.#sourcePublic;
+    if (chainId === this.#environment.DESTINATION_CHAIN_ID) return this.#destinationPublic;
+    return undefined;
+  }
+
+  #confirmationsForChain(chainId: number): number | undefined {
+    if (chainId === this.#environment.SOURCE_CHAIN_ID) {
+      return this.#environment.SOURCE_FINALITY_CONFIRMATIONS;
+    }
+    if (chainId === this.#environment.DESTINATION_CHAIN_ID) {
+      return this.#environment.DESTINATION_FINALITY_CONFIRMATIONS;
+    }
+    return undefined;
+  }
+
+  #confirmationsForClient(client: LocalPublicClient): number {
+    return client === this.#sourcePublic
+      ? this.#environment.SOURCE_FINALITY_CONFIRMATIONS
+      : this.#environment.DESTINATION_FINALITY_CONFIRMATIONS;
   }
 }
 
 function finalizedAction(
   chainId: number,
   receipt: TransactionReceipt,
+  requiredConfirmations: number,
   payload: Record<string, unknown>,
 ): FinalizedChainAction {
   return {
@@ -1197,7 +1703,10 @@ function finalizedAction(
     transactionHash: receipt.transactionHash,
     blockNumber: receipt.blockNumber.toString(),
     blockHash: receipt.blockHash,
-    payload,
+    payload: {
+      ...payload,
+      finality: { requiredConfirmations, canonicalBlockVerified: true },
+    },
   };
 }
 

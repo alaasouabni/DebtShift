@@ -149,6 +149,34 @@ contract TestLiquidityVault is ReentrancyGuard {
         returns (bytes32 feasibilityHash)
     {
         if (!verifiers[msg.sender]) revert Unauthorized();
+        return _recordFeasibility(migrationId, evidence);
+    }
+
+    function recordFailedFeasibilityAndRelease(
+        bytes32 migrationId,
+        FeasibilityEvidence calldata evidence
+    ) external onlyOperator returns (bytes32 feasibilityHash) {
+        if (!verifiers[msg.sender]) revert Unauthorized();
+        Reservation storage reservation = reservations[migrationId];
+        if (
+            reservation.status != ReservationStatus.ACTIVE
+                || reservation.planHash != evidence.planHash
+                || address(reservation.asset) != evidence.liquidityAsset
+                || reservation.principalUnits != evidence.solverPrincipalUnits
+                || reservation.feeCapUnits != evidence.solverFeeUnits
+                || (evidence.fundingShortfallUnits == 0
+                    && evidence.requiredDestinationBorrowUnits
+                        <= evidence.maximumSafeBorrowingCapacityUnits)
+        ) revert InvalidFeasibility();
+
+        feasibilityHash = _recordFeasibility(migrationId, evidence);
+        _releaseReservation(migrationId, reservation);
+    }
+
+    function _recordFeasibility(bytes32 migrationId, FeasibilityEvidence calldata evidence)
+        private
+        returns (bytes32 feasibilityHash)
+    {
         _validateFeasibilityShape(migrationId, evidence);
 
         FeasibilityEvidence storage current = _latestFeasibility[migrationId];
@@ -282,6 +310,10 @@ contract TestLiquidityVault is ReentrancyGuard {
     function release(bytes32 migrationId) external onlyOperator {
         Reservation storage reservation = reservations[migrationId];
         if (reservation.status != ReservationStatus.ACTIVE) revert InvalidReservation();
+        _releaseReservation(migrationId, reservation);
+    }
+
+    function _releaseReservation(bytes32 migrationId, Reservation storage reservation) private {
         reservedUndrawn[address(reservation.asset)] -= reservation.principalUnits;
         reservation.status = ReservationStatus.RELEASED;
         emit ReservationReleased(migrationId);

@@ -91,5 +91,8 @@ provider before a committed quote can be requested.
 - 1Click unit tests prove official-origin pinning, authentication, dry-only requests, and response
   validation.
 - Aave, Morpho, and Chainlink unit tests cover pinned reads and fail-closed identity/freshness checks.
-- Pinned public-fork tests remain required before M3/M8 completion.
+- The pinned Base public-fork test passes the bounded Aave source close, independent escrow transport,
+  signed destination feasibility, atomic Morpho enable/supply/borrow/revoke path, exact settlement,
+  and vault repayment against block `55,600,000`; production deployment manifests, external audit,
+  and the broader release gates remain required.
 - No live committed quote or funded action is run in CI.

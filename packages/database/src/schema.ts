@@ -39,6 +39,7 @@ export const migrationPhaseEnum = pgEnum('migration_phase', [
   'COMPLETED',
   'RECOVERY',
   'FAILED_SAFE',
+  'REQUOTE_REQUIRED',
   'EXPIRED',
 ]);
 export const evidenceStateEnum = pgEnum('evidence_verification_state', [

@@ -9,6 +9,7 @@ import {
   encodeFunctionData,
   getAddress,
   isAddressEqual,
+  zeroAddress,
   type Address,
   type Hex,
   type PublicClient,
@@ -61,6 +62,17 @@ export const AAVE_POOL_WRITE_ABI = [
 ] as const;
 
 export const AAVE_DATA_PROVIDER_ABI = [
+  {
+    type: 'function',
+    name: 'getReserveTokensAddresses',
+    stateMutability: 'view',
+    inputs: [{ name: 'asset', type: 'address' }],
+    outputs: [
+      { name: 'aTokenAddress', type: 'address' },
+      { name: 'stableDebtTokenAddress', type: 'address' },
+      { name: 'variableDebtTokenAddress', type: 'address' },
+    ],
+  },
   {
     type: 'function',
     name: 'getUserReserveData',
@@ -145,11 +157,75 @@ export interface AaveBorrowerCloseRequest {
   readonly collateralReceiver: Address;
 }
 
+export interface AaveReserveTokenAddresses {
+  readonly aToken: Address;
+  readonly stableDebtToken: Address;
+  readonly variableDebtToken: Address;
+}
+
 export interface PreparedEvmTransaction {
   readonly to: Address;
   readonly data: Hex;
   readonly value: 0n;
   readonly description: string;
+}
+
+export async function readAaveReserveTokenAddresses(
+  client: PublicClient,
+  dataProviderInput: Address,
+  assetInput: Address,
+  blockNumber?: bigint,
+): Promise<AaveReserveTokenAddresses> {
+  const dataProvider = getAddress(dataProviderInput);
+  const asset = getAddress(assetInput);
+  const [aToken, stableDebtToken, variableDebtToken] = await client.readContract({
+    address: dataProvider,
+    abi: AAVE_DATA_PROVIDER_ABI,
+    functionName: 'getReserveTokensAddresses',
+    args: [asset],
+    ...(blockNumber === undefined ? {} : { blockNumber }),
+  });
+  const normalized = {
+    aToken: getAddress(aToken),
+    stableDebtToken: getAddress(stableDebtToken),
+    variableDebtToken: getAddress(variableDebtToken),
+  };
+  if (
+    normalized.aToken === zeroAddress ||
+    normalized.variableDebtToken === zeroAddress ||
+    isAddressEqual(normalized.aToken, normalized.variableDebtToken)
+  ) {
+    throw new Error(`Aave reserve ${asset} returned invalid token identities.`);
+  }
+  return normalized;
+}
+
+/**
+ * Builds the borrower's exact aToken approval for the atomic DebtShift source
+ * module. It is a collateral claim only: repayment and withdrawal still occur
+ * together inside the signed SourceAdapter transaction.
+ */
+export function buildAaveCollateralClaimAuthorization(
+  aTokenInput: Address,
+  sourceLendingInput: Address,
+  collateralUnits: bigint,
+): PreparedEvmTransaction {
+  if (collateralUnits <= 0n) throw new Error('Aave collateral authorization must be positive.');
+  const aToken = getAddress(aTokenInput);
+  const sourceLending = getAddress(sourceLendingInput);
+  if (aToken === zeroAddress || sourceLending === zeroAddress) {
+    throw new Error('Aave collateral authorization addresses must be non-zero.');
+  }
+  return {
+    to: aToken,
+    data: encodeFunctionData({
+      abi: ERC20_METADATA_ABI,
+      functionName: 'approve',
+      args: [sourceLending, collateralUnits],
+    }),
+    value: 0n,
+    description: 'Approve the exact signed aToken collateral claim for atomic source closure.',
+  };
 }
 
 /**

@@ -32,6 +32,7 @@ import {
   positionSnapshots,
   providerObservations,
   providerQuotes,
+  recoveryCases,
   transportLegs,
   wallets,
 } from './schema.js';
@@ -271,33 +272,40 @@ export async function getMigrationDetails(database: DebtShiftDatabase, migration
     .where(eq(migrations.migrationId, migrationId))
     .limit(1);
   if (migration === undefined) return undefined;
-  const [storedEvidence, storedEvents, storedCommands, storedLedger, storedReservations] =
-    await Promise.all([
-      database
-        .select()
-        .from(evidence)
-        .where(eq(evidence.migrationId, migrationId))
-        .orderBy(asc(evidence.createdAt)),
-      database
-        .select()
-        .from(auditEvents)
-        .where(eq(auditEvents.migrationId, migrationId))
-        .orderBy(asc(auditEvents.sequence)),
-      database
-        .select()
-        .from(commands)
-        .where(eq(commands.migrationId, migrationId))
-        .orderBy(asc(commands.createdAt)),
-      database
-        .select()
-        .from(ledgerEntries)
-        .where(eq(ledgerEntries.migrationId, migrationId))
-        .orderBy(asc(ledgerEntries.sequence)),
-      database
-        .select()
-        .from(liquidityReservations)
-        .where(eq(liquidityReservations.migrationId, migrationId)),
-    ]);
+  const [
+    storedEvidence,
+    storedEvents,
+    storedCommands,
+    storedLedger,
+    storedReservations,
+    storedRecoveryCases,
+  ] = await Promise.all([
+    database
+      .select()
+      .from(evidence)
+      .where(eq(evidence.migrationId, migrationId))
+      .orderBy(asc(evidence.createdAt)),
+    database
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.migrationId, migrationId))
+      .orderBy(asc(auditEvents.sequence)),
+    database
+      .select()
+      .from(commands)
+      .where(eq(commands.migrationId, migrationId))
+      .orderBy(asc(commands.createdAt)),
+    database
+      .select()
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.migrationId, migrationId))
+      .orderBy(asc(ledgerEntries.sequence)),
+    database
+      .select()
+      .from(liquidityReservations)
+      .where(eq(liquidityReservations.migrationId, migrationId)),
+    database.select().from(recoveryCases).where(eq(recoveryCases.migrationId, migrationId)),
+  ]);
   return {
     migration,
     evidence: storedEvidence,
@@ -305,6 +313,7 @@ export async function getMigrationDetails(database: DebtShiftDatabase, migration
     commands: storedCommands,
     ledger: storedLedger,
     reservations: storedReservations,
+    recoveryCases: storedRecoveryCases,
   };
 }
 

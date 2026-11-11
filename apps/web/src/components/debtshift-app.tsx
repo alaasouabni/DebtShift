@@ -12,7 +12,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createWalletClient, custom, type Address, type EIP1193Provider, type Hex } from 'viem';
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/v1';
-const terminalPhases = new Set(['COMPLETED', 'FAILED_SAFE', 'EXPIRED']);
+const terminalPhases = new Set(['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED']);
+const warningPhases = new Set(['RECOVERY', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED']);
 
 interface PreparedMigration {
   readonly simulation: {
@@ -794,7 +795,7 @@ function EmptyState({ children }: { readonly children: string }) {
 
 function PhaseBadge({ phase }: { readonly phase: string }) {
   return (
-    <div className={`phaseBadge ${phase === 'FAILED_SAFE' ? 'warning' : ''}`}>
+    <div className={`phaseBadge ${warningPhases.has(phase) ? 'warning' : ''}`}>
       <span /> {phase.replaceAll('_', ' ')}
     </div>
   );

@@ -31,6 +31,7 @@ describe('workflow command planning', () => {
   it('does not plan work after terminal phases', () => {
     expect(planNextCommand(migrationId, 'COMPLETED')).toBeUndefined();
     expect(planNextCommand(migrationId, 'FAILED_SAFE')).toBeUndefined();
+    expect(planNextCommand(migrationId, 'REQUOTE_REQUIRED')).toBeUndefined();
     expect(planNextCommand(migrationId, 'EXPIRED')).toBeUndefined();
   });
 });

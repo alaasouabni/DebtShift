@@ -3,11 +3,14 @@ import type {
   MigrationExecutionContext,
   TransportLegStateUpdate,
 } from '@debtshift/database';
+import { evidenceSchema, type Evidence } from '@debtshift/domain';
 import { DeterministicTransportSimulator, transportQuoteRequestSchema } from '@debtshift/intents';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   createSimulatedWorkflowHandlers,
+  PostSourceCapacityDeteriorationError,
+  PreSourceCapacityDeteriorationError,
   type FinalizedChainAction,
   type MigrationExecutionPort,
   type WorkflowContextStore,
@@ -23,11 +26,16 @@ const DESTINATION_ESCROW = '0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9' as const
 
 class MemoryContextStore implements WorkflowContextStore {
   readonly updates: TransportLegStateUpdate[] = [];
+  readonly chainEvidence: Evidence[] = [];
 
   constructor(public context: MigrationExecutionContext) {}
 
   async get(): Promise<MigrationExecutionContext> {
     return this.context;
+  }
+
+  async listActiveFinalizedChainEvidence(): Promise<readonly Evidence[]> {
+    return this.chainEvidence;
   }
 
   async updateTransport(_migrationId: string, update: TransportLegStateUpdate): Promise<void> {
@@ -153,6 +161,147 @@ describe('simulated workflow handlers', () => {
       'LEDGER_RECONCILIATION',
     ]);
   });
+
+  it('halts the next side effect and emits append-only retractions for orphaned evidence', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const originalEvidence = evidenceSchema.parse({
+      evidenceId: `0x${'90'.repeat(32)}`,
+      migrationId: MIGRATION_ID,
+      type: 'TRANSPORT_ORIGIN',
+      schemaVersion: 1,
+      provider: 'DEBTSHIFT_SIMULATOR',
+      network: 'eip155:31337',
+      chainId: 31_337,
+      blockNumber: '100',
+      blockHash: BLOCK_HASH,
+      transactionHash: ORIGIN_TRANSACTION,
+      rawObservationHash: `0x${'91'.repeat(32)}`,
+      normalizedPayload: {},
+      observedAt: '2026-11-11T00:00:00.000Z',
+      verificationState: 'FINALIZED',
+      verificationMethod: 'RECEIPT_AND_STATE',
+      verifierVersion: 'debtshift-worker-v1',
+    });
+    store.chainEvidence.push(originalEvidence);
+    const execution = fakeExecution();
+    vi.mocked(execution.verifyCanonicalEvidence).mockResolvedValue([
+      {
+        evidence: originalEvidence,
+        reason: 'CANONICAL_BLOCK_HASH_MISMATCH',
+        observedAt: '2026-11-11T00:01:00.000Z',
+        requiredConfirmations: 12,
+        observedTipBlockNumber: '120',
+        observedBlockHash: `0x${'92'.repeat(32)}`,
+      },
+    ]);
+    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
+      command('VERIFY_DESTINATION'),
+    );
+
+    expect(execution.deliverDestination).not.toHaveBeenCalled();
+    expect(records.map(({ type }) => type)).toEqual(['RECOVERY_OPENED', 'TRANSPORT_ORIGIN']);
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        verificationState: 'FINALIZED',
+        normalizedPayload: expect.objectContaining({
+          reason: 'FINALIZED_CHAIN_EVIDENCE_REORGED',
+          requiresManualReview: true,
+        }),
+      }),
+    );
+    expect(records[1]).toEqual(
+      expect.objectContaining({
+        verificationState: 'RETRACTED',
+        supersedesEvidenceId: originalEvidence.evidenceId,
+      }),
+    );
+  });
+
+  it('turns finalized post-source capacity failure into revalidation and recovery evidence', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const failedAction: FinalizedChainAction = {
+      ...action(),
+      payload: {
+        action: 'recordCapacityDeterioration',
+        policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        financingRevalidation: {
+          checkpoint: 'BEFORE_TARGET_BORROW',
+          fundingShortfallUnits: '960909091',
+        },
+        residualAssets: [
+          { kind: 'COLLATERAL_CUSTODY', amountUnits: '9890100000000000000' },
+          { kind: 'SOLVER_RECEIVABLE', totalClaimUnits: '10050000000' },
+        ],
+      },
+    };
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      openTarget: vi.fn(async () => {
+        throw new PostSourceCapacityDeteriorationError(failedAction);
+      }),
+    };
+    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'OPEN_TARGET').execute(command('OPEN_TARGET'));
+
+    expect(records.map((record) => record.type)).toEqual([
+      'FINANCING_REVALIDATION',
+      'RECOVERY_OPENED',
+    ]);
+    expect(records[1]).toEqual(
+      expect.objectContaining({
+        transactionHash: ACTION_TRANSACTION,
+        verificationMethod: 'FAILED_FEASIBILITY_RECEIPT_AND_RECOVERY_POLICY',
+        normalizedPayload: expect.objectContaining({
+          reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
+          residualAssets: failedAction.payload.residualAssets,
+        }),
+      }),
+    );
+  });
+
+  it('turns pre-source capacity failure into revalidation and requote evidence', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const releasedAction: FinalizedChainAction = {
+      ...action(),
+      payload: {
+        action: 'releaseFailedReservation',
+        reason: 'DESTINATION_CAPACITY_DETERIORATED_BEFORE_SOURCE_CLOSE',
+        outcome: 'REQUOTE_REQUIRED',
+        reservation: { status: 'RELEASED', principalReceivableUnits: '0' },
+        sourcePosition: { disposition: 'UNCHANGED' },
+      },
+    };
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      closeSource: vi.fn(async () => {
+        throw new PreSourceCapacityDeteriorationError(releasedAction);
+      }),
+    };
+    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'CLOSE_SOURCE').execute(command('CLOSE_SOURCE'));
+
+    expect(records.map((record) => record.type)).toEqual([
+      'FINANCING_REVALIDATION',
+      'REQUOTE_REQUIRED',
+    ]);
+    expect(records[1]).toEqual(
+      expect.objectContaining({
+        transactionHash: ACTION_TRANSACTION,
+        normalizedPayload: expect.objectContaining({
+          reason: 'DESTINATION_CAPACITY_DETERIORATED_BEFORE_SOURCE_CLOSE',
+          reservation: { status: 'RELEASED', principalReceivableUnits: '0' },
+          sourcePosition: { disposition: 'UNCHANGED' },
+        }),
+      }),
+    );
+  });
 });
 
 async function buildContext(
@@ -239,6 +388,7 @@ async function buildContext(
 function fakeExecution(): MigrationExecutionPort {
   const perform = vi.fn(async (): Promise<FinalizedChainAction> => action());
   return {
+    verifyCanonicalEvidence: vi.fn(async () => []),
     reserve: perform,
     closeSource: perform,
     dispatchTransport: perform,

@@ -112,6 +112,11 @@ For each migration:
 - Watchers re-read the canonical block hash before advancement.
 - A mismatched block retracts affected evidence and re-derives the phase.
 - Retraction after a dependent external action creates an incident and recovery case; history is never deleted.
+- A deep reorg incident is not eligible for automatic generic recovery. The worker stops command
+  derivation until an operator reconciles direct chain state and selects a custody-specific action.
+- `SOURCE_FINALITY_CONFIRMATIONS` and `DESTINATION_FINALITY_CONFIRMATIONS` are validated positive
+  integers. Local Anvil uses one confirmation; each deployed environment must set chain-appropriate
+  values before funded execution.
 
 ## Transport handling
 

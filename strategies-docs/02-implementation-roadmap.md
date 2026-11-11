@@ -80,8 +80,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 ### Tasks
 
-- [ ] Implement the source adapter and exact authorization checks.
-- [ ] Implement the destination adapter and post-state checks.
+- [x] Implement the source adapter and exact authorization checks.
+- [x] Implement the destination adapter and post-state checks.
 - [x] Implement per-migration escrow accounting.
 - [x] Implement the test liquidity vault with principal and fee separation.
 - [x] Implement migration-specific supplementary-funding and settlement escrow with exact use and
@@ -89,12 +89,17 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Make liquidity reservation require a fresh, plan-bound, zero-shortfall feasibility proof.
 - [x] Add consumed nonces, deadline checks, allowlists, pause scopes, and residual refunds.
 - [x] Add reentrancy protection and safe token handling.
-- [ ] Emit the canonical migration events.
-- [ ] Implement Aave V3 position reads and source transaction construction.
-- [ ] Implement Morpho Blue market identity, position reads, authorization requirements, and target transaction construction.
-- [ ] Prove or reject the bounded aToken-allowance source-close mechanism on a pinned Aave fork.
-- [ ] If rejected, implement the documented smart-account or borrower-transaction alternative.
-- [ ] Add pinned Morpho destination fork tests.
+- [x] Emit and verify every contract-owned canonical migration event, and bind transport, recovery,
+      and terminal events to their authoritative durable offchain/registry evidence instead of
+      fabricating them on one EVM chain.
+- [x] Implement Aave V3 position reads and source transaction construction.
+- [x] Implement Morpho Blue market identity, position reads, authorization requirements, and target transaction construction.
+- [x] Route the signed destination adapter through an immutable, exact-market Morpho module using
+      atomic native authorization enable/supply/borrow/revoke semantics and post-state deltas.
+- [x] Prove the bounded aToken-allowance source-close mechanism on a pinned Aave fork.
+- [x] Keep the smart-account or borrower-transaction alternative disabled because the preferred
+      atomic EOA mechanism passed; retain it only as a documented future fallback.
+- [x] Add pinned Morpho destination fork tests.
 - [x] Add contract invariants proving confirmed borrower funding is isolated and `SETTLED` requires
       exact solver repayment rather than a ledger receivable.
 
@@ -167,14 +172,29 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [ ] Implement provisional, confirmed, finalized, and retracted evidence states.
 - [ ] Persist financing analyses, exclusive component classifications, funding contributions,
       checkpoint feasibility evidence, and settlement obligations.
-- [ ] Add chain-specific finality configuration.
-- [ ] Add canonical-block rechecks and reorg handling.
+- [x] Add chain-specific finality configuration.
+- [x] Add canonical-block and transaction-receipt rechecks before each subsequent financial side
+      effect, append-only retractions, and manual incident handling for deep reorgs.
 - [ ] Add transport polling with strict unknown-status behavior.
 - [ ] Add destination balance and receipt reconciliation.
 - [ ] Add retry budgets and deadline-aware scheduling.
 - [ ] Add each recovery policy and operator escalation state.
-- [ ] Add post-source-close price, liquidity, rate, and risk-parameter deterioration recovery without
+- [x] Persist recovery cases atomically with opening evidence, exact residual custody/receivable
+      claims, phase changes, and failed-safe resolution.
+- [x] Add pre-source-close price and liquidity deterioration handling that releases unused capacity,
+      preserves the source position, and requires fresh borrower authorization.
+  - [x] Destination-liquidity deterioration records the newer failed feasibility proof and releases
+        the undrawn reservation in one vault transaction, verifies zero receivable and an unchanged
+        source position, and ends in the explicit terminal `REQUOTE_REQUIRED` outcome.
+  - [x] A mutable collateral-price shock proves the same fail-closed outcome, including the exact
+        newer safe capacity and shortfall.
+- [x] Add post-source-close price, liquidity, rate, and risk-parameter deterioration recovery without
       unsafe borrowing or false settlement.
+  - [x] Destination-liquidity deterioration after source closure appends a newer failed feasibility
+        proof, records exact destination collateral custody and source-vault exposure, opens durable
+        recovery, returns destination collateral, and never opens the unsafe target position.
+  - [x] Mutable price, rate, and protocol-risk-parameter fixtures prove that refreshed state and the
+        signed minimum-APR-reduction policy supersede the earlier passing plan.
 - [ ] Add balanced ledger checks before settlement.
 - [ ] Add stale migration and deadline alerts.
 

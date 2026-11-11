@@ -32,6 +32,8 @@ Configuration schemas are divided into:
 - Database and Redis connections.
 - Source and destination RPC endpoints.
 - Chain IDs and finality policy.
+  - `SOURCE_FINALITY_CONFIRMATIONS` and `DESTINATION_FINALITY_CONFIRMATIONS` are required positive
+    confirmation depths; the checked-in local default is `1`, not a mainnet recommendation.
 - Protocol deployment and asset allowlists.
 - Transport mode, URL, and authentication reference.
 - NEAR network, RPC, registry account, and verifier identity.
