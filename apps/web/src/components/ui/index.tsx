@@ -134,7 +134,9 @@ export function Alert({
 }) {
   const modifier = tone === 'info' ? '' : ` dsh-alert--${tone}`;
   return (
-    <div className={`dsh-alert${modifier}`} role={tone === 'danger' ? 'alert' : undefined}>
+    // A failure interrupts; everything else is announced when the reader is
+    // free. Without a role, an alert that appears after an action is silent.
+    <div className={`dsh-alert${modifier}`} role={tone === 'danger' ? 'alert' : 'status'}>
       <svg
         className="dsh-alert__icon"
         aria-hidden="true"

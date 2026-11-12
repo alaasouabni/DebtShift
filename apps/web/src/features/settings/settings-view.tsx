@@ -302,9 +302,13 @@ export function SettingsView() {
               ) : null}
 
               <div className="dsh-field">
-                <span className="dsh-field__label">API key</span>
+                <label className="dsh-field__label" htmlFor="explanation-api-key">
+                  API key
+                </label>
                 <span className="dsh-field__control">
                   <input
+                    id="explanation-api-key"
+                    aria-describedby="explanation-api-key-hint"
                     className="dsh-field__input"
                     type={revealKey ? 'text' : 'password'}
                     value={keyInput}
@@ -325,9 +329,10 @@ export function SettingsView() {
                     }}
                   >
                     {revealKey ? 'Hide' : 'Show'}
+                    <span className="visually-hidden"> API key</span>
                   </button>
                 </span>
-                <p className="dsh-field__hint">
+                <p className="dsh-field__hint" id="explanation-api-key-hint">
                   {keyHeld
                     ? 'A key is held for this tab. Reloading forgets it.'
                     : 'Nothing is held yet. Requests fall back to the deterministic explanation.'}

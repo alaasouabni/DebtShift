@@ -618,3 +618,26 @@ describe('the stepper', () => {
     }
   });
 });
+
+describe('moving between steps', () => {
+  it('moves focus to the new heading after a signature', async () => {
+    await reachPolicyStep();
+    fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: /authorize this exact execution/i,
+    });
+    // The reader is taken to the top of the new review, not left where the
+    // old sign button was.
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('announces a notice that appears after an action', async () => {
+    installWallet({ signs: false });
+    await reachPolicyStep();
+    fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+    // A failure interrupts: it is an alert, not a silent paragraph.
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/policy signature was not completed/i);
+  });
+});

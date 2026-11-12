@@ -3,6 +3,87 @@
  * screens. Shared panels and page headers live in app-look.css.
  */
 
+/* ----------------------------------------------------------- accessibility */
+
+/* Hidden until a keyboard lands on it, then the first thing on the page. */
+.skip-link {
+  position: absolute;
+  left: var(--space-4);
+  top: var(--space-3);
+  z-index: 40;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--surface);
+  background: var(--ink);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}
+
+/* The target of the skip link takes focus without drawing a ring round the page. */
+main:focus {
+  outline: none;
+}
+
+/*
+ * The top bar and the sign bar stay on screen. Anything brought into view by
+ * the keyboard or a link must stop clear of them, not underneath.
+ */
+html {
+  scroll-padding-top: 104px;
+}
+
+html:has(.demo-banner) {
+  scroll-padding-top: 200px;
+}
+
+html:has(.signbar) {
+  scroll-padding-bottom: 140px;
+}
+
+/* A heading focused by script, on a step change, is a landing point, not a control. */
+h1[tabindex='-1']:focus {
+  outline: none;
+}
+
+/* Small controls get a floor on their target size. */
+.dsh-field__affix {
+  min-height: 28px;
+  min-width: 44px;
+}
+
+a[aria-label='DebtShift home'] {
+  min-height: 28px;
+}
+
+footer a {
+  display: inline-block;
+  padding: 2px 0;
+}
+
+/*
+ * On a narrow screen, or zoomed to 400%, a bar that stays put takes half the
+ * view. The site header scrolls away with the page; only the recorded-demo
+ * banner stays, because that promise has to hold at every scroll position.
+ */
+@container (max-width: 720px) {
+  .topbar {
+    display: contents;
+  }
+
+  .demo-banner {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+}
+
 /* ------------------------------------------------------------------ header */
 
 /*
@@ -91,7 +172,8 @@
   font-variant-numeric: tabular-nums;
   text-decoration: none;
   color: var(--ink-muted);
-  border: 2px solid color-mix(in srgb, var(--warning) 50%, transparent);
+  /* Strong enough to read as a control against the banner in both themes. */
+  border: 2px solid color-mix(in srgb, var(--warning) 85%, transparent);
   background: transparent;
 }
 
@@ -178,8 +260,8 @@
   }
 
   .tour__dot {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     font-size: 11px;
   }
 

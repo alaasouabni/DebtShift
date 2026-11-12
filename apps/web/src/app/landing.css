@@ -490,6 +490,36 @@
   white-space: nowrap;
 }
 
+/* Stops the illustration: the stage cycle in script, and these in CSS. */
+.motion-paused .scene__stage,
+.motion-paused .scene__path,
+.motion-paused .flow__pulse {
+  animation-play-state: paused;
+}
+
+.motion-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: var(--space-2) auto 0;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.motion-toggle:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
 /* ------------------------------------------------- "how a run goes" band */
 
 .run-grid {

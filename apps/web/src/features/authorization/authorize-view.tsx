@@ -101,6 +101,20 @@ export function AuthorizeView() {
     setState(INITIAL);
   }, [wallet.accountEpoch]);
 
+  /*
+   * Signing swaps the whole review for the next one. Without this the
+   * reader is left where the old sign button was, half way down a different
+   * list, and a screen reader is told nothing. Focus moves to the new
+   * heading, which also brings it into view.
+   */
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const previousStep = useRef(state.step);
+  useEffect(() => {
+    if (previousStep.current === state.step) return;
+    previousStep.current = state.step;
+    if (state.step !== 'prepare') headingRef.current?.focus();
+  }, [state.step]);
+
   const prepared = state.prepared;
   const { report: reportEnvironment } = useEnvironment();
 
@@ -336,6 +350,8 @@ export function AuthorizeView() {
               Signature {state.step === 'policy' ? '1' : '2'} of 2
             </p>
             <h1
+              ref={headingRef}
+              tabIndex={-1}
               className="hero__title"
               style={{
                 margin: 0,

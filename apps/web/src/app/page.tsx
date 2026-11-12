@@ -204,20 +204,28 @@ export default function LandingPage() {
   const router = useRouter();
   const connected = isConnected(wallet);
   const [stageIndex, setStageIndex] = useState(0);
+  // The illustration moves for as long as the page is open, so it can be
+  // stopped. For a visitor who asked for reduced motion it starts stopped.
+  const [playing, setPlaying] = useState(true);
 
   // Once an account is authorized (or the demo starts) there is nothing left to do here.
   useEffect(() => {
     if (connected) router.replace('/position');
   }, [connected, router]);
 
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) setPlaying(false);
+  }, []);
+
   // The hero illustration walks through a normal run, one stage at a time.
   useEffect(() => {
+    if (!playing) return;
     const timer = setInterval(
       () => setStageIndex((index) => (index + 1) % ILLUSTRATION_STAGES.length),
       2600,
     );
     return () => clearInterval(timer);
-  }, []);
+  }, [playing]);
 
   const economics = recordedRoute.economics;
   const debtAsset = recordedPosition.position.debtAsset;
@@ -311,7 +319,7 @@ export default function LandingPage() {
             ) : null}
           </div>
 
-          <div className="reveal reveal--2">
+          <div className={`reveal reveal--2${playing ? '' : ' motion-paused'}`}>
             <HeroScene
               stage={ILLUSTRATION_STAGES[stageIndex]!}
               source={{
@@ -327,6 +335,24 @@ export default function LandingPage() {
                 rateLabel: formatBps(economics.targetAprAfterBps),
               }}
             />
+            <button
+              type="button"
+              className="motion-toggle"
+              aria-pressed={!playing}
+              onClick={() => setPlaying((value) => !value)}
+            >
+              <svg
+                aria-hidden="true"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                stroke="none"
+              >
+                {playing ? <path d="M6 4h4v16H6zM14 4h4v16h-4z" /> : <path d="M7 4l13 8-13 8z" />}
+              </svg>
+              {playing ? 'Pause animation' : 'Play animation'}
+            </button>
           </div>
         </div>
       </section>
@@ -360,7 +386,7 @@ export default function LandingPage() {
             <span className="chip">Recorded sandbox run</span>
           </div>
 
-          <div className="run-grid">
+          <div className={`run-grid${playing ? '' : ' motion-paused'}`}>
             <MigrationFlow
               stage={ILLUSTRATION_STAGES[stageIndex]!}
               transportLabel="Transport"

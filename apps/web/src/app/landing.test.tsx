@@ -9,7 +9,7 @@
  * from the recording — not numbers typed into the page.
  */
 
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { HeroScene } from '../components/hero/hero-scene';
@@ -179,5 +179,38 @@ describe('the landing page', () => {
   it('never promises a completed migration or a guaranteed saving', async () => {
     const { container } = await renderLanding();
     expect(container.textContent).not.toMatch(/guarantee|risk-free|always cheaper/i);
+  });
+});
+
+describe('stopping the animation', () => {
+  function setReducedMotion(reduce: boolean) {
+    window.matchMedia = ((query: string): MediaQueryList =>
+      ({
+        matches: reduce && query.includes('prefers-reduced-motion'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }) as unknown as MediaQueryList) as typeof window.matchMedia;
+  }
+
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('offers a control to pause the illustration', async () => {
+    setReducedMotion(false);
+    await renderLanding();
+    const toggle = screen.getByRole('button', { name: /pause animation/i });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(toggle);
+    const paused = screen.getByRole('button', { name: /play animation/i });
+    expect(paused.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.motion-paused')).not.toBeNull();
+  });
+
+  it('starts stopped for a visitor who asked for reduced motion', async () => {
+    setReducedMotion(true);
+    await renderLanding();
+    expect(await screen.findByRole('button', { name: /play animation/i })).toBeDefined();
   });
 });

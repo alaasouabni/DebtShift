@@ -11,7 +11,12 @@ import './app-look.css';
 import './inner-pages.css';
 
 export const metadata: Metadata = {
-  title: 'DebtShift | Safer cross-chain refinancing',
+  // Each screen names itself, so tabs, history and screen readers can tell
+  // them apart. The landing page keeps the default.
+  title: {
+    default: 'DebtShift | Safer cross-chain refinancing',
+    template: '%s · DebtShift',
+  },
   description: 'Compare and execute bounded test-funds debt refinancing routes.',
 };
 
@@ -46,8 +51,17 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <EnvironmentProvider>
           <WalletProvider>
             <div className="shell">
+              {/*
+                First thing a keyboard reaches: the top bar holds up to
+                sixteen links before the page itself begins.
+              */}
+              <a href="#main" className="skip-link">
+                Skip to content
+              </a>
               <SiteHeader />
-              <main style={{ flexGrow: 1 }}>{children}</main>
+              <main id="main" tabIndex={-1} style={{ flexGrow: 1 }}>
+                {children}
+              </main>
               <SiteFooter />
             </div>
           </WalletProvider>
