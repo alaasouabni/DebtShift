@@ -88,6 +88,13 @@ async function renderAuthorize() {
   );
 }
 
+/** The review is several grouped lists; together they are the signed fields. */
+function reviewText(): string {
+  const lists = [...document.querySelectorAll('dl.facts')];
+  expect(lists.length).toBeGreaterThan(0);
+  return lists.map((list) => list.textContent ?? '').join('\n');
+}
+
 /** Walks through prepare so the policy review is on screen. */
 async function reachPolicyStep() {
   await renderAuthorize();
@@ -151,9 +158,7 @@ describe('signature 1 — the policy review', () => {
 
   it('puts every material intent field on screen before the button', async () => {
     await reachPolicyStep();
-    const list = document.querySelector('dl.facts');
-    expect(list).not.toBeNull();
-    const text = (list as HTMLElement).textContent ?? '';
+    const text = reviewText();
 
     // Each raw line carries the signed field name, so the DOM can be checked
     // against the contract's list rather than against a screenshot.
@@ -246,7 +251,7 @@ describe('signature 2 — the execution review', () => {
 
   it('puts every material plan and financing field on screen', async () => {
     await reachPlanStep();
-    const text = document.querySelector('dl.facts')?.textContent ?? '';
+    const text = reviewText();
 
     for (const field of [
       'sourceRepaymentMaxUnits',
@@ -537,5 +542,79 @@ describe('the submit step in the recorded demo', () => {
     await reachSubmitStep();
     expect(screen.getAllByText('Collected')).toHaveLength(2);
     expect(screen.queryByText(/Nothing is submitted in the demo/i)).toBeNull();
+  });
+});
+
+describe('the review layout', () => {
+  it('shows every signed policy field exactly once in the grouped lists', async () => {
+    await reachPolicyStep();
+    const rows = document.querySelectorAll('dl.facts .review__row');
+    expect(rows).toHaveLength(16);
+  });
+
+  it('repeats a few limits at the top without replacing the full list', async () => {
+    await reachPolicyStep();
+    const glance = screen.getByRole('group', { name: /at a glance/i });
+    expect(glance.querySelectorAll('.review__glance-item')).toHaveLength(4);
+    expect(glance.textContent).toMatch(/all 16 signed fields are below/i);
+    // The same label is still in the full list.
+    expect(screen.getAllByText('Repay at most')).toHaveLength(2);
+  });
+
+  it('names each group and leaves no field ungrouped', async () => {
+    await reachPolicyStep();
+    for (const title of ['Who and where', 'Your limits', 'Time and replay']) {
+      expect(screen.getByRole('heading', { level: 3, name: new RegExp(title) })).toBeDefined();
+    }
+    expect(screen.queryByText(/Other signed fields/i)).toBeNull();
+  });
+
+  it('keeps the sign button after the terms in the document', async () => {
+    await reachPolicyStep();
+    const lastRow = [...document.querySelectorAll('.review__row')].at(-1)!;
+    const button = screen.getByRole('button', { name: /^sign the policy$/i });
+    expect(lastRow.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe('the stepper', () => {
+  function steps() {
+    const list = screen.getByRole('list', { name: /authorization steps/i });
+    return [...list.querySelectorAll('li')].map((item) => ({
+      status: item.getAttribute('data-status'),
+      current: item.getAttribute('aria-current'),
+      text: item.textContent ?? '',
+    }));
+  }
+
+  it('marks the policy as the current step after preparing', async () => {
+    await reachPolicyStep();
+    const all = steps();
+    expect(all.map((step) => step.status)).toEqual(['done', 'current', 'upcoming', 'upcoming']);
+    expect(all[1]!.current).toBe('step');
+    expect(all[1]!.text).toMatch(/Signature 1 of 2 · sign now/);
+  });
+
+  it('says a real signature was signed', async () => {
+    await reachPolicyStep();
+    fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+    await screen.findByText(/authorize this exact execution/i);
+    const all = steps();
+    expect(all[1]!.text).toMatch(/Signed/);
+    expect(all[2]!.text).toMatch(/Signature 2 of 2 · sign now/);
+  });
+
+  it('never says a demo placeholder was signed', async () => {
+    window.sessionStorage.setItem('debtshift:demo', '1');
+    try {
+      await reachPolicyStep();
+      fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+      await screen.findByText(/authorize this exact execution/i);
+      const all = steps();
+      expect(all[1]!.text).toMatch(/Demo placeholder, not signed/);
+      expect(all[1]!.text).not.toMatch(/^.*\bSigned$/);
+    } finally {
+      window.sessionStorage.clear();
+    }
   });
 });

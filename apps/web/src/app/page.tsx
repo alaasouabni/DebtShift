@@ -20,6 +20,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { ILLUSTRATION_STAGES } from '../components/flow/flow-stage';
 import { MigrationFlow } from '../components/flow/migration-flow';
+import { HeroScene } from '../components/hero/hero-scene';
 import { Alert, Button } from '../components/ui/index';
 import { isConnected, useWallet } from '../features/wallet/wallet-context';
 import type { RouteAnalysisResponse } from '../lib/api/types';
@@ -29,9 +30,12 @@ import {
   bpsToPoints,
   formatAmount,
   formatBps,
+  formatDuration,
   formatUsdMicro,
   humanizeIdentifier,
 } from '../lib/formatting';
+
+import './landing.css';
 
 /* The recorded sandbox run the hero illustrates. */
 const recorded = (routesRecording as unknown as RouteAnalysisResponse).analysis.analyses[0]!;
@@ -133,6 +137,49 @@ const PROMISES: readonly IconTile[] = [
   },
 ];
 
+const BY_HAND_STEPS = [
+  'Find the money to repay the old loan first',
+  'Repay it and withdraw your collateral',
+  'Bridge the collateral to the other chain',
+  'Deposit it there and borrow again',
+  'Send the borrowed funds back to cover step 1',
+] as const;
+
+const WITH_DEBTSHIFT_STEPS = [
+  'Sign the policy: the limits any route must respect',
+  'Sign the exact plan: one route, fixed amounts, a deadline',
+  'Watch it run: liquidity reserved, old loan closed, collateral across, new loan open',
+] as const;
+
+const SITUATIONS: readonly IconTile[] = [
+  {
+    title: 'Your rate crept up',
+    body: 'Variable borrow rates drift. The loan you opened at a good rate may not be at one today.',
+    icon: <path d="M3 17l6-6 4 4 8-8m0 0h-5m5 0v5" />,
+  },
+  {
+    title: 'The better market is a chain away',
+    body: 'Same collateral, same debt asset, lower rate. The only thing in the way is the crossing.',
+    icon: (
+      <>
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="12" r="3" />
+        <path d="M9 12h6" />
+      </>
+    ),
+  },
+  {
+    title: 'You want the numbers first',
+    body: 'Cost, break-even and a stressed case are shown before either signature. A route outside your limits is rejected, not softened.',
+    icon: (
+      <>
+        <rect x="5" y="3" width="14" height="18" rx="2" />
+        <path d="M9 8h6M9 12h6M9 16h3" />
+      </>
+    ),
+  },
+];
+
 function Icon({ children }: { readonly children: ReactNode }) {
   return (
     <span className="tile__icon" aria-hidden="true">
@@ -174,13 +221,19 @@ export default function LandingPage() {
 
   const economics = recordedRoute.economics;
   const debtAsset = recordedPosition.position.debtAsset;
-  const destinationChain = recordedRoute.financing.settlementAsset.chainId;
+  const collateralAsset = recordedPosition.position.collateralAsset;
+  const sourceName = humanizeIdentifier(recordedPosition.position.market.protocol);
+  const sourceChainName = chainName(recordedPosition.position.market.chainId);
+  const destinationName = humanizeIdentifier(recordedRoute.candidateId);
+  const destinationChainName = chainName(recordedRoute.financing.settlementAsset.chainId);
+  const candidateCount = recorded.comparison.evaluations.length;
+  const rejectedCount = recorded.comparison.evaluations.filter((route) => !route.eligible).length;
 
   return (
     <>
       <section
         aria-labelledby="hero-title"
-        className="page"
+        className="page hero-section"
         style={{ padding: '72px var(--page-gutter) 64px' }}
       >
         <div className="hero-grid">
@@ -258,46 +311,74 @@ export default function LandingPage() {
             ) : null}
           </div>
 
+          <div className="reveal reveal--2">
+            <HeroScene
+              stage={ILLUSTRATION_STAGES[stageIndex]!}
+              source={{
+                protocol: sourceName,
+                chain: sourceChainName,
+                rateBps: economics.sourceAprBps,
+                rateLabel: formatBps(economics.sourceAprBps),
+              }}
+              destination={{
+                protocol: destinationName,
+                chain: destinationChainName,
+                rateBps: economics.targetAprAfterBps,
+                rateLabel: formatBps(economics.targetAprAfterBps),
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="run-title"
+        className="page"
+        style={{ padding: '0 var(--page-gutter) 64px' }}
+      >
+        <div
+          className="glass reveal reveal--3"
+          style={{
+            padding: 'var(--space-5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-5)',
+          }}
+        >
           <div
-            className="glass reveal reveal--2"
             style={{
-              padding: 'var(--space-5)',
               display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--space-5)',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              flexWrap: 'wrap',
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 'var(--space-3)',
-                flexWrap: 'wrap',
-              }}
-            >
-              <span className="eyebrow">How a migration runs</span>
-              <span className="chip">Recorded sandbox run</span>
-            </div>
+            <h2 id="run-title" className="eyebrow" style={{ margin: 0 }}>
+              How a migration runs
+            </h2>
+            <span className="chip">Recorded sandbox run</span>
+          </div>
 
+          <div className="run-grid">
             <MigrationFlow
               stage={ILLUSTRATION_STAGES[stageIndex]!}
               transportLabel="Transport"
               source={{
-                protocol: humanizeIdentifier(recordedPosition.position.market.protocol),
-                chain: chainName(recordedPosition.position.market.chainId),
+                protocol: sourceName,
+                chain: sourceChainName,
                 figure: formatBps(economics.sourceAprBps),
                 figureLabel: 'borrow rate',
               }}
               destination={{
-                protocol: humanizeIdentifier(recordedRoute.candidateId),
-                chain: chainName(destinationChain),
+                protocol: destinationName,
+                chain: destinationChainName,
                 figure: formatBps(economics.targetAprAfterBps),
                 figureLabel: 'borrow rate',
               }}
             />
 
-            <div className="kpi-row">
+            <div className="kpi-col">
               <div className="kpi">
                 <span className="kpi__value accent-text">
                   −{bpsToPoints(economics.aprReductionBps)} pts
@@ -315,12 +396,150 @@ export default function LandingPage() {
                 <span className="kpi__label">net benefit after all costs</span>
               </div>
             </div>
+          </div>
 
-            <p style={{ margin: 0, fontSize: 12, lineHeight: '16px', color: 'var(--ink-muted)' }}>
-              Figures from a recorded run on the contract-backed sandbox, with test assets. Not a
-              quote for your position.
+          <p style={{ margin: 0, fontSize: 12, lineHeight: '16px', color: 'var(--ink-muted)' }}>
+            Figures from a recorded run on the contract-backed sandbox, with test assets. Not a
+            quote for your position.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="use-case"
+        aria-labelledby="usecase-title"
+        className="page"
+        style={{
+          padding: '64px var(--page-gutter)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-6)',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <p className="eyebrow">The use case</p>
+          <h2 id="usecase-title" className="section-title">
+            You already have a loan. A cheaper one exists on another chain.
+          </h2>
+          <p className="section-lede">
+            Borrow rates move, and the best one is rarely on the chain you happen to be on. Moving a
+            loan by hand means closing it first, with money you may not have, and being exposed
+            while it is half way. DebtShift does the move as one bounded operation.
+          </p>
+        </div>
+
+        <div className="usecase-grid">
+          <div className="glass usecase-example">
+            <span className="chip" style={{ alignSelf: 'flex-start' }}>
+              Recorded example · test assets
+            </span>
+
+            <p className="usecase-story">
+              A borrower put up{' '}
+              <strong>
+                {formatAmount(
+                  recordedPosition.collateralUnits,
+                  collateralAsset.decimals,
+                  collateralAsset.symbol,
+                )}
+              </strong>{' '}
+              and owes{' '}
+              <strong>
+                {formatAmount(recordedPosition.debtUnits, debtAsset.decimals, debtAsset.symbol)}
+              </strong>{' '}
+              on {sourceName}. The same loan is cheaper on {destinationName}.
+            </p>
+
+            <div className="rate-drop">
+              <div className="rate-drop__figure">
+                <span className="rate-drop__value rate-drop__value--old">
+                  {formatBps(economics.sourceAprBps)}
+                </span>
+                <span className="rate-drop__label">borrow rate today</span>
+              </div>
+              <svg
+                className="rate-drop__arrow"
+                aria-hidden="true"
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 12h16m-6-6 6 6-6 6" />
+              </svg>
+              <div className="rate-drop__figure">
+                <span className="rate-drop__value accent-text">
+                  {formatBps(economics.targetAprAfterBps)}
+                </span>
+                <span className="rate-drop__label">after moving, own borrow priced in</span>
+              </div>
+            </div>
+
+            <dl className="usecase-facts">
+              <div>
+                <dt>Interest saved per year</dt>
+                <dd>{formatUsdMicro(economics.annualGrossSavingsUsdMicro)}</dd>
+              </div>
+              <div>
+                <dt>One-off cost of moving</dt>
+                <dd>{formatUsdMicro(economics.allInCostUsdMicro)}</dd>
+              </div>
+              <div>
+                <dt>Pays for itself after</dt>
+                <dd>{formatDuration(Number(economics.breakEvenSeconds))}</dd>
+              </div>
+            </dl>
+
+            <p className="usecase-note">
+              {rejectedCount} of {candidateCount} candidate routes in this run{' '}
+              {rejectedCount === 1 ? 'was' : 'were'} rejected, with the reason shown. Figures come
+              from the contract-backed sandbox and are not a quote for your position.
             </p>
           </div>
+
+          <div className="compare-grid">
+            <div className="tile compare">
+              <span className="tile__step">BY HAND</span>
+              <h3 className="tile__title">Five steps, two chains, your own cash</h3>
+              <ol className="compare__steps">
+                {BY_HAND_STEPS.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <p className="compare__verdict">
+                <strong>If one step fails, you are in the middle:</strong> no loan on one side,
+                collateral on a bridge, and the price still moving.
+              </p>
+            </div>
+
+            <div className="tile compare compare--ours">
+              <span className="tile__step">WITH DEBTSHIFT</span>
+              <h3 className="tile__title">Two signatures, then you watch</h3>
+              <ol className="compare__steps">
+                {WITH_DEBTSHIFT_STEPS.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <p className="compare__verdict">
+                <strong>If a step fails, value goes back</strong> along the refund path you signed.
+                Nothing runs outside the limits in your two signatures.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="trio-grid">
+          {SITUATIONS.map((situation) => (
+            <div key={situation.title} className="tile">
+              <Icon>{situation.icon}</Icon>
+              <h3 className="tile__title">{situation.title}</h3>
+              <p className="tile__body">{situation.body}</p>
+            </div>
+          ))}
         </div>
       </section>
 

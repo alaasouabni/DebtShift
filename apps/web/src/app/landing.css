@@ -1,0 +1,716 @@
+/*
+ * Landing only: the 3D hero scene, the "how a run goes" band and the use-case
+ * section.
+ *
+ * The scene is CSS 3D: a ground plane tilted towards the camera, with boxes
+ * standing on it. All of its lengths are in em, and 1em is 1/56 of the scene's
+ * width, so it scales as one piece with the column it sits in.
+ *
+ * Plane coordinates: x runs to the lower right of the screen, y to the lower
+ * left, z straight up. The source platform is on the left, the destination on
+ * the right, at the same depth.
+ */
+
+/* ------------------------------------------------------------- the 3D scene */
+
+.scene-wrap {
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+}
+
+/*
+ * Labels may reach a little past the scene into the page gutter, but nothing
+ * in it may ever widen the page.
+ */
+.hero-section {
+  overflow-x: clip;
+}
+
+.scene {
+  --rx: 58deg;
+  --rz: 45deg;
+  --slab: 2.2em;
+  --face-top: color-mix(in srgb, var(--surface-raised) 94%, var(--accent));
+  --face-south: color-mix(in srgb, var(--surface-raised) 84%, var(--ink));
+  --face-east: color-mix(in srgb, var(--surface-raised) 70%, var(--ink));
+  --edge: color-mix(in srgb, var(--line-strong) 55%, transparent);
+
+  position: relative;
+  width: 56em;
+  height: 43em;
+  font-size: calc(100cqw / 56);
+  user-select: none;
+}
+
+[data-theme='dark'] .scene {
+  --face-top: color-mix(in srgb, var(--surface-raised) 82%, var(--accent));
+  --face-south: color-mix(in srgb, var(--surface-raised) 88%, #000);
+  --face-east: color-mix(in srgb, var(--surface-raised) 62%, #000);
+  --edge: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.scene__stage {
+  position: absolute;
+  inset: 0;
+  perspective: 110em;
+  perspective-origin: 50% 40%;
+  animation: scene-float 7s ease-in-out infinite;
+}
+
+@keyframes scene-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-0.7em);
+  }
+}
+
+.scene__plane {
+  position: absolute;
+  left: 8em;
+  top: 4.5em;
+  width: 40em;
+  height: 40em;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rx)) rotateZ(var(--rz));
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.scene__plane > * {
+  position: absolute;
+}
+
+/* The ground: a grid that fades out before it reaches an edge. */
+.scene__grid {
+  inset: 1em;
+  background-image:
+    linear-gradient(var(--edge) 0.08em, transparent 0.08em),
+    linear-gradient(90deg, var(--edge) 0.08em, transparent 0.08em);
+  background-size: 4em 4em;
+  opacity: 0.55;
+  -webkit-mask-image: radial-gradient(closest-side, #000 30%, transparent 96%);
+  mask-image: radial-gradient(closest-side, #000 30%, transparent 96%);
+  transform: translateZ(-0.05em);
+}
+
+/* The route between the two platforms, drawn on the ground. */
+.scene__path {
+  left: 20em;
+  top: 20em;
+  width: 15em;
+  height: 0.5em;
+  margin: -0.25em 0 0 -7.5em;
+  border-radius: 1em;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0 1.1em,
+    transparent 1.1em 2.2em
+  );
+  opacity: 0.35;
+  transform: rotate(-45deg) translateZ(0.05em);
+  transition: opacity 0.6s ease;
+}
+
+.scene__path[data-direction='forward'] {
+  opacity: 0.95;
+  animation: scene-dash 0.9s linear infinite;
+}
+
+.scene__path[data-direction='backward'] {
+  opacity: 0.95;
+  animation: scene-dash 0.9s linear infinite reverse;
+}
+
+@keyframes scene-dash {
+  to {
+    background-position: 2.2em 0;
+  }
+}
+
+.scene__glow {
+  width: 26em;
+  height: 26em;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--accent) 46%, transparent),
+    transparent
+  );
+  opacity: 0;
+  transform: translateZ(0.02em);
+  transition: opacity 0.9s ease;
+}
+
+.scene__glow--destination {
+  left: 17.5em;
+  top: -3.5em;
+}
+
+.scene__glow[data-on='true'] {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------- boxes */
+
+.cuboid {
+  width: var(--w);
+  height: var(--d);
+  transform-style: preserve-3d;
+}
+
+.cuboid > span {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  border: 0.07em solid var(--edge);
+  transition:
+    transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+    background-color 0.6s ease,
+    border-color 0.6s ease,
+    box-shadow 0.6s ease;
+}
+
+.cuboid__top {
+  inset: 0;
+  background: var(--face-top);
+  transform: translateZ(var(--h));
+}
+
+/* The wall along the lower-left edge. */
+.cuboid__south {
+  left: 0;
+  top: 100%;
+  width: 100%;
+  height: var(--h);
+  background: var(--face-south);
+  transform-origin: top;
+  transform: rotateX(90deg);
+}
+
+/* The wall along the lower-right edge. */
+.cuboid__east {
+  left: 100%;
+  top: 0;
+  width: var(--h);
+  height: 100%;
+  background: var(--face-east);
+  transform-origin: left;
+  transform: rotateY(-90deg);
+}
+
+/* Platforms: one per market. */
+.scene__slab {
+  --w: 15em;
+  --d: 15em;
+  --h: var(--slab);
+}
+
+.scene__slab--source {
+  left: 2em;
+  top: 23em;
+}
+
+.scene__slab--destination {
+  left: 23em;
+  top: 2em;
+}
+
+.scene__slab .cuboid__top {
+  border-radius: 0.5em;
+  background-image:
+    linear-gradient(var(--edge) 0.06em, transparent 0.06em),
+    linear-gradient(90deg, var(--edge) 0.06em, transparent 0.06em);
+  background-size: 3em 3em;
+  background-color: var(--face-top);
+}
+
+.scene__slab[data-lit='true'] .cuboid__top {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 2.6em color-mix(in srgb, var(--accent) 42%, transparent),
+    inset 0 0 2.4em color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Loan columns: as tall as the borrow rate. */
+.scene__loan {
+  --w: 5em;
+  --d: 5em;
+  transform: translateZ(var(--slab));
+  transition: opacity 0.5s ease;
+}
+
+.scene__loan[data-open='false'] {
+  opacity: 0;
+}
+
+.scene__loan--source {
+  left: 4.5em;
+  top: 25.5em;
+  --face-top: color-mix(in srgb, var(--ink-muted) 62%, var(--surface-raised));
+  --face-south: color-mix(in srgb, var(--ink-muted) 46%, var(--surface-raised));
+  --face-east: color-mix(in srgb, var(--ink-muted) 32%, var(--surface-raised));
+}
+
+.scene__loan--destination {
+  left: 25.5em;
+  top: 4.5em;
+  --face-top: color-mix(in srgb, var(--accent) 70%, #fff);
+  --face-south: var(--accent);
+  --face-east: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
+.scene__loan--destination .cuboid__top {
+  box-shadow: 0 0 2em color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* The collateral block that makes the crossing. */
+.scene__token {
+  --w: 3em;
+  --d: 3em;
+  --h: 3em;
+  --face-top: color-mix(in srgb, var(--accent) 62%, #fff);
+  --face-south: var(--accent);
+  --face-east: var(--accent-strong);
+  left: 0;
+  top: 0;
+  transition: transform 1.5s cubic-bezier(0.45, 0.05, 0.25, 1);
+}
+
+.scene__token .cuboid__top {
+  box-shadow: 0 0 1.2em color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+[data-theme='dark'] .scene__token {
+  --face-top: color-mix(in srgb, var(--accent) 38%, #fff);
+  --face-south: color-mix(in srgb, var(--accent) 82%, #fff);
+  --face-east: var(--accent);
+}
+
+[data-theme='dark'] .scene__token .cuboid__top {
+  box-shadow: 0 0 1.8em color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.scene__shadow {
+  left: 0;
+  top: 0;
+  width: 3em;
+  height: 3em;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.3), transparent);
+  transition:
+    transform 1.5s cubic-bezier(0.45, 0.05, 0.25, 1),
+    opacity 1.5s ease;
+}
+
+.scene__token[data-token='on-source'] {
+  transform: translate3d(11.5em, 32.5em, var(--slab));
+}
+
+.scene__shadow[data-token='on-source'] {
+  transform: translate3d(11.5em, 32.5em, calc(var(--slab) + 0.05em)) scale(1.5);
+}
+
+.scene__token[data-token='lifted'] {
+  transform: translate3d(11.5em, 32.5em, 8em);
+}
+
+.scene__shadow[data-token='lifted'] {
+  transform: translate3d(11.5em, 32.5em, calc(var(--slab) + 0.05em)) scale(2.2);
+  opacity: 0.55;
+}
+
+.scene__token[data-token='mid-air'] {
+  transform: translate3d(22em, 22em, 11em);
+}
+
+.scene__shadow[data-token='mid-air'] {
+  transform: translate3d(22em, 22em, 0.06em) scale(2.6);
+  opacity: 0.4;
+}
+
+.scene__token[data-token='above-destination'] {
+  transform: translate3d(32.5em, 11.5em, 8em);
+}
+
+.scene__shadow[data-token='above-destination'] {
+  transform: translate3d(32.5em, 11.5em, calc(var(--slab) + 0.05em)) scale(2.2);
+  opacity: 0.55;
+}
+
+.scene__token[data-token='on-destination'] {
+  transform: translate3d(32.5em, 11.5em, var(--slab));
+}
+
+.scene__shadow[data-token='on-destination'] {
+  transform: translate3d(32.5em, 11.5em, calc(var(--slab) + 0.05em)) scale(1.5);
+}
+
+/*
+ * The loop restarts by cutting back to the source. Flying the block backwards
+ * would read as a refund, so it reappears in place instead.
+ */
+.scene[data-stage='ready'] .scene__token,
+.scene[data-stage='ready'] .scene__shadow {
+  transition: none;
+  animation: scene-appear 0.7s ease both;
+}
+
+@keyframes scene-appear {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ labels */
+
+/* A point in the scene whose content is turned back to face the camera. */
+.scene__anchor {
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform: translate3d(var(--x), var(--y), var(--z, 0em)) rotateZ(calc(-1 * var(--rz)))
+    rotateX(calc(-1 * var(--rx)));
+  transition: transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.scene__anchor > * {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+}
+
+.scene__anchor--source-rate {
+  --x: 7em;
+  --y: 28em;
+}
+
+.scene__anchor--destination-rate {
+  --x: 28em;
+  --y: 7em;
+}
+
+.scene__anchor--source-name {
+  --x: 17em;
+  --y: 38em;
+}
+
+.scene__anchor--destination-name {
+  --x: 38em;
+  --y: 17em;
+}
+
+.scene__tag {
+  transform: translate(-50%, -100%);
+  padding: 0.35em 0.8em;
+  border-radius: 99em;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  color: var(--ink-muted);
+  font-size: max(11px, 1.25em);
+  line-height: 1.4;
+  box-shadow: var(--shadow-sm);
+  transition: opacity 0.5s ease;
+}
+
+.scene__tag strong {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.scene__tag--accent {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.scene__tag--accent strong {
+  color: var(--accent-strong);
+}
+
+.scene__tag[data-open='false'] {
+  opacity: 0;
+}
+
+.scene__name {
+  /* Lifted towards the camera so the ground grid never draws over it. */
+  transform: translate(-50%, 1em) translateZ(6em);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1em;
+  font-size: max(11px, 1.2em);
+  line-height: 1.35;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.scene__name strong {
+  color: var(--ink);
+  font-size: 1.15em;
+  font-weight: 700;
+}
+
+.scene__role {
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.scene__caption {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  margin: 0;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-raised) 80%, transparent);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------- "how a run goes" band */
+
+.run-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.kpi-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+/* ---------------------------------------------------------------- use case */
+
+.usecase-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr);
+  gap: var(--space-5);
+  align-items: stretch;
+}
+
+.usecase-example {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.usecase-story {
+  margin: 0;
+  font-size: 18px;
+  line-height: 28px;
+}
+
+.rate-drop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.rate-drop__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rate-drop__value {
+  font-size: 44px;
+  line-height: 48px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-drop__value--old {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: color-mix(in srgb, var(--ink-muted) 60%, transparent);
+}
+
+.rate-drop__label {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-muted);
+}
+
+.rate-drop__arrow {
+  color: var(--accent-strong);
+  flex: none;
+}
+
+.usecase-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--line);
+}
+
+.usecase-facts > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.usecase-facts dt {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+
+.usecase-facts dd {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.usecase-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-muted);
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.compare {
+  gap: var(--space-4);
+}
+
+.compare--ours {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 18px 44px -26px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.compare__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.compare__steps li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.compare__steps li::before {
+  content: counter(step);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-muted);
+  border: 1px solid var(--line-strong);
+}
+
+.compare--ours .compare__steps li::before {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.compare__verdict {
+  margin: auto 0 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+
+.compare__verdict strong {
+  color: var(--ink);
+}
+
+/* -------------------------------------------------------------- responsive */
+
+/* A phone-sized scene has no room for two full market names side by side. */
+@container (max-width: 440px) {
+  .scene__name > span:last-child {
+    display: none;
+  }
+
+  .scene__name strong {
+    font-size: 1em;
+  }
+
+  .scene__tag {
+    padding: 0.3em 0.7em;
+  }
+}
+
+@container (max-width: 980px) {
+  .run-grid,
+  .usecase-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kpi-col {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 720px) {
+  .compare-grid,
+  .kpi-col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rate-drop__value {
+    font-size: 36px;
+    line-height: 40px;
+  }
+
+  .usecase-example {
+    padding: var(--space-5);
+  }
+}

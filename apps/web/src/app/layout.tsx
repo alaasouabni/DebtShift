@@ -8,6 +8,7 @@ import { THEME_BOOTSTRAP_SCRIPT } from '../lib/theme';
 
 import './globals.css';
 import './app-look.css';
+import './inner-pages.css';
 
 export const metadata: Metadata = {
   title: 'DebtShift | Safer cross-chain refinancing',

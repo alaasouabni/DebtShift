@@ -279,3 +279,51 @@ describe('the explanation panel', () => {
     expect(screen.getByText(/No financial value changed/i)).toBeDefined();
   });
 });
+
+/* ------------------------------------------------------ the candidate board */
+
+describe('the candidate board', () => {
+  function cards() {
+    const board = screen.getByRole('list', { name: /routes evaluated/i });
+    return [...board.querySelectorAll('li')];
+  }
+
+  it('shows one card per evaluated route, none left out', async () => {
+    await renderRoutes();
+    expect(cards()).toHaveLength(analysis.analysis.analyses[0]!.comparison.evaluations.length);
+  });
+
+  it('puts the selected route first and says it is selected', async () => {
+    await renderRoutes();
+    const first = cards()[0]!;
+    expect(first.className).toContain('cand--selected');
+    expect(first.textContent).toMatch(/Selected route/);
+    expect(first.textContent).toMatch(/No check failed/);
+  });
+
+  it('shows the rejected route as rejected, with a link to every reason', async () => {
+    await renderRoutes();
+    const rejected = cards().find((card) => card.className.includes('cand--rejected'))!;
+    expect(rejected.textContent).toMatch(/Rejected/);
+    expect(rejected.textContent).toMatch(/3 checks failed/);
+    expect(rejected.textContent).toMatch(/cannot be prepared/);
+    const link = rejected.querySelector('a')!;
+    const target = link.getAttribute('href')!.slice(1);
+    expect(document.getElementById(target)).not.toBeNull();
+  });
+
+  it('does not dress up the rate of a rejected route as an offer', async () => {
+    await renderRoutes();
+    const rejected = cards().find((card) => card.className.includes('cand--rejected'))!;
+    expect(rejected.textContent).toMatch(/rate it would offer/);
+    expect(rejected.textContent).not.toMatch(/Net benefit/);
+  });
+
+  it('shows every card as rejected when nothing passes', async () => {
+    await renderRoutes(allStaleAnalysis());
+    const all = cards();
+    expect(all.length).toBeGreaterThan(0);
+    for (const card of all) expect(card.className).toContain('cand--rejected');
+    expect(screen.queryByText(/Selected route/)).toBeNull();
+  });
+});

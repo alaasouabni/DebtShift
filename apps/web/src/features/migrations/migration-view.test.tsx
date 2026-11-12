@@ -94,9 +94,11 @@ describe('commands', () => {
 
   it('presents a retry as routine rather than as a failure the user must fix', async () => {
     await renderMigration();
-    // The real fixture has FINALIZE_NEAR_RECEIPT retrying.
+    // The real fixture has FINALIZE_NEAR_RECEIPT retrying. Waited for rather
+    // than read at once: under a loaded run the commands can render a tick
+    // after the heading this helper waits on.
     expect(
-      screen.getByText(
+      await screen.findByText(
         /This attempt failed and the workflow owns the retry\. No action from you\./,
       ),
     ).toBeDefined();

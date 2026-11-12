@@ -46,6 +46,7 @@ import { isPrivateSandboxChain } from '../../lib/chains';
 import { allStale, rejectionCopy } from '../../lib/labels';
 import { readExplanationSettings } from '../settings/explanation-settings';
 import { isConnected, useWallet } from '../wallet/wallet-context';
+import { CandidateBoard } from './candidate-board';
 import {
   BreakEvenChart,
   CapacityBars,
@@ -288,6 +289,8 @@ function RoutesHero({
               : 'It passes.'}
           </p>
 
+          <CandidateBoard evaluations={evaluations} />
+
           <FigureStrip
             figures={[
               {
@@ -356,6 +359,8 @@ function RoutesHero({
             {evaluations.length} candidate{evaluations.length === 1 ? ' was' : 's were'} checked and
             every one was rejected. Nothing is hidden — each reason is below.
           </p>
+
+          <CandidateBoard evaluations={evaluations} />
 
           {everythingStale ? (
             <Alert

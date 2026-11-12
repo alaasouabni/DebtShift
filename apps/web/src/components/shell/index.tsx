@@ -21,6 +21,7 @@ import { useEnvironment } from '../../features/environment/environment-context';
 import { defaultEnvironmentMode } from '../../lib/environment';
 import { ThemeToggle } from '../../features/theme/theme-toggle';
 import { Badge, Button } from '../ui/index';
+import { DemoTour } from './demo-tour';
 
 const NAV = [
   { href: '/position', label: 'Position' },
@@ -159,7 +160,7 @@ export function SiteHeader() {
 
   return (
     <div className="topbar">
-      {wallet.isDemo ? <DemoBanner onExit={wallet.exitDemo} /> : null}
+      {wallet.isDemo ? <DemoBanner pathname={pathname} onExit={wallet.exitDemo} /> : null}
       <SiteHeaderBar pathname={pathname} wallet={wallet} connected={connected} />
     </div>
   );
@@ -171,37 +172,33 @@ export function SiteHeader() {
  * It is what keeps the demo honest: a judge must never be able to mistake a
  * replay for a live session, on any page, at any scroll position.
  */
-function DemoBanner({ onExit }: { readonly onExit: () => void }) {
+function DemoBanner({
+  pathname,
+  onExit,
+}: {
+  readonly pathname: string;
+  readonly onExit: () => void;
+}) {
   return (
-    <div
-      role="status"
-      style={{
-        background: 'var(--warning-soft)',
-        color: 'var(--ink)',
-        borderBottom: '1px solid var(--line)',
-      }}
-    >
-      <div
-        className="page"
-        style={{
-          padding: '10px var(--page-gutter)',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '4px 16px',
-          alignItems: 'center',
-          fontSize: 14,
-          lineHeight: '20px',
-        }}
-      >
-        <strong>Recorded demo.</strong>
-        <span>
-          Real responses captured on the contract-backed sandbox, replayed. No wallet is connected
-          and nothing is signed or executed.
-        </span>
-        <span style={{ flexGrow: 1 }} />
+    <div className="demo-banner">
+      <div className="page demo-banner__inner">
+        {/*
+          The notice is a live region; the tour beside it is navigation and is
+          kept outside it so moving between steps is not read out as an alert.
+        */}
+        <p role="status" className="demo-banner__notice">
+          <strong>Recorded demo.</strong>{' '}
+          <span className="demo-banner__long">
+            Real responses captured on the contract-backed sandbox, replayed. No wallet is connected
+            and nothing is signed or executed.
+          </span>
+          {/* The same promise in the room a phone has. */}
+          <span className="demo-banner__short">Nothing is signed or executed.</span>
+        </p>
         <Button variant="secondary" size="sm" onClick={onExit}>
           Exit demo
         </Button>
+        <DemoTour pathname={pathname} />
       </div>
     </div>
   );
@@ -304,7 +301,10 @@ function SiteHeaderBar({
             <>
               <span style={{ display: 'flex', flexDirection: 'column', textAlign: 'right' }}>
                 <span className="mono">{truncateHex(wallet.account ?? '')}</span>
-                <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-muted)' }}>
+                <span
+                  className="hdr__chain"
+                  style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-muted)' }}
+                >
                   {chainLabel(wallet.chainId)}
                 </span>
               </span>

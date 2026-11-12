@@ -50,7 +50,9 @@ import {
 import { MIGRATION_STORAGE_KEY } from '../../lib/storage-keys';
 import { useEnvironment } from '../environment/environment-context';
 import { isConnected, useWallet } from '../wallet/wallet-context';
+import { glanceRows, groupReviewRows, type ReviewKind } from './review-groups';
 import { intentRows, planRows, type ReviewRow } from './review-rows';
+import { stepNote, stepStatus } from './step-notes';
 
 type Step = 'prepare' | 'policy' | 'execution' | 'submit';
 
@@ -316,7 +318,7 @@ export function AuthorizeView() {
           gap: 28,
         }}
       >
-        <StepIndicator current={state.step} />
+        <StepIndicator current={state.step} isDemo={wallet.isDemo} />
 
         {state.step === 'prepare' ? (
           <PrepareStep
@@ -441,12 +443,14 @@ export function AuthorizeView() {
           <SectionRule />
           <ReviewSection
             id="policy-review"
+            kind="policy"
             number="01"
             title="The limits"
             note="Any route outside these numbers is refused, whatever its rate."
             rows={intentRows(prepared.intent, prepared.verifyingContract, prepared.intentHash)}
           />
           <SignBar
+            eyebrow="Signature 1 of 2"
             label="Sign the policy"
             caption="Your wallet will show the EIP-712 payload. Signing here authorizes bounds only — no route, no amount is committed yet."
             disabled={!canSign}
@@ -461,12 +465,14 @@ export function AuthorizeView() {
           <SectionRule />
           <ReviewSection
             id="plan-review"
+            kind="plan"
             number="02"
             title="The exact execution"
             note="Every value here is fixed by your signature. If any of it changes, the authorization is discarded and you review again."
             rows={planRows(prepared.plan, prepared.quote, prepared.planHash)}
           />
           <SignBar
+            eyebrow="Signature 2 of 2"
             label="Sign the execution plan"
             caption="The second and last signature. After this nothing new is signed — the next step only submits what you already approved."
             disabled={!canSign}
@@ -613,42 +619,41 @@ function EnvironmentBanner({
 
 /* ---------------------------------------------------------------- indicator */
 
-function StepIndicator({ current }: { readonly current: Step }) {
+function StepIndicator({ current, isDemo }: { readonly current: Step; readonly isDemo: boolean }) {
   const currentIndex = STEP_LABELS.findIndex((step) => step.id === current);
   return (
-    <ol
-      className="steps"
-      aria-label="Authorization steps"
-      style={{
-        listStyle: 'none',
-        margin: 0,
-        padding: 0,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-        gap: '0 var(--space-5)',
-        fontSize: 14,
-        lineHeight: '20px',
-      }}
-    >
+    <ol className="stepper" aria-label="Authorization steps">
       {STEP_LABELS.map((step, index) => {
-        const done = index < currentIndex;
-        const active = index === currentIndex;
+        const status = stepStatus(index, currentIndex);
         return (
           <li
             key={step.id}
-            aria-current={active ? 'step' : undefined}
-            style={{
-              borderTop: `2px solid ${active ? 'var(--accent)' : done ? 'var(--line-strong)' : 'var(--line)'}`,
-              paddingTop: 10,
-              color: active ? undefined : 'var(--ink-muted)',
-              fontWeight: active ? 700 : 400,
-            }}
+            className="stepper__step"
+            data-status={status}
+            aria-current={status === 'current' ? 'step' : undefined}
           >
-            <span className="num" style={{ fontWeight: 700 }}>
-              {index + 1}
-            </span>{' '}
-            · {step.label}
-            {done ? ' — done' : ''}
+            <span className="stepper__dot num" aria-hidden="true">
+              {status === 'done' ? (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m5 12.5 4.5 4.5L19 7.5" />
+                </svg>
+              ) : (
+                index + 1
+              )}
+            </span>
+            <span className="stepper__text">
+              <span className="stepper__label">{step.label}</span>
+              <span className="stepper__note">{stepNote(step.id, status, isDemo)}</span>
+            </span>
           </li>
         );
       })}
@@ -830,86 +835,97 @@ function WindowStrip({
 
 function ReviewSection({
   id,
+  kind,
   number,
   title,
   note,
   rows,
 }: {
   readonly id: string;
+  readonly kind: ReviewKind;
   readonly number: string;
   readonly title: string;
   readonly note: string;
   readonly rows: readonly ReviewRow[];
 }) {
+  const groups = groupReviewRows(kind, rows);
+  const glance = glanceRows(kind, rows);
+
   return (
     <Section id={id} number={number} title={title} note={note}>
-      <dl
-        className="facts"
-        style={{
-          margin: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          borderTop: '2px solid var(--ink)',
-        }}
-      >
-        {rows.map((row) => (
-          <div
-            key={row.key}
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              gap: '4px 24px',
-              padding: '18px 0',
-              borderBottom: '1px solid var(--line)',
-            }}
-          >
-            <dt style={{ fontSize: 16, color: 'var(--ink-muted)' }}>{row.label}</dt>
-            <dd className="num" style={{ margin: 0, textAlign: 'right', maxWidth: '100%' }}>
-              <span
-                style={{
-                  fontSize: 20,
-                  lineHeight: '28px',
-                  fontWeight: 700,
-                  wordBreak: 'break-all',
-                  color: row.tone ? `var(--${row.tone})` : undefined,
-                }}
-              >
-                {row.value}
+      <div className="review">
+        {glance.length > 0 ? (
+          <div className="review__glance" role="group" aria-label="At a glance">
+            <p className="review__glance-title">
+              At a glance
+              <span>
+                {' '}
+                · all {rows.length} signed fields are below, and every one of them counts
               </span>
-              {row.raw ? (
-                <>
-                  <br />
+            </p>
+            <div className="review__glance-grid">
+              {glance.map((row) => (
+                <div key={row.key} className="review__glance-item">
+                  <span className="review__glance-label">{row.label}</span>
                   <span
-                    className="mono"
-                    style={{
-                      color: 'var(--ink-muted)',
-                      wordBreak: 'break-all',
-                      whiteSpace: 'pre-line',
-                    }}
+                    className="review__glance-value num"
+                    style={row.tone ? { color: `var(--${row.tone})` } : undefined}
                   >
-                    {row.raw}
+                    {row.value}
                   </span>
-                </>
-              ) : null}
-            </dd>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {groups.map((group) => (
+          <div key={group.title} className="review__group">
+            <h3 className="review__group-title">
+              {group.title}
+              <span className="review__group-count num" aria-hidden="true">
+                {group.rows.length}
+              </span>
+            </h3>
+            <dl className="facts review__rows">
+              {group.rows.map((row) => (
+                <div key={row.key} className="review__row">
+                  <dt>{row.label}</dt>
+                  <dd className="num">
+                    <span
+                      className="review__value"
+                      style={row.tone ? { color: `var(--${row.tone})` } : undefined}
+                    >
+                      {row.value}
+                    </span>
+                    {row.raw ? <span className="mono review__raw">{row.raw}</span> : null}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
         ))}
-      </dl>
+      </div>
     </Section>
   );
 }
 
 /* ------------------------------------------------------------------ sign bar */
 
+/*
+ * The sign bar follows the reader down the review, so the action is always in
+ * reach — but it stays after the terms in the document, which is the order a
+ * keyboard or a screen reader meets them in.
+ */
 function SignBar({
+  eyebrow,
   label,
   caption,
   disabled,
   busy,
   onSign,
 }: {
+  readonly eyebrow: string;
   readonly label: string;
   readonly caption: string;
   readonly disabled: boolean;
@@ -917,33 +933,13 @@ function SignBar({
   readonly onSign: () => void;
 }) {
   return (
-    <section className="page" style={{ padding: '0 var(--page-gutter) 96px' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '16px 32px',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: 'var(--space-5)',
-          background: 'var(--surface-raised)',
-          border: '1px solid var(--line)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-sm)',
-        }}
-      >
-        <p
-          style={{
-            margin: 0,
-            fontSize: 14,
-            lineHeight: '20px',
-            color: 'var(--ink-muted)',
-            maxWidth: 620,
-          }}
-        >
-          {caption}
-        </p>
-        <Button onClick={onSign} disabled={disabled || busy}>
+    <section className="page signbar" aria-label={eyebrow}>
+      <div className="signbar__inner">
+        <div className="signbar__text">
+          <span className="signbar__eyebrow">{eyebrow}</span>
+          <p className="signbar__caption">{caption}</p>
+        </div>
+        <Button className="dsh-btn--lg" onClick={onSign} disabled={disabled || busy}>
           {busy ? 'Waiting for your wallet…' : label}
         </Button>
       </div>
