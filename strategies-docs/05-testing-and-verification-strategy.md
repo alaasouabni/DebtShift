@@ -115,6 +115,8 @@ the source vault receivable. The fixed block hash is
 
 ## Transport simulator tests
 
+- Every origin, destination, and refund movement references an actual sandbox/testnet transaction;
+  a status-only success fixture is prohibited.
 - Pending deposit then success.
 - Processing delay.
 - Incomplete deposit.
@@ -186,19 +188,31 @@ liquidity, LTV/LLTV, and health-factor policy around boundary values. Equality a
 boundary is accepted only when every configured buffer has already been applied and integer rounding
 is conservative.
 
-## Live canary verification
+## Final mainnet execution verification
 
-The mainnet canary is a manual release check and is never run in ordinary CI.
+The mainnet attempt is the final release action and is never run in ordinary CI. Before enabling
+writes:
 
-- Rehearse the complete flow with the simulator first.
-- Confirm the dedicated wallet balance is limited before requesting a committed quote.
-- Confirm the route and input satisfy the configured base-unit cap.
-- Display and manually approve deposit address, recipient, refund receiver, deadline, amount in, and minimum amount out.
-- Store the origin transaction receipt before polling to completion.
-- Independently verify the destination transaction, token, receiver, and amount.
-- Record the 1Click correlation ID and terminal status.
-- Verify that no lending adapter, vault, or debt-migration record was touched.
-- Abort safely on an unknown status, expired quote, address mismatch, or cap violation.
+- Run the complete workflow against contract-backed private chains and public testnet deployments.
+- Run pinned Aave and Morpho production forks through the real adapters.
+- Validate official 1Click schemas/fixtures, a live dry quote, and strict unknown-status behavior.
+- Deploy with `MAINNET_EXECUTION_ENABLED=false` and prove every irreversible command is rejected.
+- Verify deployed code hashes, roles, pause state, route identities, token metadata, oracle
+  freshness, vault liquidity, recovery reserve, relayer gas, and registry configuration.
+- Construct and simulate every intended EVM transaction against current state without broadcasting.
+- Display principal, collateral, minimum delivery, maximum destination debt, solver fee, gas budget,
+  deposit address, recipient, refund escrow, deadline, and worst-case recovery exposure.
+- Obtain bounded borrower signatures and explicit owner approval.
+
+For the one approved attempt:
+
+- Enable mainnet execution server-side, restart, and repeat all freshness/funding checks.
+- Store each broadcast identifier before polling or scheduling its successor.
+- Independently verify source, provider, destination, settlement, and registry receipts.
+- On any mismatch or unknown status, stop forward execution and enter the custody-specific recovery
+  path rather than bypassing a check.
+- Disable mainnet execution immediately after completion or recovery entry.
+- Preserve a complete receipt/evidence bundle regardless of outcome.
 
 ## Security and quality gates
 
@@ -214,7 +228,8 @@ The release pipeline must run:
 - Dependency and container vulnerability scanning.
 - Secret scanning.
 - Build artifact and deployment-manifest checks.
-- Canary-policy negative tests proving committed quotes are unavailable outside the isolated capability.
+- Mode/permission negative tests proving mainnet writes are unavailable outside `mainnet` and while
+  `MAINNET_EXECUTION_ENABLED=false`.
 
 ## Test evidence
 

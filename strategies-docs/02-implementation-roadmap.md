@@ -50,7 +50,7 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - Invalid transition, nonce replay, and ambiguous identifier tests fail as expected.
 - Database constraints prevent duplicate actions and event sequences.
 
-## Milestone 2 - Deterministic simulated vertical slice
+## Milestone 2 - Contract-backed sandbox vertical slice
 
 **Goal:** complete one migration through every application layer without external protocol dependencies.
 
@@ -59,7 +59,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Start two Anvil chains with stable chain IDs and deterministic accounts.
 - [x] Deploy test USDC, test WETH, source lending mock, target lending mock, and test vault.
 - [x] Seed a borrower source position and vault liquidity.
-- [x] Implement the transport simulator with configurable delays and terminal outcomes.
+- [x] Implement the transport simulator with configurable delays and terminal outcomes; reported
+      asset movement is backed by local-chain transactions and verified receipts/balances.
 - [x] Implement the initial migration worker and transactional outbox consumer.
 - [x] Implement API endpoints for position, quote, authorization, execute, status, events, and evidence.
 - [x] Implement a minimal web flow for wallet, route review, signature, execution, and timeline.
@@ -253,38 +254,53 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - Unauthorized attestation and duplicate finalization attempts fail.
 - The UI links the final NEAR transaction and verifies its stored hash.
 
-## Milestone 8 - Live 1Click validation and isolated canary
+## Milestone 8 - Production execution modes and complete mainnet route
 
-**Goal:** validate the mainnet-only public 1Click integration and execute one tightly controlled transport canary without exposing lending positions or solver capital.
+**Goal:** implement one complete production Aave-to-Morpho refinance through official 1Click, while
+retaining contract-backed sandbox, public testnet, and mainnet-readonly modes that use the same core
+workflow.
 
 ### Tasks
 
-- [ ] Generate or validate the 1Click client against the current OpenAPI schema.
-- [ ] Encode the absence of a public 1Click testnet as an environment capability rule.
-- [ ] Fetch and version the live token catalog.
-- [ ] Map live asset IDs by chain and contract address.
-- [ ] Implement `dry: true` quotes as the default and only quote mode outside the isolated canary capability.
-- [ ] Reject unknown provider fields or statuses safely while retaining raw payloads for diagnostics.
-- [ ] Add live Aave and Morpho read-only position discovery behind configuration flags.
-- [ ] Add circuit breakers and rate limits.
-- [ ] Add a separate `mainnet-canary` capability that is disabled by default.
-- [ ] Restrict the canary to one configured origin chain, destination chain, origin asset, destination asset, recipient, and refund receiver.
-- [ ] Enforce a fixed maximum input in token base units.
-- [ ] Require an explicit user confirmation after showing the committed quote, deposit address, minimum output, deadline, and refund receiver.
-- [ ] Send the deposit from a dedicated, low-balance wallet controlled by the project team.
-- [ ] Poll real 1Click status and independently verify origin and destination receipts.
-- [ ] Persist and display the real correlation ID, quote terms, transaction hashes, delivered amount, and terminal status.
-- [ ] Prove that canary mode cannot call lending adapters, reserve solver liquidity, or create a debt migration.
-- [ ] Label all simulator receipts and UI states so they cannot be mistaken for live 1Click execution.
+- [ ] Replace simulator-specific worker construction with provider-neutral source, liquidity,
+      transport, destination, settlement, canonicality, and registry ports.
+- [ ] Add validated `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet` composition roots with no
+      production fallback to simulation.
+- [ ] Add fail-closed `MAINNET_EXECUTION_ENABLED`, defaulting to `false`, and enforce it at the API
+      and every irreversible worker command boundary.
+- [ ] Validate the 1Click client against the current official OpenAPI/API reference.
+- [ ] Encode the absence of public 1Click testnet as an environment rule without making simulation
+      the primary workflow.
+- [ ] Fetch/version the live token catalog and map asset IDs by chain and contract address.
+- [ ] Retain `dry: true` quotes in `mainnet-readonly` and implement committed quotes only in `mainnet`.
+- [ ] Implement committed quote validation, deposit-address binding, origin transaction submission,
+      strict status normalization, refund handling, and raw-payload persistence.
+- [ ] Independently verify origin receipt, destination receipt, delivered asset, amount, receiver,
+      confirmations, and canonical block before target open.
+- [ ] Connect production source close, vault/escrow, official transport, Morpho target open, atomic
+      settlement, residual return, and NEAR receipt registration.
+- [ ] Add bounded retry, timeout, rate limit, circuit breaker, and fail-closed unknown-status behavior.
+- [ ] Restrict the first deployment to one versioned route and explicit principal, collateral, fee,
+      slippage, gas, receiver, deadline, and recovery-exposure limits.
+- [ ] Require a separately isolated recovery reserve before source close.
+- [ ] Keep all mainnet writes disabled through development, sandbox, testnet, fork, and acceptance
+      verification.
+- [ ] Deploy production with writes disabled and simulate every intended transaction against current
+      state before requesting final execution approval.
+- [ ] After explicit owner approval only, enable writes, attempt one small complete refinance, disable
+      writes immediately afterward, and preserve completion or recovery evidence.
 
 ### Exit criteria
 
-- Live read-only mode displays current supported assets and dry route information.
-- Automated tests prove committed quotes and deposits are disabled outside `mainnet-canary`.
-- One successful, independently verified mainnet canary is recorded for the demo.
-- The canary’s actual input does not exceed the configured token-unit cap.
-- The canary has no authority or code path to touch lending positions or solver funds.
-- No deployment configuration contains or implies a 1Click testnet base URL.
+- All four modes select the expected adapters and reject invalid combinations at startup.
+- The same command/evidence workflow passes contract-backed sandbox and public testnet execution.
+- Pinned forks prove production Aave and Morpho adapter paths at recorded blocks.
+- `mainnet-readonly` provides live positions, markets, catalog, and dry quotes without write clients.
+- `mainnet` with execution disabled constructs and simulates the complete transaction sequence but
+  cannot broadcast any irreversible command.
+- The first real attempt occurs last, is explicitly approved, stays within every signed/configured
+  limit, and ends with complete evidence or a correctly opened recovery case.
+- No deployment configuration contains or implies a public 1Click testnet.
 
 ## Milestone 9 - Security, observability, and operational hardening
 

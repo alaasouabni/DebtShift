@@ -17,7 +17,7 @@ Next.js web  --->  NestJS API  ---> PostgreSQL
                                          |
                      +-------------------+-------------------+
                      |                   |                   |
-                 EVM RPCs         1Click/simulator       NEAR RPC
+                 EVM RPCs       transport adapter        NEAR RPC
                      |                   |                   |
              EVM adapters/escrow   destination asset   receipt registry
 ```
@@ -109,17 +109,37 @@ Next.js web  --->  NestJS API  ---> PostgreSQL
 
 - Generated live 1Click client.
 - Runtime token catalog mapping.
-- Dry and committed quote models.
+- Dry and committed quote, deposit binding, status, refund, and receipt models.
 - Strict provider-status normalization.
 - Deterministic simulator implementing the same internal interface.
 - Destination receipt and balance verification.
 
-The live client has two production modes in the first release:
+The package exposes one transport port. The deterministic provider and official 1Click client both
+implement that port. Provider-specific raw observations are retained, but normalized workflow
+semantics are shared. `mainnet-readonly` exposes catalog and `dry: true` quote operations without a
+write-capable adapter. `mainnet` exposes the committed quote, deposit binding, status, refund, and
+receipt operations required by the complete refinance.
 
-- `mainnet-readonly` permits catalog reads and `dry: true` quotes only.
-- `mainnet-canary` permits one user-confirmed committed quote and deposit under the canary policy.
+## Runtime composition and modes
 
-The simulator remains the only funded transport implementation connected to the debt-refinancing state machine. The mainnet canary is isolated from lending adapters, solver reservations, and the liquidity vault.
+The core API and worker contain no simulator-specific branching. The validated composition root
+selects complete adapter sets:
+
+| Mode               | Source/destination                                      | Transport                       | Registry                                  | Writes                                    |
+| ------------------ | ------------------------------------------------------- | ------------------------------- | ----------------------------------------- | ----------------------------------------- |
+| `sandbox`          | Private local chains and deployed test contracts        | Receipt-producing simulator     | NEAR sandbox or configured local verifier | Enabled for test assets                   |
+| `testnet`          | Public testnet deployments                              | Receipt-producing simulator     | NEAR testnet                              | Enabled for test assets                   |
+| `mainnet-readonly` | Official production reads                               | Official catalog and dry quotes | Read-only                                 | Prohibited by construction                |
+| `mainnet`          | Official production protocols and DebtShift deployments | Official committed 1Click flow  | Configured production registry            | Requires `MAINNET_EXECUTION_ENABLED=true` |
+
+The central workflow depends on source, liquidity, transport, destination, settlement, canonicality,
+and registry ports. Sandbox/testnet adapters execute the same commands and evidence predicates as
+mainnet. Production code cannot import simulator modules, and production failures never fall back to
+simulation.
+
+`MAINNET_EXECUTION_ENABLED` is evaluated server-side at startup and again at every irreversible
+command boundary. `false` does not change providers or fabricate a read-only mode; it rejects writes
+while permitting configuration validation and non-broadcast preflight. The frontend cannot alter it.
 
 ### `packages/sdk`
 
@@ -135,7 +155,7 @@ The simulator remains the only funded transport implementation connected to the 
 - Destination migration adapter.
 - Migration escrow.
 - Supplementary funding and settlement escrow controls.
-- Test liquidity vault.
+- Permissioned liquidity vault and isolated recovery reserve for the initial route.
 - Test protocol markets and tokens.
 - Foundry tests and deployment scripts.
 
@@ -225,7 +245,8 @@ Every external action follows this sequence:
   offchain promise is not confirmed funding.
 - 1Click or the simulator transports assets but does not prove a lending position opened.
 - The simulator is not described as 1Click testnet; simulator evidence is explicitly tagged with provider `DEBTSHIFT_SIMULATOR`.
-- Live canary evidence is tagged `NEAR_INTENTS_1CLICK` and is accepted only from the production endpoint under the canary capability.
+- Live evidence is tagged `NEAR_INTENTS_1CLICK` and is accepted only from the pinned production
+  endpoint in `mainnet`; it still requires independent origin/destination receipts and balance reads.
 - Canary completion proves transport integration only; it cannot satisfy a debt migration’s source-close, target-open, settlement, or completion predicates.
 - NEAR stores attestations and receipt hashes; it does not independently query EVM networks.
 - PostgreSQL stores workflow history but cannot override contradictory chain evidence.

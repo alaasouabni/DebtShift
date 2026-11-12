@@ -131,6 +131,23 @@ If any condition fails, the destination adapter is not called. After source clos
 a recovery event rather than permission to increase debt, weaken safety policy, or assume future
 liquidity.
 
+## Initial mainnet recovery guarantee
+
+The first mainnet route additionally requires a separately isolated recovery reserve before source
+close. Let `X_post_close_max` be the configured maximum emergency exposure after source debt is
+closed and before atomic destination settlement, and `R_recovery` be finalized funds assigned only
+to that recovery policy:
+
+```text
+R_recovery >= X_post_close_max
+```
+
+The reserve does not increase `B_safe`, does not hide a route funding shortfall, and is not counted
+as ordinary solver repayment. It exists to bound the initial permissioned solver/vault exposure if
+transport or destination execution cannot complete. Its asset, chain, custodian, amount, permitted
+uses, release evidence, and loss-allocation policy are versioned deployment configuration and are
+shown in the final mainnet preflight.
+
 ## Supported shortfall resolutions
 
 ### A. Borrower-funded fees or supplementary settlement funding

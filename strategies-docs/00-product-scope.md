@@ -2,18 +2,30 @@
 
 ## Objective
 
-Build a reproducible DebtShift demonstrator in which a borrower can inspect an existing collateralized loan, compare refinancing routes, sign a bounded authorization, execute a multi-stage refinance with test assets, and inspect independently verified receipts and recovery outcomes.
+Build a functional DebtShift system in which a borrower can inspect an existing collateralized loan, compare refinancing routes, sign bounded authorizations, execute a multi-stage refinance through production protocol adapters, and inspect independently verified receipts and recovery outcomes.
 
-The first release is a complete engineering demonstration, not a production custody or public mainnet product.
+The first release implements one narrowly configured production route and proves it through a
+contract-backed sandbox, public testnet deployment, mainnet-readonly preflight, and pinned protocol
+forks before any small real transaction is attempted. It is not represented as audited or suitable
+for unattended public use.
 
-## Hybrid proof strategy
+## Production-first proof strategy
 
-The first release contains two deliberately separate demonstrations:
+The first release contains one workflow with environment-specific adapters:
 
-1. **Complete refinance demonstration:** local/fork-validated Aave-to-Morpho workflow using test assets and the deterministic transport simulator.
-2. **Live NEAR Intents proof:** one tightly capped production 1Click transfer between team-controlled wallets, with no lending position, solver financing, or automated debt refinance.
+1. **Contract-backed sandbox:** private local chains execute real contracts, signatures,
+   transactions, receipts, balances, settlement, and recovery. Only the external transport provider
+   boundary is simulated.
+2. **Public testnet:** public test networks validate deployment, relaying, confirmation, registry,
+   restart, and explorer evidence. Transport remains explicitly simulated because 1Click has no
+   public testnet.
+3. **Mainnet read-only:** official production state and `dry: true` quotes validate the configured
+   route without writes.
+4. **Mainnet:** the same workflow uses real Aave, official 1Click, Morpho, settlement, and registry
+   adapters. Writes are enabled only at the end through the server-side execution gate.
 
-The product and README must never imply that the live canary is a complete mainnet refinance. Its purpose is to prove genuine 1Click quote, deposit, status, delivery, and receipt handling.
+There is no isolated transport canary and no separate simulation workflow. A successful mainnet
+attempt must be a complete refinance; otherwise it is described only as the stage actually reached.
 
 ## Primary user journey
 
@@ -28,10 +40,11 @@ The product and README must never imply that the live canary is a complete mainn
 7. Select a route and review exact amounts, financing classifications, recipients, fees, deadlines,
    and risk limits.
 8. Sign a bounded refinance intent and final execution plan.
-9. Revalidate zero-shortfall feasibility, then reserve temporary repayment liquidity from the test
-   vault.
+9. Revalidate zero-shortfall feasibility, then reserve temporary repayment liquidity from the
+   configured permissioned vault.
 10. Close the source debt and move released collateral into the authorized transport path.
-11. Route the collateral through a 1Click-compatible simulator.
+11. Route the collateral through the selected transport adapter: the contract-backed simulator in
+    sandbox/testnet or official 1Click in mainnet.
 12. Revalidate destination capacity, supply the delivered collateral, and open the replacement debt
     position only when the complete repayment remains funded.
 13. Combine authorized loan proceeds and secured supplementary funds to repay the temporary funding
@@ -53,14 +66,14 @@ The demo must also execute a route in which the transport fails or refunds after
 
 The initial route is intentionally narrow:
 
-- Source network: local Base-like EVM chain.
-- Source protocol: Aave V3-compatible market.
-- Destination network: local Arbitrum-like EVM chain.
-- Destination protocol: Morpho Blue-compatible market.
-- Debt asset: USDC-like six-decimal test token on both chains.
-- Collateral asset: WETH-like eighteen-decimal test token on both chains.
-- Financing: pre-funded test liquidity vault.
-- Transport: deterministic 1Click-compatible simulator.
+- Source: one configured chain, official Aave V3 deployment, borrower, and collateral/debt reserve.
+- Destination: one configured chain and exact Morpho Blue market identity.
+- Debt asset: one exact settlement/debt token pair validated by chain ID and contract address.
+- Collateral asset: one exact collateral route validated against the live 1Click catalog.
+- Financing: one permissioned, pre-funded liquidity vault and a separately isolated recovery reserve.
+- Transport: deterministic receipt-producing simulator in sandbox/testnet; official 1Click in mainnet.
+- Limits: fixed maximum principal, collateral, fee, slippage, gas, duration, receivers, and recovery
+  exposure for the initial deployment.
 
 The real-token and live-network catalog must be discovered at runtime. Symbols alone never identify an asset.
 
@@ -75,10 +88,11 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - Transactional outbox and at-least-once job processing.
 - Redis-backed background job delivery.
 - Source and destination EVM adapters.
-- Per-migration escrow and test liquidity vault.
-- 1Click-compatible transport simulator.
+- Per-migration escrow, permissioned liquidity vault, and recovery reserve.
+- Contract-backed 1Click-compatible transport simulator for sandbox and testnet.
 - Production 1Click token discovery and `dry: true` quotes behind an explicit mainnet-read-only configuration mode.
-- One manually enabled production 1Click canary using one allowlisted route, a fixed base-unit input cap, and team-controlled recipient and refund wallets.
+- Production 1Click committed quote, deposit binding, status, refund, and receipt verification in the
+  complete mainnet workflow.
 - NEAR receipt and attestation registry.
 - Foundry unit, fuzz, invariant, and pinned fork tests.
 - Local happy-path, refund, timeout, replay, and worker-restart tests.
@@ -89,8 +103,8 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 
 ## Out of scope for the first release
 
-- Real-fund mainnet lending transactions, solver advances, or complete debt refinancing.
-- General-purpose or unattended mainnet 1Click execution beyond the single canary policy.
+- General-purpose, multi-route, or unattended public mainnet execution.
+- Mainnet execution before the complete readiness gate and explicit owner approval.
 - Any claim that the simulated transport is a 1Click testnet deployment; no public 1Click testnet exists.
 - Public solver marketplace or permissionless liquidity.
 - Legal enforcement of solver credit agreements.
@@ -125,9 +139,9 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - The failure scenario visibly reaches `RECOVERY` and never reports success incorrectly.
 - A post-source-close decline in destination capacity never causes an unsafe target borrow or a
   false settlement; custody and the solver receivable remain explicit in recovery evidence.
-- The UI and documentation clearly label simulator-backed delivery receipts as simulated rather than testnet 1Click transactions.
-- The live canary displays the real 1Click correlation/status data and independently verified origin and destination receipts.
-- The live canary cannot call lending adapters or draw from the liquidity vault.
+- The UI and documentation clearly label sandbox/testnet transport receipts as simulated rather than testnet 1Click transactions.
+- The hosted sandbox proves actual local-chain contract transactions rather than fabricated API state.
+- Mainnet displays real 1Click correlation/status data and independently verified origin and destination receipts as one stage of the complete refinance.
 
 ## Non-functional acceptance criteria
 
@@ -140,8 +154,9 @@ The real-token and live-network catalog must be discovered at runtime. Symbols a
 - Feasibility is revalidated from fresh direct reads before reservation, source closure, target
   borrowing, and settlement.
 - Unknown transport states and unexpected contract events create an operator-visible exception.
-- Live canary execution requires an explicit user confirmation after the committed quote is displayed.
-- Live canary policy is enforced using token base units, not provider-supplied USD display fields.
+- Mainnet execution requires `MAINNET_EXECUTION_ENABLED=true`, bounded borrower signatures, and
+  explicit owner approval after exact terms and recovery exposure are displayed.
+- Mainnet policy is enforced using token base units, not provider-supplied USD display fields.
 
 ## Product terminology
 

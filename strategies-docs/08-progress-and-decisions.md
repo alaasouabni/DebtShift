@@ -4,33 +4,48 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Milestone tracker
 
-| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                    |
-| ----------------------------------- | ----------- | ---------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-10 | Thirteen implementation documents plus this tracker created and cross-checked, including financing, production-provider boundaries, and the frontend handoff.                                                                       |
-| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                             |
-| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                       |
-| M2 Simulated vertical slice         | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real PostgreSQL/Redis smoke evidence.                                                                              |
-| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-11 | Production Aave and Morpho modules pass the complete signed-adapter flow at pinned Base state; authorization, rollback, event payloads, feasibility, escrow, settlement, unit/fuzz/invariant gates all pass.                      |
-| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                 |
-| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, and source/destination reorg guards pass; remaining recovery, alerting, and ledger branches remain. |
-| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                   |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Existing Rust skeleton and requirements are being audited before production-shaped registry implementation and sandbox verification.                                                                                               |
-| M8 Live read-only integrations      | IN_PROGRESS | 2026-11-10 | -          | Live registry/provider wiring, authenticated 1Click dry-only client, bounded catalog cache, retry, rate limit, and circuit breaker are implemented; credentialed external smoke and the manually authorized canary remain.          |
-| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                   |
-| M10 Reproducible release            | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                   |
+| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                     |
+| ----------------------------------- | ----------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                             |
+| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                              |
+| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                        |
+| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                     |
+| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-11 | Production Aave and Morpho modules pass the complete signed-adapter flow at pinned Base state; authorization, rollback, event payloads, feasibility, escrow, settlement, unit/fuzz/invariant gates all pass.                         |
+| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                  |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, and source/destination reorg guards pass; remaining recovery, alerting, and ledger branches remain.  |
+| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                    |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and a compiling sandbox test exist; the supported Linux sandbox run and CI remain. |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Live reads and dry-only client exist, but the worker is simulator-bound. It must be refactored to one workflow with sandbox, testnet, mainnet-readonly, and full mainnet compositions before deployment.                             |
+| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                    |
+| M10 Reproducible release            | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                    |
+
+## Submission-critical mode
+
+- **Time remaining:** two days as stated by the project owner on 2026-11-12; confirm the exact portal
+  cutoff and timezone.
+- **Priority source:** `14-submission-critical-plan.md` overrides milestone ordering until the
+  submission is packaged.
+- **P0 order:** freeze strategy/modes; provider-neutral workflow; complete production adapters;
+  funding/authorization/recovery invariants; contract-backed sandbox; fork/provider validation;
+  testnet/hosted deployment; acceptance gate; mainnet deployment disabled; real attempt last.
+- **Parallel owner:** the frontend contributor follows `13-frontend-handoff.md` while backend and
+  contract work continues.
+- **Mainnet rule:** no canary or controlled mode. `mainnet` is the complete workflow and remains
+  write-disabled until every prior gate and explicit final approval pass.
 
 ## Current active task
 
-- **Task:** M7 - implement the production-shaped NEAR evidence registry and sandbox verification.
-- **Status:** IN_PROGRESS
-- **Next verification:** Audit the existing Rust skeleton against the agreement, attestation,
-  verifier, immutable receipt, and query requirements; then implement and exercise the missing paths.
+- **Task:** P0.2 - extract the worker into one provider-neutral workflow and mode-specific composition
+  roots.
+- **Status:** NOT_STARTED
+- **Next verification:** Prove that production handlers import only execution ports, sandbox is an
+  adapter for the same handlers, and `mainnet-readonly` cannot construct write-capable providers.
 
 ## Decision log
 
 ### ADR-001 - Test-funds release before real-fund execution
 
-- **Status:** APPROVED
+- **Status:** SUPERSEDED BY ADR-022
 - **Date:** 2026-11-08
 - **Decision:** Build the complete local/testnet version first. Real-fund mainnet execution is deferred.
 - **Reason:** The workflow includes non-atomic cross-chain credit exposure and requires contract, integration, operational, and recovery validation before funds are at risk.
@@ -80,15 +95,22 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ### ADR-008 - No public 1Click testnet dependency
 
-- **Status:** APPROVED
+- **Status:** AMENDED BY ADR-022
 - **Date:** 2026-11-08
-- **Decision:** Use the DebtShift transport simulator for every funded local, CI, and testnet-oriented flow. Restrict the public production 1Click service to token discovery and `dry: true` quotes in `mainnet-readonly`.
+- **Decision:** Because 1Click has no public testnet, use an explicitly labeled transport adapter in
+  sandbox and testnet. It must move value through real deployed test contracts and transactions.
+  Use the official service for read-only discovery and dry quotes in `mainnet-readonly`, and for the
+  complete committed transport lifecycle in `mainnet`.
 - **Reason:** The public NEAR Intents/1Click stack has no testnet deployment. Treating a simulator as 1Click testnet would misrepresent the evidence and create unsafe environment assumptions.
-- **Implementation consequence:** NEAR testnet validates only the DebtShift receipt registry; its receipt hash may commit to clearly labeled simulated transport evidence.
+- **Implementation consequence:** Testnet validates real public-chain contracts and the DebtShift
+  receipt registry while labeling the transport boundary as simulated; no fake provider response may
+  be presented as public 1Click testnet evidence.
 
 ### ADR-009 - Hybrid proof with isolated mainnet canary
 
-- **Status:** APPROVED
+- **Status:** SUPERSEDED BY ADR-022
+- **Supersession:** Do not implement this decision. ADR-022 replaces the isolated transfer with the
+  complete, guarded production workflow.
 - **Date:** 2026-11-08
 - **Decision:** Keep the complete debt-refinancing demonstration on test assets, and add one real production 1Click transfer between team-controlled wallets under a strict canary capability.
 - **Reason:** The NEAR Hackathon Unstoppable DeFi track emphasizes cross-chain settlement through NEAR Intents. A real canary provides verifiable integration evidence while avoiding unaudited mainnet lending and solver exposure.
@@ -161,18 +183,19 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ### ADR-017 - Explicit production provider boundary
 
-- **Status:** APPROVED
+- **Status:** AMENDED BY ADR-022
 - **Date:** 2026-11-10
-- **Decision:** Select market providers once at the application composition root through validated
-  `SIMULATOR`, `LIVE_READ_ONLY`, or `DISABLED` capabilities. Application services depend only on
-  ports; production modules cannot import simulator implementations.
-- **Live behavior:** Aave, Morpho, and Chainlink state comes from direct RPC reads configured by a
-  versioned runtime registry. 1Click read-only access is pinned to the official origin and exposes
-  only catalog and `dry: true` quote methods.
-- **Safety consequence:** Production configuration failure stops the live path. It never activates
-  fixture values. The isolated mainnet canary disables all lending market providers.
-- **Release consequence:** Live lending routes remain analysis-only and are marked adapter-unapproved
-  until pinned forks, audits, execution authorization, and future mainnet gates are satisfied.
+- **Decision:** Select providers once at the application composition root for `sandbox`, `testnet`,
+  `mainnet-readonly`, or `mainnet`. Application services depend only on ports; production modules
+  cannot import sandbox implementations.
+- **Live behavior:** Aave, Morpho, and oracle state comes from direct RPC reads configured by a
+  versioned runtime registry. The official 1Click client exposes catalog and dry quotes in
+  `mainnet-readonly`, and the committed deposit/status/refund lifecycle in `mainnet`.
+- **Safety consequence:** Invalid production configuration fails startup and never activates fixture
+  values. `mainnet-readonly` cannot construct write providers. `mainnet` cannot broadcast unless
+  `MAINNET_EXECUTION_ENABLED=true` and all workflow authorization and policy checks pass.
+- **Release consequence:** The complete route is implemented and verified first; the one bounded
+  mainnet attempt is last and requires the gates in ADR-022.
 
 ### ADR-018 - Reuse the allowlisted source-domain execution-plan signature at destination
 
@@ -251,6 +274,35 @@ This file is updated throughout implementation. It is the first place to inspect
   protocol modules and both signed adapters, consumes the two native Morpho signatures, leaves no new
   module/adapter/escrow residual, disables authorization, and settles the vault receivable.
 
+### ADR-022 - Production-first workflow with contract-backed simulation and four modes
+
+- **Status:** APPROVED
+- **Date:** 2026-11-12
+- **Deadline context:** Two days remain for submission; implementation priority is governed by
+  `14-submission-critical-plan.md`.
+- **Decision:** Implement one normal provider-neutral refinance workflow first. Production adapters
+  cover real Aave source close, vault/escrow funding, official 1Click committed transport, exact
+  Morpho target open, solver settlement, residual return, and receipt registration. Sandbox and
+  testnet adapters exercise that same workflow; they do not own separate business logic.
+- **Modes:** The only product modes are `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet`.
+  The prior `mainnet-canary` and `mainnet-controlled` concepts are removed.
+- **Sandbox consequence:** The hosted sandbox uses real private-chain contracts, signatures,
+  transactions, receipts, balances, events, and persistence. The external transport provider alone
+  is simulated, and every reported movement references an actual chain transaction.
+- **Testnet consequence:** Public testnet contracts and the NEAR testnet registry are real; transport
+  is explicitly simulated because 1Click has no public testnet.
+- **Mainnet consequence:** `mainnet-readonly` has no write runtime. `mainnet` is the complete real
+  workflow and is guarded by required `MAINNET_EXECUTION_ENABLED`, default `false`. The switch is
+  server-side, restart-bound, and cannot replace signatures, funding, allowlists, roles, or pauses.
+- **Release order:** Complete development, recovery, sandbox, testnet, fork, provider, security,
+  deployment, and non-broadcast mainnet verification first. Deploy mainnet with writes disabled.
+  Present exact exposure and obtain explicit approval. Attempt one small real transaction last,
+  then immediately disable writes and preserve completion or recovery evidence.
+- **Scope consequence:** Support one configured route and defer multi-protocol expansion and optional
+  agent work that does not unblock the route. Limits are versioned policy, not hardcoded workflow
+  behavior.
+- **Supersedes/amends:** Supersedes ADR-001 and ADR-009; amends ADR-008 and ADR-017.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                              |
@@ -261,6 +313,22 @@ This file is updated throughout implementation. It is the first place to inspect
 | D-07 | Future production upgrade policy          | Future mainnet phase | Decide after audit and governance requirements exist.                          |
 
 ## Implementation journal
+
+The journal preserves historical implementation context. Entries before ADR-022 may mention the
+superseded canary architecture; approved ADR statuses and the current strategy documents are the
+operative source of truth.
+
+### 2026-11-12 - Submission architecture corrected before implementation
+
+- Project owner clarified that judges should inspect normal functional production code, while
+  simulation remains a contract-backed sandbox/test adapter rather than the primary workflow.
+- Removed the isolated 1Click canary and future `mainnet-controlled` model from the approved design.
+- Approved four modes: `sandbox`, `testnet`, `mainnet-readonly`, and complete `mainnet`.
+- Required `MAINNET_EXECUTION_ENABLED=false` by default and the real transaction only after all
+  development, simulation, testnet, fork, security, deployment, and approval gates pass.
+- Recorded that two days remain for submission as of this date; optional agent expansion and
+  multi-route support cannot displace the end-to-end production path.
+- No implementation or mainnet transaction was changed or executed as part of this strategy update.
 
 ### 2026-11-11 - M3 EVM adapters and canonical event surface completed
 

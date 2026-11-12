@@ -123,17 +123,31 @@ DebtShift’s first implementation is complete only when every mandatory item be
 
 ## Release boundary
 
-- [ ] Live token catalogs and dry quotes may be enabled.
-- [ ] Live 1Click access uses the production service in an explicitly named `mainnet-readonly` mode; no testnet endpoint is configured or advertised.
-- [ ] All complete debt-refinancing demonstration routes use the simulator and are visibly labeled as simulated.
-- [ ] NEAR testnet records simulated receipt hashes without presenting them as 1Click testnet transactions.
-- [ ] One isolated `mainnet-canary` obtains a committed quote and completes a real, capped 1Click transfer between team-controlled wallets.
-- [ ] The canary records the real correlation ID, terminal status, origin receipt, destination receipt, delivered token, receiver, and amount.
-- [ ] The canary input respects the configured base-unit cap and requires manual wallet confirmation.
-- [ ] The canary cannot access lending adapters, migration escrow, solver reservations, or the liquidity vault.
-- [ ] Real-fund lending transactions and complete mainnet refinancing remain disabled.
+- [ ] `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet` select complete validated adapter sets;
+      production modes never fall back to simulation.
+- [ ] The core workflow contains no simulator dependency and runs unchanged with sandbox/testnet or
+      production adapters.
+- [ ] The hosted sandbox executes real local-chain contracts, signatures, transfers, receipts,
+      lending state changes, settlement, and recovery; only the unavailable transport-provider
+      boundary is simulated and clearly labeled.
+- [ ] Public testnet evidence contains real contract/registry transactions and labels its transport
+      evidence simulated rather than claiming 1Click testnet.
+- [ ] `mainnet-readonly` uses the official production service for live catalogs and dry quotes and
+      cannot instantiate write-capable handlers.
+- [ ] `MAINNET_EXECUTION_ENABLED` is required, defaults to `false`, is rejected as `true` outside
+      `mainnet`, and blocks every irreversible command while false.
+- [ ] `mainnet` implements the complete source repayment, 1Click collateral transfer, destination
+      borrow, solver repayment, residual return, and registry path.
+- [ ] The first production route enforces exact base-unit principal, collateral, fee, slippage, gas,
+      receiver, deadline, and recovery-exposure limits.
+- [ ] Mainnet deployment occurs with writes disabled; code hashes, roles, balances, route identities,
+      live funding, and non-broadcast simulations are verified first.
+- [ ] A real attempt, if authorized, occurs only after every prior gate and explicit owner approval;
+      the switch is disabled immediately afterward and complete or recovery evidence is retained.
 - [ ] No documentation claims that the test release is audited, trustless, or production ready.
 - [ ] No documentation or UI claims that per-chain smart contracts make the cross-chain refinance
       atomic or guarantee solver repayment.
 
-When all mandatory items are checked, the test-funds DebtShift implementation may be labeled **hackathon-complete**. Mainnet readiness is a separate project phase with separate approval and audit requirements.
+When all mandatory items are checked, DebtShift may be labeled **hackathon-complete**. A small
+owner-approved production attempt is evidence for the initial route, not a claim of general public
+mainnet readiness or independent audit.

@@ -189,31 +189,45 @@ This vault demonstrates temporary financing mechanics; it is not presented as a 
 - No contract claims to guarantee cross-chain repayment: each contract enforces local custody and
   signed bounds, while the orchestrator and risk service handle changing remote capacity.
 
-## Mainnet 1Click canary boundary
+## Mainnet production execution boundary
 
-The live canary is an application-level transport proof and does not use the DebtShift lending contracts.
+There is no isolated 1Click canary contract path. `mainnet` executes the complete signed refinance
+through the same source adapter, vault, escrows, destination adapter, settlement, and registry used
+by the production workflow.
 
-- The sending wallet manually authorizes and submits the exact deposit transaction.
-- No source adapter, destination adapter, migration escrow, or liquidity vault is called.
-- Recipient and refund addresses are team-controlled and statically allowlisted for the canary environment.
-- The input cap is configured in origin-token base units.
-- The canary record uses a distinct identifier namespace and cannot be referenced as proof for a refinance migration.
-- A successful canary demonstrates genuine 1Click transport integration only.
+- `MAINNET_EXECUTION_ENABLED=false` blocks every irreversible application command before broadcast.
+- Enabling the application switch grants no contract authority by itself.
+- The source adapter accepts only an allowlisted relayer and a valid borrower-signed plan, then draws
+  only the migration-bound vault reservation.
+- The source escrow may release collateral only to the deposit address bound to the committed 1Click
+  quote and signed plan, or to the signed recovery receiver under an authorized recovery command.
+- The destination escrow accepts only the exact token/amount/receiver proven by the finalized
+  provider and chain receipts.
+- The destination adapter opens only the configured Morpho market under current zero-shortfall
+  feasibility and atomically pays the solver/vault, costs, and borrower residual.
+- The first deployment policy fixes the route, base-unit exposure limits, receivers, relayer, and
+  recovery reserve. These limits are configuration and authorization, not a separate business flow.
+- The complete transaction is attempted only after sandbox, testnet, fork, non-broadcast mainnet
+  simulation, deployment verification, and explicit owner approval pass.
+
+The application switch, borrower signatures, contract roles, pause state, and funding/feasibility
+checks are independent layers. No single layer can authorize a different market, token, amount,
+receiver, quote, fee, or deadline.
 
 ## Canonical migration events and authoritative surfaces
 
-| Event                          | Authoritative emitter / record                                      |
-| ------------------------------ | ------------------------------------------------------------------- |
-| `MigrationAuthorized`          | Source `SourceAdapter` EVM log after signature and plan validation. |
-| `LiquidityReserved`            | Source liquidity-vault EVM log.                                     |
-| `SupplementaryFundingSecured`  | Destination migration-escrow EVM log.                               |
-| `SourceClosed`                 | Source `SourceAdapter` EVM log.                                     |
-| `CollateralAssigned`           | Destination migration-escrow EVM log.                               |
-| `RouteDispatched`              | Durable worker/provider evidence after provider acceptance.         |
-| `DestinationOpened`            | Destination `DestinationAdapter` EVM log.                            |
-| `LiquiditySettled`             | Source liquidity-vault EVM log.                                     |
-| `MigrationRecoveryOpened`      | Atomic PostgreSQL recovery case, evidence, phase, and audit record.  |
-| `MigrationCompleted`           | PostgreSQL terminal receipt bundle and NEAR registry finalization.  |
+| Event                         | Authoritative emitter / record                                      |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `MigrationAuthorized`         | Source `SourceAdapter` EVM log after signature and plan validation. |
+| `LiquidityReserved`           | Source liquidity-vault EVM log.                                     |
+| `SupplementaryFundingSecured` | Destination migration-escrow EVM log.                               |
+| `SourceClosed`                | Source `SourceAdapter` EVM log.                                     |
+| `CollateralAssigned`          | Destination migration-escrow EVM log.                               |
+| `RouteDispatched`             | Durable worker/provider evidence after provider acceptance.         |
+| `DestinationOpened`           | Destination `DestinationAdapter` EVM log.                           |
+| `LiquiditySettled`            | Source liquidity-vault EVM log.                                     |
+| `MigrationRecoveryOpened`     | Atomic PostgreSQL recovery case, evidence, phase, and audit record. |
+| `MigrationCompleted`          | PostgreSQL terminal receipt bundle and NEAR registry finalization.  |
 
 The source adapter temporarily emits the legacy `ExecutionPlanConsumed` alias beside
 `MigrationAuthorized` so existing consumers are not broken before a versioned removal. Contract-log

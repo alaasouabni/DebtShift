@@ -2,16 +2,17 @@
 
 ## Environment matrix
 
-| Environment          | Purpose                                                                                   | Asset movement                                            |
-| -------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `local`              | Deterministic development and E2E tests                                                   | Local test assets only                                    |
-| `ci`                 | Automated isolated verification                                                           | Ephemeral test assets only                                |
-| `testnet`            | NEAR registry testnet, supported EVM test deployments, and simulated transport            | Test assets only; no live 1Click                          |
-| `mainnet-readonly`   | Position discovery, market reads, production 1Click token catalog, and `dry: true` quotes | Prohibited                                                |
-| `mainnet-canary`     | One isolated production 1Click proof between team-controlled wallets                      | Strictly capped real transport only; no lending or solver |
-| `mainnet-controlled` | Future audited rollout                                                                    | Deferred and disabled                                     |
+| `DEBTSHIFT_MODE`   | Purpose                                                                              | Asset movement                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `sandbox`          | Hosted/developer private-chain execution of the complete workflow                    | Real local-chain test-asset transactions; simulated external transport boundary            |
+| `testnet`          | Public EVM test deployments and NEAR testnet registry                                | Real public testnet transactions; simulated external transport boundary                    |
+| `mainnet-readonly` | Production position/market reads, 1Click catalog, and `dry: true` quotes             | Prohibited by construction                                                                 |
+| `mainnet`          | Complete production refinance through Aave, 1Click, Morpho, settlement, and registry | Real assets only when `MAINNET_EXECUTION_ENABLED=true` and every authorization gate passes |
 
-## Local topology
+Local development and CI instantiate the `sandbox` composition with ephemeral infrastructure. They
+are deployment topologies, not additional product modes.
+
+## Sandbox topology
 
 - Web application.
 - API application.
@@ -45,13 +46,24 @@ Configuration schemas are divided into:
 
 Market-provider selection is explicit and validated:
 
-- `local`, `ci`, and `testnet` require `MARKET_DATA_PROVIDER=SIMULATOR`.
+- `sandbox` and `testnet` use configured contract-backed test market adapters and
+  `TRANSPORT_PROVIDER=DEBTSHIFT_SIMULATOR`.
 - `mainnet-readonly` requires `MARKET_DATA_PROVIDER=LIVE_READ_ONLY`, an authenticated 1Click client,
   and a complete `LIVE_MARKET_CONFIG_JSON` registry.
-- `mainnet-canary` requires `MARKET_DATA_PROVIDER=DISABLED`, preventing the canary process from
-  reaching lending adapters or market routes.
+- `mainnet` requires production market and execution adapters, the official 1Click origin, complete
+  deployment manifests, relayer references, and a configured production registry.
 - Production modes never fall back to simulator fixtures when configuration or an external provider
   is unavailable.
+
+`MAINNET_EXECUTION_ENABLED` is required and defaults to `false`:
+
+- `sandbox`, `testnet`, and `mainnet-readonly` reject `true` at startup.
+- `mainnet` with `false` permits live validation, route preparation, transaction construction, and
+  non-broadcast simulation but rejects every irreversible command before side effects.
+- `mainnet` with `true` permits the complete workflow only after all ordinary signed, funding,
+  freshness, role, pause, and policy checks pass.
+- The value is read server-side at startup, requires a restart to change, is exposed read-only in
+  capability metadata, and cannot be changed from the browser.
 
 The live registry has no built-in production addresses. It supplies the Aave pool/data provider,
 Morpho singleton/market/oracle, exact token identities and 1Click asset IDs, Chainlink feeds and age
@@ -65,26 +77,33 @@ Secrets are referenced through environment or a secret manager. `.env.example` c
 
 There is no public 1Click testnet stack. The environments therefore use the following explicit split:
 
-- `local`, `ci`, and `testnet` use `DEBTSHIFT_SIMULATOR` for all funded transport state transitions.
+- `sandbox` and `testnet` use `DEBTSHIFT_SIMULATOR` only for the unavailable external provider
+  boundary. Each reported origin, destination, or refund movement must reference an actual chain
+  transaction and verified balance change.
 - `mainnet-readonly` may call the production 1Click token endpoint and request only `dry: true` quotes.
-- `mainnet-canary` may call `dry: false` only after a dry quote and immediately before explicit user confirmation. It permits one capped transport flow and cannot access lending or solver components.
+- `mainnet` implements committed quotes, exact deposit binding, status polling, refunds, and receipt
+  reconciliation as part of the complete refinance workflow.
 - NEAR testnet is used for the DebtShift agreement and receipt registry only. A registry record may refer to simulated transport evidence, and that evidence must be labeled as simulated.
-- General production refinancing remains in `mainnet-controlled` and requires the separate safety approval described below.
+- The production registry network/account is explicit mainnet deployment configuration.
 
-Configuration validation rejects invented testnet URLs, production funded mode outside `mainnet-canary` or `mainnet-controlled`, and any attempt to pair simulated evidence with provider identity `NEAR_INTENTS_1CLICK`.
+Configuration validation rejects invented testnet URLs, production transport outside `mainnet`,
+mainnet execution in any other mode, and any attempt to pair simulated evidence with provider
+identity `NEAR_INTENTS_1CLICK`.
 
-### Canary safety policy
+### Initial mainnet route policy
 
-- Dedicated wallet with only the required asset and gas balance.
 - Exactly one allowlisted origin/destination asset pair and chain pair.
-- Fixed maximum input expressed in origin-token base units.
-- Static team-controlled recipient and refund receiver.
-- No server-held borrower key; the user wallet submits the deposit.
-- Manual confirmation after the committed quote is displayed.
-- One active canary at a time.
-- Kill switch and default-disabled configuration.
+- Fixed maximum principal, collateral, destination debt, fee, slippage, gas, duration, and recovery
+  exposure expressed in native/base units.
+- Migration-specific source refund escrow, destination escrow, solver payout receiver, residual
+  receiver, and exact adapter/market identities.
+- No server-held borrower key; the borrower signs bounded intent, plan, allowance/permit, and Morpho
+  authorization data through the wallet.
+- Explicit owner approval after exact committed terms and recovery exposure are displayed.
+- One active real migration at a time for the initial deployment.
+- Default-disabled application switch plus independent onchain pause controls.
 - Independent origin and destination receipt verification.
-- No route from canary code to EVM lending adapters, migration escrow, or liquidity vault.
+- Pre-funded vault and separately isolated recovery reserve before source close.
 
 ## Deployment manifests
 
@@ -172,16 +191,23 @@ Operations documentation must cover:
 
 ## Mainnet safety lock
 
-The first release must include both configuration and code-level prevention of funded mainnet execution. Enabling `mainnet-controlled` later requires:
+The production implementation is complete, but deployment remains write-disabled until the final
+release gate. Setting `MAINNET_EXECUTION_ENABLED=true` requires:
 
-- Independent EVM contract audit.
-- Resolved critical and high security findings.
-- Documented solver financing and default terms.
+- All required sandbox, testnet, fork, provider, recovery, restart, and clean-checkout tests passing.
+- Resolved known critical and high security findings; absence of an independent audit must be
+  disclosed and limits the first attempt to the explicitly approved small exposure.
+- Documented permissioned solver financing, recovery reserve, and loss-allocation assumptions.
 - Production-grade key custody and multisig roles.
 - Per-route and aggregate exposure limits.
-- Audited zero-shortfall feasibility enforcement, secured supplementary-funding escrow, conservative
-  capacity buffers, and post-source capacity-loss recovery drills.
+- Verified zero-shortfall feasibility enforcement, secured supplementary-funding escrow,
+  conservative capacity buffers, and post-source capacity-loss recovery tests.
 - Explicit acknowledgement that cross-chain smart contracts do not guarantee solver repayment.
 - Live 1Click committed-quote and refund validation.
-- Canary limits and emergency response exercise.
+- Deployed code-hash/role/balance verification and successful non-broadcast simulation of every
+  intended transaction against current mainnet state.
+- Exact terms and worst-case recovery exposure presented to the owner.
 - Explicit project-owner approval recorded in the decision log.
+
+After the single approved attempt, the switch returns to `false` immediately whether the workflow
+completes or enters recovery.
