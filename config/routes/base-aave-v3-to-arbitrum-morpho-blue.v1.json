@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "source": {
+    "pool": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+    "dataProvider": "0x0F43731EB8d45A581f4a36DD74F5f358bc90C73A",
+    "collateralAsset": {
+      "address": "0x4200000000000000000000000000000000000006",
+      "decimals": 18,
+      "symbol": "WETH",
+      "providerAssetId": "nep141:base-0x4200000000000000000000000000000000000006.omft.near"
+    },
+    "debtAsset": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "decimals": 6,
+      "symbol": "USDC",
+      "providerAssetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near"
+    },
+    "sequencerUptimeFeed": {
+      "address": "0xBCF85224fc0756B9Fa45aA7892530B47e10b6433",
+      "recoveryGraceSeconds": 3600
+    }
+  },
+  "destination": {
+    "morpho": "0x6c247b1F6182318877311737BaC0844bAa518F5e",
+    "marketId": "0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c",
+    "morphoOracle": "0x282FEB10549fde52bD61A6979424Ddf18A4971A2",
+    "collateralAsset": {
+      "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+      "decimals": 18,
+      "symbol": "WETH",
+      "providerAssetId": "nep141:arb-0x82af49447d8a07e3bd95bd0d56f35241523fbab1.omft.near"
+    },
+    "debtAsset": {
+      "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "decimals": 6,
+      "symbol": "USDC",
+      "providerAssetId": "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near"
+    },
+    "morphoOracleFeeds": [
+      {
+        "address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
+        "maximumAgeSeconds": 86400
+      },
+      {
+        "address": "0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3",
+        "maximumAgeSeconds": 86400
+      }
+    ],
+    "sequencerUptimeFeed": {
+      "address": "0xFdB631F5EE196F0ed6FAa767959853A9F217697D",
+      "recoveryGraceSeconds": 3600
+    }
+  },
+  "prices": {
+    "sourceCollateralUsd": {
+      "address": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
+      "maximumAgeSeconds": 86400
+    },
+    "sourceDebtUsd": {
+      "address": "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B",
+      "maximumAgeSeconds": 86400
+    },
+    "sourceNativeUsd": {
+      "address": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
+      "maximumAgeSeconds": 86400
+    },
+    "destinationCollateralUsd": {
+      "address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
+      "maximumAgeSeconds": 86400
+    },
+    "destinationDebtUsd": {
+      "address": "0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3",
+      "maximumAgeSeconds": 86400
+    },
+    "destinationNativeUsd": {
+      "address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
+      "maximumAgeSeconds": 86400
+    }
+  },
+  "policy": {
+    "horizonDays": 90,
+    "maxAllInCostUsdMicro": "250000000",
+    "minAprReductionBps": 50,
+    "maxPositionSnapshotAgeSeconds": 300,
+    "maxMarketSnapshotAgeSeconds": 300,
+    "maxOracleAgeSeconds": 86400,
+    "minimumLiquidityBufferBps": 500,
+    "stressCollateralDropBps": 2000,
+    "stressTargetAprIncreaseBps": 200,
+    "maximumLtvBps": 7000,
+    "stressMaximumLtvBps": 6000
+  },
+  "analyticsCosts": {
+    "sourceGasUnitsUpperBound": 2000000,
+    "destinationGasUnitsUpperBound": 2500000,
+    "estimatedSettlementSeconds": 300,
+    "settlementTimeP95Seconds": 1800,
+    "tailLossEstimateUsdMicro": "25000000",
+    "settlementRiskCostUsdMicro": "10000000",
+    "dependencyRiskCostUsdMicro": "10000000"
+  }
+}

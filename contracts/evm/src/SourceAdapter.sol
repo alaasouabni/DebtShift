@@ -3,7 +3,7 @@ pragma solidity 0.8.30;
 
 import { MigrationEscrow } from "./MigrationEscrow.sol";
 import { DebtShiftHashing } from "./DebtShiftHashing.sol";
-import { TestLiquidityVault } from "./TestLiquidityVault.sol";
+import { LiquidityVault } from "./LiquidityVault.sol";
 import { IERC20 } from "./interfaces/IERC20.sol";
 import { ISourceLending } from "./interfaces/ISourceLending.sol";
 import { SafeToken } from "./libraries/SafeToken.sol";
@@ -24,7 +24,7 @@ contract SourceAdapter is ReentrancyGuard {
 
     address public owner;
     bool public paused;
-    TestLiquidityVault public immutable vault;
+    LiquidityVault public immutable vault;
     ISourceLending public immutable lending;
     MigrationEscrow public immutable escrow;
     IERC20 public immutable debtToken;
@@ -54,7 +54,7 @@ contract SourceAdapter is ReentrancyGuard {
 
     constructor(
         address owner_,
-        TestLiquidityVault vault_,
+        LiquidityVault vault_,
         ISourceLending lending_,
         MigrationEscrow escrow_
     ) {

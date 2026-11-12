@@ -1911,7 +1911,7 @@ async function loadArtifacts(): Promise<LocalArtifacts> {
   const [token, vault, escrow, sourceLending, targetLending, sourceAdapter, destinationAdapter] =
     await Promise.all([
       loadFoundryArtifact('TestToken'),
-      loadFoundryArtifact('TestLiquidityVault'),
+      loadFoundryArtifact('LiquidityVault'),
       loadFoundryArtifact('MigrationEscrow'),
       loadFoundryArtifact('MockSourceLending'),
       loadFoundryArtifact('MockTargetLending'),

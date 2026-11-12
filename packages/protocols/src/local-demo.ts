@@ -82,7 +82,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
         loadFoundryArtifact('TestToken'),
         loadFoundryArtifact('MockSourceLending'),
         loadFoundryArtifact('MockTargetLending'),
-        loadFoundryArtifact('TestLiquidityVault'),
+        loadFoundryArtifact('LiquidityVault'),
         loadFoundryArtifact('MigrationEscrow'),
         loadFoundryArtifact('SourceAdapter'),
         loadFoundryArtifact('DestinationAdapter'),

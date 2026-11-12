@@ -64,7 +64,11 @@ export class SimulatedTransportExecutionPort implements TransportExecutionPort {
   }
 }
 
-/** Temporary adapter until the NEAR sandbox/testnet registry client is wired. */
+/**
+ * Development-only fail-closed boundary. Production sandbox configuration is
+ * rejected at startup unless a real NEAR registry and verifier are configured.
+ * This port never fabricates a terminal receipt.
+ */
 export class PendingSandboxRegistryPort implements ReceiptRegistryPort {
   async finalize(_context: MigrationExecutionContext): Promise<never> {
     throw new RetryableCommandError('The sandbox NEAR receipt registry adapter is not configured.');

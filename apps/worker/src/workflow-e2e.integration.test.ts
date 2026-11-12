@@ -328,7 +328,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
         const [targetArtifact, tokenArtifact, vaultArtifact] = await Promise.all([
           loadFoundryArtifact('MockTargetLending'),
           loadFoundryArtifact('TestToken'),
-          loadFoundryArtifact('TestLiquidityVault'),
+          loadFoundryArtifact('LiquidityVault'),
         ]);
         const [targetPosition, borrowerRefund, reservation] = await Promise.all([
           destination.publicClient.readContract({
@@ -402,7 +402,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
 
         const [sourceArtifact, vaultArtifact] = await Promise.all([
           loadFoundryArtifact('MockSourceLending'),
-          loadFoundryArtifact('TestLiquidityVault'),
+          loadFoundryArtifact('LiquidityVault'),
         ]);
         const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
           source.publicClient.readContract({

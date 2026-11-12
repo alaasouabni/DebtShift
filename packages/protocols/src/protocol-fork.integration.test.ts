@@ -253,7 +253,7 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
       morphoTargetArtifact,
       destinationAdapterArtifact,
     ] = await Promise.all([
-      loadFoundryArtifact('TestLiquidityVault'),
+      loadFoundryArtifact('LiquidityVault'),
       loadFoundryArtifact('MigrationEscrow'),
       loadFoundryArtifact('AaveV3SourceLending'),
       loadFoundryArtifact('SourceAdapter'),
@@ -469,6 +469,20 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
     expect(moduleATokens).toBe(0n);
     expect(moduleDebtAsset).toBe(0n);
 
+    const postSourceBlock = await publicClient.getBlock({ blockTag: 'latest' });
+    const postSourceFeasibility = {
+      ...feasibility,
+      solverPrincipalUnits: actualReceivable,
+      totalRequiredUnits: actualReceivable,
+      requiredDestinationBorrowUnits: actualReceivable,
+      sequence: 2n,
+      evaluatedAt: postSourceBlock.timestamp,
+    } as const;
+    await write(wallet, publicClient, vault, vaultArtifact.abi, 'recordFeasibility', [
+      migrationId,
+      postSourceFeasibility,
+    ]);
+
     // This single-chain fixture stands in for transport by moving the exact isolated collateral
     // between independent source and destination escrows before the destination adapter can use it.
     await write(wallet, publicClient, sourceEscrow, escrowArtifact.abi, 'release', [
@@ -493,16 +507,16 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
       analysisHash,
       externalFundingEvidenceHash: `0x${'00'.repeat(32)}`,
       settlementAsset: USDC,
-      solverPrincipalUnits: maximumRepayUnits,
+      solverPrincipalUnits: actualReceivable,
       solverFeeUnits: 0n,
       capitalizedCostUnits: 0n,
-      totalRequiredUnits: maximumRepayUnits,
+      totalRequiredUnits: actualReceivable,
       confirmedExternalFundingUnits: 0n,
       maximumSafeBorrowingCapacityUnits: maximumRepayUnits,
-      requiredDestinationBorrowUnits: maximumRepayUnits,
+      requiredDestinationBorrowUnits: actualReceivable,
       fundingShortfallUnits: 0n,
       sequence: 1n,
-      evaluatedAt: latestBlock.timestamp,
+      evaluatedAt: postSourceBlock.timestamp,
       validUntil: deadline,
     } as const;
     await write(
@@ -554,10 +568,10 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
       sourceChainId: BigInt(BASE_CHAIN_ID),
       sourceAdapter,
       collateralUnits: parseEther('10'),
-      borrowUnits: maximumRepayUnits,
+      borrowUnits: actualReceivable,
       feasibilityHash: destinationFeasibilityHash,
       fundingEvidenceHash: `0x${'00'.repeat(32)}`,
-      solverPrincipalUnits: maximumRepayUnits,
+      solverPrincipalUnits: actualReceivable,
       solverFeeUnits: 0n,
       capitalizedCostUnits: 0n,
       capitalizedCostReceiver: '0x0000000000000000000000000000000000000000',
@@ -574,7 +588,7 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
 
     const targetPosition = await morpho.readPosition(WETH_USDC_MARKET, borrower.address);
     expect(BigInt(targetPosition.collateralUnits)).toBe(parseEther('10'));
-    expect(BigInt(targetPosition.debtUnits)).toBeGreaterThanOrEqual(maximumRepayUnits);
+    expect(BigInt(targetPosition.debtUnits)).toBeGreaterThanOrEqual(actualReceivable);
     expect(targetPosition.ltvBps).toBeLessThan(targetPosition.market.snapshot.lltvBps ?? 0);
     expect(
       await publicClient.readContract({
@@ -599,7 +613,7 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
         functionName: 'balanceOf',
         args: [borrower.address],
       }),
-    ).toBe(payoutBalanceBefore + maximumRepayUnits);
+    ).toBe(payoutBalanceBefore + actualReceivable);
 
     const residualBalances = await Promise.all([
       publicClient.readContract({
@@ -641,10 +655,6 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
     ]);
     expect(residualBalances).toEqual([0n, 0n, 0n, 0n, 0n, 0n]);
 
-    await write(wallet, publicClient, USDC, ERC20_METADATA_ABI, 'approve', [
-      vault,
-      actualReceivable,
-    ]);
     await write(wallet, publicClient, vault, vaultArtifact.abi, 'settle', [
       migrationId,
       borrower.address,

@@ -247,6 +247,7 @@ export const debtShiftEnvironmentSchema = z
     }
 
     const nearWriteConfigurationRequired =
+      (environment.DEBTSHIFT_MODE === 'sandbox' && environment.NODE_ENV === 'production') ||
       environment.DEBTSHIFT_MODE === 'testnet' ||
       (environment.DEBTSHIFT_MODE === 'mainnet' && environment.MAINNET_EXECUTION_ENABLED);
     if (
@@ -258,7 +259,7 @@ export const debtShiftEnvironmentSchema = z
       context.addIssue({
         code: 'custom',
         message:
-          'Funded testnet or mainnet execution requires the NEAR registry account and verifier signer credentials.',
+          'Hosted sandbox, funded testnet, or mainnet execution requires the NEAR registry account and verifier signer credentials.',
         path: ['NEAR_REGISTRY_ACCOUNT'],
       });
     }

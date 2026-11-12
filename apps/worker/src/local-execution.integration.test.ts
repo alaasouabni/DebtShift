@@ -87,7 +87,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil contract sandbox execution port', 
         );
         const receivable = await readBigInt(
           source,
-          'TestLiquidityVault',
+          'LiquidityVault',
           deployment.source.vault,
           'principalReceivable',
           [deployment.source.debtToken],
@@ -136,7 +136,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil contract sandbox execution port', 
         );
         const receivable = await readBigInt(
           source,
-          'TestLiquidityVault',
+          'LiquidityVault',
           deployment.source.vault,
           'principalReceivable',
           [deployment.source.debtToken],
@@ -182,7 +182,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil contract sandbox execution port', 
         );
         const receivable = await readBigInt(
           source,
-          'TestLiquidityVault',
+          'LiquidityVault',
           deployment.source.vault,
           'principalReceivable',
           [deployment.source.debtToken],

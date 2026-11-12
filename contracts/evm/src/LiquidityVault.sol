@@ -5,7 +5,7 @@ import { IERC20 } from "./interfaces/IERC20.sol";
 import { SafeToken } from "./libraries/SafeToken.sol";
 import { ReentrancyGuard } from "./security/ReentrancyGuard.sol";
 
-contract TestLiquidityVault is ReentrancyGuard {
+contract LiquidityVault is ReentrancyGuard {
     using SafeToken for IERC20;
 
     error Unauthorized();

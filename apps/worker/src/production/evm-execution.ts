@@ -2440,7 +2440,7 @@ function evmChain(id: number, name: string, rpcUrl: string): Chain {
 async function loadProductionArtifacts(): Promise<ProductionArtifacts> {
   const [vault, escrow, sourceLending, targetLending, sourceAdapter, destinationAdapter] =
     await Promise.all([
-      loadFoundryArtifact('TestLiquidityVault'),
+      loadFoundryArtifact('LiquidityVault'),
       loadFoundryArtifact('MigrationEscrow'),
       loadFoundryArtifact('AaveV3SourceLending'),
       loadFoundryArtifact('MorphoBlueTargetLending'),

@@ -318,7 +318,7 @@ async function loadArtifacts() {
     loadFoundryArtifact('TestToken'),
     loadFoundryArtifact('MockSourceLending'),
     loadFoundryArtifact('MockTargetLending'),
-    loadFoundryArtifact('TestLiquidityVault'),
+    loadFoundryArtifact('LiquidityVault'),
     loadFoundryArtifact('MigrationEscrow'),
     loadFoundryArtifact('SourceAdapter'),
     loadFoundryArtifact('DestinationAdapter'),

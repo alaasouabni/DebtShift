@@ -51,6 +51,21 @@ describe('parseDebtShiftEnvironment', () => {
     ).toThrow('Sandbox and testnet modes require the explicitly simulated transport adapter.');
   });
 
+  it('requires a real NEAR registry configuration for a hosted production sandbox', () => {
+    expect(() => parseDebtShiftEnvironment({ NODE_ENV: 'production' })).toThrow(
+      'Hosted sandbox, funded testnet, or mainnet execution requires the NEAR registry',
+    );
+    expect(() =>
+      parseDebtShiftEnvironment({
+        NODE_ENV: 'production',
+        NEAR_NETWORK: 'testnet',
+        NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
+        NEAR_SIGNER_ACCOUNT_ID: 'verifier.testnet',
+        NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test-private-key',
+      }),
+    ).not.toThrow();
+  });
+
   it('requires public onchain reads and the NEAR testnet registry in testnet mode', () => {
     expect(() =>
       parseDebtShiftEnvironment({
