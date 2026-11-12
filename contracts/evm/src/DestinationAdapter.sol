@@ -4,9 +4,9 @@ pragma solidity 0.8.30;
 import { DebtShiftHashing } from "./DebtShiftHashing.sol";
 import { MigrationEscrow } from "./MigrationEscrow.sol";
 import { IERC20 } from "./interfaces/IERC20.sol";
+import { ITargetLending } from "./interfaces/ITargetLending.sol";
 import { SafeToken } from "./libraries/SafeToken.sol";
 import { SignatureChecker } from "./libraries/SignatureChecker.sol";
-import { MockTargetLending } from "./mocks/MockTargetLending.sol";
 import { ReentrancyGuard } from "./security/ReentrancyGuard.sol";
 
 contract DestinationAdapter is ReentrancyGuard {
@@ -35,6 +35,7 @@ contract DestinationAdapter is ReentrancyGuard {
         uint256 solverFeeUnits;
         uint256 capitalizedCostUnits;
         address capitalizedCostReceiver;
+        bytes lendingAuthorization;
     }
 
     struct FeasibilityEvidence {
@@ -57,7 +58,7 @@ contract DestinationAdapter is ReentrancyGuard {
 
     address public owner;
     bool public paused;
-    MockTargetLending public immutable lending;
+    ITargetLending public immutable lending;
     MigrationEscrow public immutable escrow;
     IERC20 public immutable debtToken;
     IERC20 public immutable collateralToken;
@@ -107,7 +108,7 @@ contract DestinationAdapter is ReentrancyGuard {
         uint256 capitalizedCostUnits
     );
 
-    constructor(address owner_, MockTargetLending lending_, MigrationEscrow escrow_) {
+    constructor(address owner_, ITargetLending lending_, MigrationEscrow escrow_) {
         if (owner_ == address(0)) revert Unauthorized();
         owner = owner_;
         executors[owner_] = true;
@@ -206,7 +207,12 @@ contract DestinationAdapter is ReentrancyGuard {
         escrow.release(plan.migrationId, collateralToken, address(this), terms.collateralUnits);
         collateralToken.forceApprove(address(lending), terms.collateralUnits);
         lending.openPosition(
-            plan.borrower, address(this), address(this), terms.collateralUnits, terms.borrowUnits
+            plan.borrower,
+            address(this),
+            address(this),
+            terms.collateralUnits,
+            terms.borrowUnits,
+            terms.lendingAuthorization
         );
         debtToken.forceApprove(address(escrow), terms.borrowUnits);
         escrow.assignLoanProceeds(plan.migrationId, debtToken, terms.borrowUnits);

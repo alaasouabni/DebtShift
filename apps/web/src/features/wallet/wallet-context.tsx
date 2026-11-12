@@ -25,6 +25,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import { chainName } from '../../lib/chains';
+
 export type WalletStatus =
   'initialising' | 'unavailable' | 'disconnected' | 'connecting' | 'connected' | 'rejected';
 
@@ -282,21 +284,7 @@ export function isConnected(state: WalletState): state is WalletState & { accoun
   return state.status === 'connected' && typeof state.account === 'string';
 }
 
-/** The user-visible label for a chain id. Known local chains only. */
+/** The user-visible label for a chain id, from the known-chain map. */
 export function chainLabel(chainId: number | undefined): string {
-  if (chainId === undefined) return 'Unknown network';
-  if (chainId === 31_337) return 'Anvil source · 31337';
-  if (chainId === 31_338) return 'Anvil destination · 31338';
-  return `Chain ${String(chainId)}`;
-}
-
-/**
- * Whether a block explorer exists for a chain.
- *
- * The local Anvil chains have none, and the handoff forbids inventing explorer
- * links, so this returns undefined for everything until the backend publishes
- * explorer metadata as a real contract.
- */
-export function explorerUrl(_chainId: number | undefined, _hash: string): undefined {
-  return undefined;
+  return chainName(chainId);
 }

@@ -50,9 +50,9 @@ export class PostgresCommandPersistence implements CommandPersistence {
 }
 
 const expectedEvidenceByCommand: Readonly<Record<string, readonly (readonly EvidenceType[])[]>> = {
-  RESERVE_LIQUIDITY: [['LIQUIDITY_RESERVATION']],
-  CLOSE_SOURCE: [['SOURCE_CLOSE']],
-  DISPATCH_TRANSPORT: [['TRANSPORT_ORIGIN']],
+  RESERVE_LIQUIDITY: [['LIQUIDITY_RESERVATION'], ['REQUOTE_REQUIRED']],
+  CLOSE_SOURCE: [['SOURCE_CLOSE'], ['REQUOTE_REQUIRED'], ['RECOVERY_OPENED']],
+  DISPATCH_TRANSPORT: [['TRANSPORT_ORIGIN'], ['RECOVERY_OPENED']],
   VERIFY_DESTINATION: [['TRANSPORT_DESTINATION'], ['RECOVERY_OPENED']],
   OPEN_TARGET: [['TARGET_POSITION'], ['RECOVERY_OPENED']],
   SETTLE_LIQUIDITY: [['LIQUIDITY_SETTLEMENT', 'LEDGER_RECONCILIATION'], ['RECOVERY_OPENED']],
@@ -128,8 +128,10 @@ export class DurableCommandProcessor {
       if (record.migrationId !== command.migrationId) {
         throw new Error(`Handler ${command.type} produced evidence for another migration.`);
       }
-      if (record.verificationState !== 'FINALIZED') {
-        throw new Error(`Handler ${command.type} produced non-finalized command evidence.`);
+      if (record.verificationState !== 'FINALIZED' && record.verificationState !== 'RETRACTED') {
+        throw new Error(
+          `Handler ${command.type} produced unsupported ${record.verificationState} command evidence.`,
+        );
       }
     }
   }

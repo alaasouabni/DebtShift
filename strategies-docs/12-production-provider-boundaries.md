@@ -1,95 +1,161 @@
-# Production and simulator provider boundaries
+# Production and sandbox provider boundaries
 
 ## Purpose
 
-DebtShift keeps deterministic simulation and production integration code in the same repository,
-but they are different runtime capabilities. This document defines the boundary so simulator
-fixtures cannot be mistaken for production market data or silently selected in a production
-environment.
+DebtShift implements one production-oriented refinance workflow and supplies environment-specific
+adapters. The sandbox is a contract-backed test implementation of those ports; it is not a second
+workflow and cannot be selected as a fallback when production providers fail.
 
-## Runtime selection
+## Runtime modes
 
-`MARKET_DATA_PROVIDER` is mandatory through the validated environment model:
+`DEBTSHIFT_MODE` is required and accepts exactly:
 
-| Value            | Permitted environments   | Behavior                                                                            |
-| ---------------- | ------------------------ | ----------------------------------------------------------------------------------- |
-| `SIMULATOR`      | `local`, `ci`, `testnet` | Uses disposable dual-Anvil contracts and versioned deterministic fixtures.          |
-| `LIVE_READ_ONLY` | `mainnet-readonly`       | Uses direct Aave, Morpho, and Chainlink reads plus authenticated 1Click dry quotes. |
-| `DISABLED`       | `mainnet-canary`         | Removes lending-market access from the isolated transport canary.                   |
+| Mode               | Market/protocol adapters                                | Transport                       | Write capability                          |
+| ------------------ | ------------------------------------------------------- | ------------------------------- | ----------------------------------------- |
+| `sandbox`          | Private local-chain test deployments                    | Receipt-producing simulator     | Test assets only                          |
+| `testnet`          | Public testnet deployments                              | Receipt-producing simulator     | Test assets only                          |
+| `mainnet-readonly` | Official production reads                               | Official catalog and dry quotes | None                                      |
+| `mainnet`          | Official production protocols and DebtShift deployments | Official committed 1Click flow  | Requires `MAINNET_EXECUTION_ENABLED=true` |
 
-Validation fails closed for every other pairing. There is no automatic fallback from
-`LIVE_READ_ONLY` to `SIMULATOR`.
+Local development and CI use ephemeral `sandbox` composition. Invalid mode/provider combinations
+fail at startup. There are no `mainnet-canary` or `mainnet-controlled` modes.
 
-## Code boundary
+## Core ports and composition
 
-- `apps/api/src/simulator/` contains local position, market, and route fixtures.
-- `apps/worker/src/simulator/` contains the dual-Anvil execution implementation.
-- `apps/api/src/live/` contains live read-only protocol and market-data implementations.
-- `apps/api/src/market-data/ports.ts` is the only dependency surface used by application services.
-- `apps/api/src/app.module.ts` is the composition root that selects one provider after environment
-  validation.
-- ESLint forbids production modules from importing `simulator/`; only composition roots and tests
-  may reference simulator implementations.
+Application handlers depend only on:
 
-The simulator values are intentionally deterministic test inputs. They include mock APRs, gas and
-transport costs, liquidity constraints, stress policy, and a deliberately rejected route. They are
-not deployment defaults, production quotes, or fallback values.
+- `SourceExecutionPort`;
+- `LiquidityReservationPort`;
+- `TransportPort`;
+- `DestinationExecutionPort`;
+- `SettlementPort`;
+- `ChainEvidencePort`;
+- `ReceiptRegistryPort`.
 
-## Live registry
+The core workflow owns command ordering, evidence predicates, retries, phase derivation, recovery,
+and ledger requirements. Adapters own provider-specific request construction, broadcasting, raw
+response validation, and receipt normalization.
 
-`LIVE_MARKET_CONFIG_JSON` is a versioned, schema-validated runtime registry. It supplies every live
-deployment and policy value explicitly:
+Required code boundaries:
 
-- Aave pool and protocol data-provider addresses.
-- Source collateral and debt assets, decimals, symbols, and 1Click asset identifiers.
-- Morpho singleton, market ID, oracle, destination assets, and 1Click identifiers.
-- Chainlink price feeds, freshness limits, and optional L2 sequencer feeds.
-- Route-risk limits and snapshot/oracle freshness limits.
-- Conservative gas-unit bounds, settlement-time assumptions, and explicit analytics risk costs.
+- simulator modules may implement ports but cannot be imported by core handlers or production
+  adapters;
+- only composition roots import concrete adapters;
+- `mainnet-readonly` does not construct write ports or irreversible handlers;
+- `mainnet` never falls back to sandbox fixtures, providers, addresses, or outcomes;
+- every migration persists its mode, provider identity, adapter version, route configuration hash,
+  and deployment-manifest hash.
 
-The repository does not provide production address defaults. A deployment is invalid until the
-registry is supplied, chain IDs match the configured RPCs, token metadata matches direct contract
-reads, the Morpho market ID reconstructs correctly, and its token/oracle identities match the
-registry.
+## Contract-backed sandbox behavior
 
-## Live read-only behavior
+The hosted/developer sandbox uses two private EVM chains and actual deployed token, lending, vault,
+adapter, and escrow contracts. Wallet signatures, nonces, transactions, events, receipts, balances,
+reverts, database records, outbox commands, restarts, target borrowing, settlement, and refunds are
+real within those chains.
 
-The live route path performs the following operations without signing or broadcasting:
+Only the external cross-chain provider is simulated. Its rules are:
 
-1. Read the Aave position and reserve rate at one canonical source block.
-2. Obtain authenticated 1Click `dry: true` collateral and debt conversion quotes.
-3. Reconstruct and read the Morpho market, available liquidity, current rate, and projected rate at
-   one canonical destination block.
-4. Validate Chainlink rounds, answer positivity, `answeredInRound`, maximum age, and optional L2
-   sequencer recovery grace.
-5. Calculate gas cost from live gas prices, configured conservative gas bounds, and direct native/USD
-   feeds.
-6. Calculate collateral transport loss and slippage from base-unit quote amounts and direct price
-   feeds. Provider USD display fields are never used for financial logic.
-7. Run the deterministic route and zero-shortfall models.
+- it cannot report deposit without a finalized origin transaction and expected balance/custody;
+- delivery executes a real destination-chain release transaction;
+- refund executes a real source-chain recovery transaction;
+- returned observations contain the actual transaction hashes and amounts;
+- independent workflow code rechecks receipts, blocks, tokens, receivers, and balance deltas;
+- delays, incomplete delivery, wrong receiver, refund, unknown status, and custody failures remain
+  configurable for testing.
 
-Live routes are marked `adapterVersionApproved: false` in the first release. They can be analyzed
-but cannot produce a funded migration plan. This is an intentional production safety lock, not a
-simulator fallback.
+An application-level fixture that returns success without chain state is not an acceptable sandbox
+implementation.
 
-## 1Click boundary
+## Testnet boundary
 
-The read-only client is pinned to `https://1click.chaindefuser.com`, requires HTTPS, rejects
-credentials embedded in URLs, disables redirects, applies time and response-size limits, validates
-responses, and exposes only token-catalog and dry-quote methods. It has no committed-quote, deposit,
-or broadcast method.
+Testnet uses public RPCs, deployed contracts, real test-token transactions, relayer nonces/gas,
+confirmation depths, explorer links, and the NEAR testnet registry. Because official 1Click has no
+public testnet, the transport port remains the explicitly labelled simulator and must still produce
+real source/destination testnet transaction evidence where the configured test contracts permit it.
 
-The future canary client is a separate capability. It must enforce the allowlisted asset pair,
-base-unit cap, fixed recipient and refund receiver, manual confirmation, and the `DISABLED` lending
-provider before a committed quote can be requested.
+Protocol-compatible test deployments validate orchestration and deployment, not official Aave or
+Morpho production behavior. Official behavior is separately proven with pinned production forks.
+
+## Live deployment registry
+
+The versioned, schema-validated live registry supplies every production identity explicitly:
+
+- source/destination chain IDs and RPC endpoints;
+- Aave pool, protocol data provider, source reserve, collateral aToken, and debt token;
+- source adapter, vault, source escrow, relayer, and recovery-reserve custodian;
+- exact collateral/debt token addresses, decimals, symbols, and 1Click asset IDs;
+- Morpho singleton, market parameters/ID, oracle, IRM, LLTV, target module, destination adapter, and
+  destination escrow;
+- Chainlink feeds, maximum age, and optional L2 sequencer feeds;
+- solver payout, cost, residual, provider refund, and registry receivers;
+- principal, collateral, debt, fee, slippage, gas, deadline, capacity-buffer, and recovery-exposure
+  limits;
+- EVM bytecode hashes, NEAR WASM hash/account, and source commit.
+
+There are no implicit production address defaults. Startup checks RPC chain IDs, bytecode hashes,
+token metadata, Morpho market reconstruction, oracle identity/freshness, contract roles/pause state,
+vault/recovery balances, and receiver ownership.
+
+## Mainnet-readonly behavior
+
+This mode performs no signing or broadcasting:
+
+1. Read the Aave position/reserve at a canonical source block.
+2. Fetch the official 1Click token catalog and authenticated `dry: true` quotes.
+3. Read the exact Morpho market, liquidity, rate, oracle, and projected post-borrow state at a
+   canonical destination block.
+4. Validate Chainlink rounds, positivity, freshness, and optional sequencer recovery grace.
+5. Calculate gas and transport costs from base units and direct price feeds.
+6. Run deterministic route, stress, and zero-shortfall analysis.
+7. Construct a readiness report without a committed quote or executable migration.
+
+Provider USD fields remain display-only. Unavailable or stale production data fails closed and never
+activates sandbox values.
+
+## Mainnet behavior
+
+`mainnet` supplies the complete production adapter set:
+
+1. Reserve the permissioned vault and recovery guarantee.
+2. Revalidate and close the Aave source position through the signed source adapter.
+3. Obtain/validate the committed official 1Click quote and release only the authorized collateral
+   to its bound deposit address.
+4. Poll strict provider states and independently verify origin, destination, or refund receipts.
+5. Revalidate the target market and open the exact Morpho position through temporary native
+   authorization.
+6. Atomically pay solver principal/fee/costs and return borrower residuals.
+7. Reconcile the ledger and register the final receipt through the configured registry.
+
+`MAINNET_EXECUTION_ENABLED=false` is the default and blocks steps that can create side effects. It
+still permits configuration checks, transaction construction, `eth_call`/gas simulation, and the
+readiness report. The value is server-side and restart-bound. `true` is accepted only in `mainnet`
+and does not bypass signatures, funding, freshness, idempotency, roles, pauses, or policy limits.
+
+## Official 1Click boundary
+
+The client is pinned to the official HTTPS origin, rejects URL credentials/redirect escape, applies
+timeouts and response limits, and validates/persists raw responses before normalization.
+
+- `mainnet-readonly`: catalog and `dry: true` quote methods only.
+- `mainnet`: committed quote, deposit binding/submission, status, refund, and terminal receipt
+  operations required by the complete workflow.
+- sandbox/testnet: no production 1Click calls and no invented testnet URL.
+
+Provider success is insufficient. Destination token, amount, receiver, transaction, confirmations,
+block canonicality, and balance delta must independently match the signed quote/plan.
 
 ## Verification gates
 
-- Environment tests cover invalid provider/environment pairings.
-- Registry tests reject malformed or incomplete live configurations.
-- API and worker type/lint tests prove the port boundary.
-- 1Click unit tests prove official-origin pinning, authentication, dry-only requests, and response
-  validation.
-- Aave, Morpho, and Chainlink unit tests cover pinned reads and fail-closed identity/freshness checks.
-- Pinned public-fork tests remain required before M3/M8 completion.
-- No live committed quote or funded action is run in CI.
+- Mode matrix and configuration mutation tests.
+- Proof that core/production modules cannot import simulator code.
+- Proof that `MAINNET_EXECUTION_ENABLED=false` blocks every irreversible API/worker command.
+- Contract-backed sandbox happy, refund, timeout, incomplete, mismatch, reorg, crash/restart, and
+  market-deterioration tests.
+- Public testnet deployment and transaction smoke tests.
+- Pinned production Aave/Morpho fork tests through the real adapters.
+- Official 1Click schema fixtures, dry-quote smoke, strict unknown-status, retry, timeout, rate-limit,
+  and circuit-breaker tests.
+- Mainnet deployment with writes disabled, verified manifests/roles/balances, and successful
+  non-broadcast simulation of every intended call.
+- Explicit owner approval before the final small real attempt; immediate switch-off and preserved
+  completion/recovery evidence afterward.

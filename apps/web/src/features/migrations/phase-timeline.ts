@@ -23,9 +23,14 @@ export interface TimelineStep {
   readonly at?: string | undefined;
 }
 
-/** True for the three phases that are not steps on the forward track. */
+/** True for the four phases that are not steps on the forward track. */
 export function isOffTrack(phase: MigrationPhase): boolean {
-  return phase === 'RECOVERY' || phase === 'FAILED_SAFE' || phase === 'EXPIRED';
+  return (
+    phase === 'RECOVERY' ||
+    phase === 'FAILED_SAFE' ||
+    phase === 'REQUOTE_REQUIRED' ||
+    phase === 'EXPIRED'
+  );
 }
 
 /**

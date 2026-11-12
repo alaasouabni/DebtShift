@@ -30,8 +30,10 @@ import {
   PHASE_LABELS,
   VERIFICATION_STATE_LABELS,
 } from '../../lib/labels';
+import { explorerTransactionUrl } from '../../lib/chains';
 import { MIGRATION_STORAGE_KEY } from '../../lib/storage-keys';
-import { evidenceProvenanceLine } from './evidence-line';
+import { useEnvironment } from '../environment/environment-context';
+import { evidenceProvenanceLine, isSimulatedTransport, readRecoveryReason } from './evidence-line';
 import { buildTimeline, isOffTrack, phasePosition } from './phase-timeline';
 import { useMigrationPolling } from './use-migration';
 
@@ -103,7 +105,7 @@ export function MigrationView({ migrationId }: { readonly migrationId: string })
 
   return (
     <>
-      <SimulatorNote />
+      <EnvironmentNote />
 
       <MigrationHero details={details} poll={poll} />
 
@@ -128,7 +130,8 @@ export function MigrationView({ migrationId }: { readonly migrationId: string })
 
 /* ------------------------------------------------------------------- notes */
 
-function SimulatorNote() {
+function EnvironmentNote() {
+  const { badge } = useEnvironment();
   return (
     <div role="note" style={{ background: 'var(--accent-soft)', color: 'var(--ink)' }}>
       <div
@@ -143,9 +146,15 @@ function SimulatorNote() {
           lineHeight: '20px',
         }}
       >
-        <strong>This route uses test assets and is not a 1Click testnet transaction.</strong>
+        <strong>{badge.label}</strong>
+        {/*
+          The sandbox is contract-backed: the chain transactions below are
+          real ones on their chains. Only the transport provider can be a
+          simulation, and each such observation is marked on its own row.
+        */}
         <span style={{ color: 'var(--ink-muted)' }}>
-          Simulator receipts are never 1Click transactions.
+          Chain transactions listed here are real on their chains. A transport observation marked
+          simulated is not a 1Click transaction.
         </span>
       </div>
     </div>
@@ -411,6 +420,7 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
     (entry) => entry.category === 'REFUND' || entry.category === 'RESIDUAL',
   );
   const recoveryEvidence = details.evidence.filter((item) => item.type.startsWith('RECOVERY_'));
+  const recoveryReason = readRecoveryReason(details.evidence);
 
   const tone = phase === 'EXPIRED' ? 'var(--line-strong)' : 'var(--warning)';
 
@@ -447,7 +457,9 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
             ? 'Something went wrong. Funds are being returned along the signed refund path.'
             : phase === 'FAILED_SAFE'
               ? 'The migration did not complete. Custody and residual claims are known.'
-              : 'The authorized window closed before completion.'}
+              : phase === 'REQUOTE_REQUIRED'
+                ? 'Market capacity changed. A new plan is required.'
+                : 'The authorized window closed before completion.'}
         </h2>
 
         <p style={{ margin: 0, fontSize: 16, lineHeight: '24px', color: 'var(--ink-muted)' }}>
@@ -485,6 +497,25 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
                 <span className="mono" style={{ color: 'var(--ink-muted)' }}>
                   {running.type} · attempt {running.logicalAttempt}
                 </span>
+              </dd>
+            </>
+          ) : null}
+
+          {recoveryReason ? (
+            <>
+              {/*
+                The backend records why recovery opened in the RECOVERY_OPENED
+                evidence. It is shown as the backend wrote it — a code, not a
+                paraphrase — because this is exactly what an operator will ask
+                the borrower to read back.
+              */}
+              <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>Why</dt>
+              <dd
+                className="mono"
+                style={{ margin: 0, padding: 0, borderBottom: 0, wordBreak: 'break-all' }}
+              >
+                {recoveryReason.reason}
+                {recoveryReason.policy ? ` · ${recoveryReason.policy}` : ''}
               </dd>
             </>
           ) : null}
@@ -560,6 +591,34 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
             migration stopped in a state where custody and every residual claim are recorded, so
             what is owed to whom is known.
           </p>
+        ) : null}
+
+        {phase === 'REQUOTE_REQUIRED' ? (
+          <>
+            {/*
+              The contract for this phase: say that capacity changed and a new
+              plan is needed; never retry silently, never reuse a signature,
+              never imply that funds entered recovery. Nothing moved, so this
+              is styled as a notice and offers exactly one way forward.
+            */}
+            <p
+              style={{
+                margin: 0,
+                padding: 'var(--space-4)',
+                background: 'var(--warning-soft)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 14,
+                lineHeight: '20px',
+              }}
+            >
+              <strong>Nothing moved and nothing is in recovery.</strong> The check ran before your
+              source loan was touched, and the liquidity reservation was released. Your two
+              signatures cannot be reused: a fresh plan means reviewing and signing again.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+              <ButtonLink href="/routes">Compare routes again</ButtonLink>
+            </div>
+          </>
         ) : null}
 
         {phase === 'EXPIRED' ? (
@@ -677,6 +736,14 @@ function EvidenceSection({ evidence }: { readonly evidence: readonly Evidence[] 
                     {EVIDENCE_TYPE_LABELS[item.type]}
                   </span>
                   <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    {isSimulatedTransport(item) ? (
+                      <Badge
+                        tone="neutral"
+                        title="Produced by the DebtShift transport simulator, not by 1Click."
+                      >
+                        Simulated transport
+                      </Badge>
+                    ) : null}
                     <Badge tone={verification.tone} title={verification.caption}>
                       {verification.label}
                     </Badge>
@@ -692,6 +759,21 @@ function EvidenceSection({ evidence }: { readonly evidence: readonly Evidence[] 
                 >
                   {evidenceProvenanceLine(item)}
                 </p>
+                {/*
+                  A link only for a chain this app knows has a public explorer.
+                  The sandbox chains have none, so their hashes stay as text.
+                */}
+                {explorerTransactionUrl(item.chainId, item.transactionHash) ? (
+                  <p style={{ margin: 0, fontSize: 13 }}>
+                    <a
+                      href={explorerTransactionUrl(item.chainId, item.transactionHash)}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      View transaction on the block explorer
+                    </a>
+                  </p>
+                ) : null}
                 <p className="mono" style={{ margin: 0, color: 'var(--ink-muted)' }}>
                   {item.verificationMethod} · {item.verifierVersion}
                 </p>

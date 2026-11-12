@@ -24,6 +24,7 @@ export const migrationPhaseSchema = z.enum([
   'COMPLETED',
   'RECOVERY',
   'FAILED_SAFE',
+  'REQUOTE_REQUIRED',
   'EXPIRED',
 ]);
 
@@ -44,6 +45,7 @@ export const evidenceTypeSchema = z.enum([
   'LEDGER_RECONCILIATION',
   'NEAR_RECEIPT',
   'MIGRATION_EXPIRED',
+  'REQUOTE_REQUIRED',
   'RECOVERY_OPENED',
   'RECOVERY_COMPLETED',
 ]);
@@ -76,6 +78,7 @@ export const evidenceSchema = z
     verificationState: evidenceVerificationStateSchema,
     verificationMethod: canonicalTextSchema,
     verifierVersion: canonicalTextSchema,
+    supersedesEvidenceId: bytes32Schema.optional(),
   })
   .strict()
   .superRefine((evidence, context) => {

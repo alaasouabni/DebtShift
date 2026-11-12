@@ -34,6 +34,7 @@ import {
   formatUsdMicro,
   isZeroAmount,
 } from '../../lib/formatting';
+import { isPrivateSandboxChain } from '../../lib/chains';
 import { allStale, rejectionCopy } from '../../lib/labels';
 import { readExplanationSettings } from '../settings/explanation-settings';
 import { isConnected, useWallet } from '../wallet/wallet-context';
@@ -181,6 +182,7 @@ export function RoutesView() {
         evaluations={evaluations}
         winner={winner}
         evaluatedAt={evaluations[0]?.provenance.evaluatedAt}
+        privateSandbox={isPrivateSandboxChain(analysis.sourcePosition.position.market.chainId)}
         onRefresh={() => void load(wallet.account)}
       />
 
@@ -209,11 +211,13 @@ function RoutesHero({
   evaluations,
   winner,
   evaluatedAt,
+  privateSandbox,
   onRefresh,
 }: {
   readonly evaluations: readonly RouteEvaluation[];
   readonly winner: RouteEvaluation | undefined;
   readonly evaluatedAt: string | undefined;
+  readonly privateSandbox: boolean;
   readonly onRefresh: () => void;
 }) {
   const codes = uniqueCodes(evaluations);
@@ -349,10 +353,17 @@ function RoutesHero({
                 </Button>
               }
             >
-              The data aged out of the policy window; refinancing is not impossible. On the local
-              stack this is usually Anvil mining no block while idle, which freezes{' '}
-              <span className="mono">block.timestamp</span> while the clock moves on. Mine a block
-              and compare again.
+              The data aged out of the policy window; refinancing is not impossible.
+              {privateSandbox ? (
+                <>
+                  {' '}
+                  On a private sandbox chain this is usually no block being mined while idle, which
+                  freezes <span className="mono">block.timestamp</span> while the clock moves on.
+                  Mine a block and compare again.
+                </>
+              ) : (
+                ' Refresh the data and compare again.'
+              )}
             </Alert>
           ) : (
             <Alert tone="warning" title="These rejections are not about stale data">

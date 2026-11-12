@@ -37,14 +37,15 @@ rather than copy them into a second source of truth.
 
 ## Implementation baseline
 
-- Start from `main` at or after commit `d4e719f`.
+- Start from `main` at or after commit `f2e86f8` and pull the strategy update before changing
+  environment or execution UI.
 - Create a separate branch, for example `feat/frontend-product`.
 - The current `apps/web/src/components/debtshift-app.tsx` is a functional reference implementation,
   not a fixed design system.
-- The current supported end-to-end write flow is the deterministic dual-Anvil simulator using test
-  assets.
-- Live Aave/Morpho data and live 1Click dry quotes are read-only production-provider paths.
-- Live funded lending migration and automatic mainnet refinancing are disabled.
+- The current end-to-end write implementation is contract-backed dual-Anvil, but the target API is
+  one provider-neutral workflow composed as `sandbox`, `testnet`, `mainnet-readonly`, or `mainnet`.
+- Mainnet write capability is server-owned and defaults disabled through
+  `MAINNET_EXECUTION_ENABLED=false`; the frontend only displays the effective capability.
 - 1Click does not provide a testnet. A simulator receipt must never be presented as a 1Click
   transaction.
 
@@ -100,23 +101,24 @@ while wallet-session authentication and controlled production-read paths are com
 All application routes use the `/v1` prefix. JSON requests must send
 `Content-Type: application/json`.
 
-| Method | Route                               | Current purpose                                                   | UI use                             |
-| ------ | ----------------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
-| GET    | `/health`                           | API process health                                                | Environment/status indicator       |
-| GET    | `/positions/:wallet`                | Current supported source position with provenance                 | Primary position card              |
-| GET    | `/positions/:wallet/history`        | Persisted position/snapshot history                               | History or diagnostic view         |
-| GET    | `/markets`                          | Persisted enabled markets                                         | Market labels and future selectors |
-| POST   | `/analysis/routes`                  | Deterministic route analysis plus optional explanation            | Comparison and recommendation      |
-| POST   | `/quotes`                           | Environment-gated transport quote                                 | Advanced/diagnostic quoting        |
-| POST   | `/migrations/prepare`               | Exact simulator intent, plan, quote, and hashes for wallet review | Authorization review               |
-| POST   | `/migrations/execute`               | Verify signatures and durably start a simulator migration         | Final submit after both signatures |
-| GET    | `/migrations/:migrationId`          | Migration, evidence, events, commands, ledger, and reservations   | Authoritative monitoring view      |
-| GET    | `/migrations/:migrationId/events`   | Authoritative event history                                       | Optional focused event timeline    |
-| GET    | `/migrations/:migrationId/evidence` | Normalized evidence records                                       | Optional evidence explorer         |
+| Method | Route                               | Current purpose                                                             | UI use                             |
+| ------ | ----------------------------------- | --------------------------------------------------------------------------- | ---------------------------------- |
+| GET    | `/health`                           | API process health                                                          | Environment/status indicator       |
+| GET    | `/positions/:wallet`                | Current supported source position with provenance                           | Primary position card              |
+| GET    | `/positions/:wallet/history`        | Persisted position/snapshot history                                         | History or diagnostic view         |
+| GET    | `/markets`                          | Persisted enabled markets                                                   | Market labels and future selectors |
+| POST   | `/analysis/routes`                  | Deterministic route analysis plus optional explanation                      | Comparison and recommendation      |
+| POST   | `/quotes`                           | Environment-gated transport quote                                           | Advanced/diagnostic quoting        |
+| POST   | `/migrations/prepare`               | Exact mode-bound intent, plan, quote, funding, and hashes for wallet review | Authorization review               |
+| POST   | `/migrations/execute`               | Verify signatures/capabilities and durably start the configured workflow    | Final submit after signatures      |
+| GET    | `/migrations/:migrationId`          | Migration, evidence, events, commands, ledger, and reservations             | Authoritative monitoring view      |
+| GET    | `/migrations/:migrationId/events`   | Authoritative event history                                                 | Optional focused event timeline    |
+| GET    | `/migrations/:migrationId/evidence` | Normalized evidence records                                                 | Optional evidence explorer         |
 
 There is currently no WebSocket or server-sent-event endpoint. Poll migration details while a
 migration is non-terminal. Start around 1.5-2 seconds, pause polling when the tab is hidden, use
-backoff after transient failures, and stop at `COMPLETED`, `FAILED_SAFE`, or `EXPIRED`.
+backoff after transient failures, and stop at `COMPLETED`, `FAILED_SAFE`, `REQUOTE_REQUIRED`, or
+`EXPIRED`.
 
 ### Route analysis request
 
@@ -165,10 +167,11 @@ The current response includes:
 
 ```ts
 interface PreparedMigration {
-  simulation: {
-    provider: 'DEBTSHIFT_SIMULATOR';
-    mode: 'SIMULATED';
-    warning: string;
+  environment: {
+    mode: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet';
+    transportProvider: 'DEBTSHIFT_SIMULATOR' | 'NEAR_INTENTS_1CLICK';
+    executionEnabled: boolean;
+    warning?: string;
   };
   verifyingContract: Address;
   intent: RefinanceIntent;
@@ -181,8 +184,9 @@ interface PreparedMigration {
 }
 ```
 
-Preparation currently fails closed outside the simulator workflow. Do not hide or rewrite that
-error as a generic wallet failure.
+Until the provider-neutral backend is complete, preparation fails closed outside the current
+sandbox workflow. Do not hide or rewrite that error. The frontend must consume backend capability
+metadata rather than infer behavior from the hostname or expose a mode switch.
 
 ### Execute request
 
@@ -276,7 +280,7 @@ library, but it must:
 - Never request, accept, log, or persist a private key or seed phrase.
 
 Wallet challenge/session authentication is not implemented yet. Until it exists, the wallet address
-selects read data and the two execution signatures authorize the simulator migration. The frontend
+selects read data and the two execution signatures authorize the sandbox migration. The frontend
 architecture should reserve a session/auth layer rather than treating address selection as
 production authentication.
 
@@ -330,8 +334,8 @@ the corresponding wallet flow is verified end to end.
 8. **Review plan:** show exact execution authorization and request the plan signature.
 9. **Submit:** send both signatures and retain the returned migration ID.
 10. **Monitor:** show phase, commands, evidence verification, transactions, and timestamps.
-11. **Finish:** distinguish `COMPLETED`, `FAILED_SAFE`, and `EXPIRED`; expose recovery evidence and
-    residual/refund information when present.
+11. **Finish:** distinguish `COMPLETED`, `FAILED_SAFE`, `REQUOTE_REQUIRED`, and `EXPIRED`; expose
+    recovery evidence and residual/refund information when present.
 
 If the quote, intent, or plan expires before submission, discard both signatures and prepare again.
 
@@ -349,6 +353,10 @@ Exceptional terminal/recovery phases are:
 - `RECOVERY`: recovery is active and must not be presented as finished.
 - `FAILED_SAFE`: execution did not complete, but the persisted evidence shows the safe recovery
   outcome.
+- `REQUOTE_REQUIRED`: a pre-source feasibility check failed, the undrawn liquidity reservation was
+  released atomically, and the source position was left unchanged. Tell the user that market
+  capacity changed and a new plan is required. Never silently retry, reuse either signature, or
+  imply that funds entered recovery.
 - `EXPIRED`: the authorized window ended without a successful completion.
 
 The frontend does not derive or advance phases. It renders the authoritative phase returned by the
@@ -363,11 +371,11 @@ the environment and chain are known and the hash is present.
 
 An environment badge must remain visible throughout preparation, signing, and monitoring.
 
-### Simulator
+### Sandbox and testnet
 
-- Use language such as `Simulator / test funds`.
+- Use language such as `Contract-backed sandbox / test funds` or `Public testnet / simulated transport`.
 - Show the warning returned by `/migrations/prepare`.
-- Label simulator transport receipts as simulated.
+- Link actual EVM/NEAR transaction receipts and label only the transport-provider observation simulated.
 - Never link a simulator receipt to the public 1Click service.
 
 ### Live read-only
@@ -376,11 +384,15 @@ An environment badge must remain visible throughout preparation, signing, and mo
 - Live Aave/Morpho observations and live 1Click dry quotes do not authorize execution.
 - Disable funded migration buttons when the backend reports that live execution is unavailable.
 
-### Mainnet canary
+### Mainnet
 
-The isolated 1Click canary is not part of the borrower refinance UI. If a canary operator view is
-added later, it requires an explicit backend capability, fixed input cap, allowlisted route and
-wallets, manual confirmation, and separate terminology from debt refinancing.
+- Display `Mainnet execution disabled` while the backend reports
+  `MAINNET_EXECUTION_ENABLED=false`; the UI cannot override it.
+- Before submission, display exact principal, collateral, minimum delivery, maximum target debt,
+  solver fee, gas budget, deposit/destination/refund/payout receivers, deadline, and recovery
+  exposure from the signed preparation response.
+- Request borrower signatures through the wallet and require the explicit final confirmation flow.
+- Never imply that enabling a browser control can activate mainnet writes.
 
 ## AI explanation settings
 
@@ -464,6 +476,8 @@ prepared authorization payloads, user API keys, or provider secrets.
 - Reject either signature without submitting.
 - Sign both payloads, start the migration, and reach `COMPLETED`.
 - Exercise the refund/recovery scenario and reach `FAILED_SAFE` with recovery evidence.
+- Deteriorate destination liquidity before source close and reach `REQUOTE_REQUIRED`; verify that
+  the UI asks for a fresh plan instead of showing recovery or retrying the signed plan.
 - Refresh during monitoring and resume from a retained migration ID.
 - Confirm that no provider success alone is displayed as a completed refinance.
 
@@ -489,11 +503,11 @@ The frontend may proceed now, but these contracts are not yet production-final:
 | --------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
 | Wallet challenge/session authentication | Not implemented                                                | Keep auth/session logic behind a dedicated boundary        |
 | Generated public API response DTOs      | Domain schemas exist; some controller bodies are still unknown | Centralize temporary response interfaces in the API client |
-| Live funded refinance                   | Intentionally disabled                                         | Render backend capabilities; never infer availability      |
+| Live funded refinance                   | Production workflow/composition still incomplete               | Render backend capabilities; never infer availability      |
 | Smart-account preparation               | Verification exists; prepare currently emits EOA               | Do not claim EIP-1271 UX completion                        |
 | Streaming migration updates             | Not implemented                                                | Isolate polling so it can later be replaced                |
 | Explorer metadata                       | Not yet a frontend API contract                                | Use an environment map only for known chains               |
-| Operator/canary UI                      | Not part of borrower flow                                      | Keep it separate if later requested                        |
+| Mainnet readiness/enable state          | Server-side environment and operator responsibility            | Display read-only capability and exact preflight terms     |
 
 Backend changes should preserve or version shared schemas. A breaking change must update this
 handoff, the shared type/schema package, tests, and the frontend owner in the same work period.

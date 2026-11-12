@@ -11,6 +11,13 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.TRANSPORT_PROVIDER).toBe('DEBTSHIFT_SIMULATOR');
     expect(environment.AGENT_MODE).toBe('DETERMINISTIC');
     expect(environment.MAINNET_CANARY_ENABLED).toBe(false);
+    expect(environment.SOURCE_FINALITY_CONFIRMATIONS).toBe(1);
+    expect(environment.DESTINATION_FINALITY_CONFIRMATIONS).toBe(1);
+  });
+
+  it('requires at least one configured confirmation on each EVM chain', () => {
+    expect(() => parseDebtShiftEnvironment({ SOURCE_FINALITY_CONFIRMATIONS: '0' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ DESTINATION_FINALITY_CONFIRMATIONS: '0' })).toThrow();
   });
 
   it('rejects production transport in a local environment', () => {

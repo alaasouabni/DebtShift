@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ApiClient from '../../lib/api/client';
 
 import type { MigrationDetails, MigrationPhase } from '../../lib/api/types';
+import recoveryFixture from './__fixtures__/migration-recovery.json' with { type: 'json' };
 import fixture from './__fixtures__/migration-settled.json' with { type: 'json' };
 
 const settled = fixture as unknown as MigrationDetails;
@@ -230,5 +231,110 @@ describe('persistence', () => {
     const stored = JSON.stringify(Object.fromEntries(Object.entries(window.localStorage)));
     expect(stored).toContain(settled.migration.migrationId);
     expect(stored).not.toContain(settled.migration.intentHash);
+  });
+});
+
+/* ----------------------------------------------------- strategy 2026-11-12 */
+
+describe('REQUOTE_REQUIRED', () => {
+  it('says capacity changed and a new plan is needed', async () => {
+    await renderMigration(withPhase('REQUOTE_REQUIRED'));
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('New plan required.');
+    expect(screen.getByText(/Market capacity changed\. A new plan is required\./)).toBeDefined();
+  });
+
+  it('states that nothing moved and nothing is in recovery', async () => {
+    await renderMigration(withPhase('REQUOTE_REQUIRED'));
+    expect(screen.getByText(/Nothing moved and nothing is in recovery\./)).toBeDefined();
+    expect(screen.queryByText(/Funds are being returned/i)).toBeNull();
+  });
+
+  it('says the signatures cannot be reused and offers no retry', async () => {
+    await renderMigration(withPhase('REQUOTE_REQUIRED'));
+    expect(screen.getByText(/Your two\s+signatures cannot be reused/)).toBeDefined();
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+    expect(screen.getByRole('link', { name: /compare routes again/i }).getAttribute('href')).toBe(
+      '/routes',
+    );
+  });
+});
+
+describe('real receipts and simulated transport', () => {
+  it('marks only the transport simulator observations as simulated', async () => {
+    await renderMigration();
+    const simulated = settled.evidence.filter((item) => item.provider === 'DEBTSHIFT_SIMULATOR');
+    expect(simulated.length).toBeGreaterThan(0);
+    expect(simulated.length).toBeLessThan(settled.evidence.length);
+    expect(screen.getAllByText('Simulated transport')).toHaveLength(simulated.length);
+  });
+
+  it('says chain transactions are real and a simulated observation is not 1Click', async () => {
+    await renderMigration();
+    expect(
+      screen.getByText(/Chain transactions listed here are real on their chains\./),
+    ).toBeDefined();
+  });
+
+  it('builds no explorer link for the sandbox chains', async () => {
+    await renderMigration();
+    expect(screen.queryByRole('link', { name: /block explorer/i })).toBeNull();
+  });
+
+  it('links to the explorer once the evidence is on a known public chain', async () => {
+    const hash = `0x${'cd'.repeat(32)}`;
+    await renderMigration({
+      ...settled,
+      evidence: [
+        { ...settled.evidence[0]!, chainId: 11155111, blockNumber: '5', transactionHash: hash },
+      ],
+    });
+    expect(screen.getByRole('link', { name: /block explorer/i }).getAttribute('href')).toBe(
+      `https://sepolia.etherscan.io/tx/${hash}`,
+    );
+  });
+});
+
+/* ------------------------------------------------ a REAL recovery migration */
+
+describe('a real migration in recovery', () => {
+  /*
+   * Captured from the local stack on 2026-11-12: the worker opened recovery
+   * with FINALIZED_CHAIN_EVIDENCE_REORGED and retracted two pieces of
+   * evidence. Until then the recovery screen had only ever been rendered from
+   * a relabelled SETTLED payload.
+   */
+  const recovery = recoveryFixture as unknown as MigrationDetails;
+
+  it('is the real thing', () => {
+    expect(recovery.migration.phase).toBe('RECOVERY');
+    expect(recovery.evidence.some((item) => item.type === 'RECOVERY_OPENED')).toBe(true);
+  });
+
+  it('renders as working, with no forward track and no claim of completion', async () => {
+    const { container } = await renderMigration(recovery);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Recovery in progress.');
+    expect(container.querySelector('[aria-label="Migration phases"]')).toBeNull();
+    expect(screen.queryByText(/The refinance is complete/i)).toBeNull();
+  });
+
+  it('shows why recovery opened, in the backend own words', async () => {
+    await renderMigration(recovery);
+    // The code also appears inside the expandable evidence payloads, so the
+    // claim checked is the dedicated "Why" row in the recovery panel.
+    const why = screen.getByText('Why').nextElementSibling;
+    expect(why?.textContent).toContain('FINALIZED_CHAIN_EVIDENCE_REORGED');
+    expect(why?.textContent).toContain('HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION');
+  });
+
+  it('strikes through the retracted evidence instead of hiding it', async () => {
+    await renderMigration(recovery);
+    const retracted = recovery.evidence.filter((item) => item.verificationState === 'RETRACTED');
+    expect(retracted.length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Retracted')).toHaveLength(retracted.length);
+  });
+
+  it('keeps polling, because recovery is not a final phase', async () => {
+    await renderMigration(recovery);
+    expect(screen.getByText(/Live · polling/)).toBeDefined();
   });
 });

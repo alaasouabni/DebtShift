@@ -32,7 +32,15 @@ import {
   secondsUntilUnix,
   truncateHex,
 } from '../../lib/formatting';
+import {
+  canSubmit,
+  environmentBadge,
+  readEnvironment,
+  submitBlockedReason,
+  type BackendEnvironment,
+} from '../../lib/environment';
 import { MIGRATION_STORAGE_KEY } from '../../lib/storage-keys';
+import { useEnvironment } from '../environment/environment-context';
 import { isConnected, useWallet } from '../wallet/wallet-context';
 import { intentRows, planRows, type ReviewRow } from './review-rows';
 
@@ -84,6 +92,17 @@ export function AuthorizeView() {
   }, [wallet.accountEpoch]);
 
   const prepared = state.prepared;
+  const { report: reportEnvironment } = useEnvironment();
+
+  /*
+   * The environment is whatever the backend said in this preparation — read
+   * through the one function that understands both response shapes. It is
+   * `undefined` when the backend said nothing usable, and the flow then fails
+   * closed rather than assuming a sandbox.
+   */
+  const environment = useMemo(() => readEnvironment(prepared), [prepared]);
+  const submitAllowed = canSubmit(environment);
+  const blockedReason = submitBlockedReason(environment);
 
   /* ----------------------------------------------------------- the windows */
 
@@ -120,6 +139,9 @@ export function AuthorizeView() {
     setState({ step: 'prepare', busy: true });
     try {
       const result = await api.prepare(wallet.account);
+      // Share it with the shell so the header badge shows what the backend
+      // reported from here on, through signing and monitoring.
+      reportEnvironment(readEnvironment(result));
       setState({ step: 'policy', prepared: result });
     } catch (caught) {
       const error = caught instanceof ApiError ? caught : undefined;
@@ -132,7 +154,7 @@ export function AuthorizeView() {
         errorStatus: error?.status,
       });
     }
-  }, [connected, wallet.account]);
+  }, [connected, wallet.account, reportEnvironment]);
 
   const signIntent = useCallback(async () => {
     if (prepared === undefined) return;
@@ -192,6 +214,10 @@ export function AuthorizeView() {
     ) {
       return;
     }
+    // The button is disabled in this case; this is the same rule applied where
+    // it cannot be bypassed by re-enabling a control in devtools. The backend
+    // enforces it again on its side.
+    if (!canSubmit(readEnvironment(prepared))) return;
     setState((current) => ({ ...current, busy: true, error: undefined }));
     try {
       /*
@@ -265,9 +291,7 @@ export function AuthorizeView() {
 
   return (
     <>
-      {prepared ? (
-        <SimulatorBanner warning={prepared.simulation.warning} prepared={prepared} />
-      ) : null}
+      {prepared ? <EnvironmentBanner environment={environment} /> : null}
 
       <section
         className="page hero"
@@ -471,8 +495,17 @@ export function AuthorizeView() {
                 reconciled.
               </Alert>
 
+              {blockedReason ? (
+                <Alert tone="warning" title="Submission is not available here">
+                  {blockedReason}
+                </Alert>
+              ) : null}
+
               <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-                <Button onClick={() => void submit()} disabled={state.busy === true}>
+                <Button
+                  onClick={() => void submit()}
+                  disabled={state.busy === true || !submitAllowed}
+                >
                   {state.busy === true ? 'Submitting…' : 'Submit both signatures'}
                 </Button>
                 <Button variant="secondary" onClick={() => setState(INITIAL)}>
@@ -489,15 +522,21 @@ export function AuthorizeView() {
 
 /* ----------------------------------------------------------------- banner */
 
-function SimulatorBanner({
-  warning,
-  prepared,
+function EnvironmentBanner({
+  environment,
 }: {
-  readonly warning: string;
-  readonly prepared: PreparedMigration;
+  readonly environment: BackendEnvironment | undefined;
 }) {
+  const badge = environmentBadge(environment);
+  const unknown = environment === undefined;
   return (
-    <div role="note" style={{ background: 'var(--accent-soft)', color: 'var(--ink)' }}>
+    <div
+      role="note"
+      style={{
+        background: unknown ? 'var(--warning-soft)' : 'var(--accent-soft)',
+        color: 'var(--ink)',
+      }}
+    >
       <div
         className="page"
         style={{
@@ -510,11 +549,17 @@ function SimulatorBanner({
           lineHeight: '20px',
         }}
       >
-        {/* The backend's own warning string, verbatim. */}
-        <strong>{warning}</strong>
+        <strong>{badge.label}</strong>
+        {/* The backend's own warning string, verbatim, when it sends one. */}
+        {environment?.warning ? <span>{environment.warning}</span> : null}
         <span style={{ color: 'var(--ink-muted)' }}>
-          Provider {prepared.simulation.provider} · mode {prepared.simulation.mode} · real-fund
-          execution disabled
+          {unknown
+            ? 'The backend did not report an environment this app can read. Nothing can be submitted.'
+            : `Mode ${environment.mode} · transport ${environment.transportProvider}${
+                environment.transportProvider === 'DEBTSHIFT_SIMULATOR'
+                  ? ' (simulated — not a 1Click transaction)'
+                  : ''
+              }`}
         </span>
       </div>
     </div>

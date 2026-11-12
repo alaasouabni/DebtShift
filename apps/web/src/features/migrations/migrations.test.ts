@@ -6,7 +6,12 @@ import {
   type AuditEvent,
   type Evidence,
 } from '../../lib/api/types';
-import { evidenceProvenanceLine, hasChainProvenance } from './evidence-line';
+import {
+  evidenceProvenanceLine,
+  hasChainProvenance,
+  isSimulatedTransport,
+  readRecoveryReason,
+} from './evidence-line';
 import { buildTimeline, isOffTrack, phaseEntryTimes, phasePosition } from './phase-timeline';
 import { BASE_POLL_MS, MAX_POLL_MS, nextPollDelay, shouldKeepPolling } from './use-migration';
 
@@ -265,5 +270,95 @@ describe('hasChainProvenance', () => {
   it('is true once a transaction or block hash exists', () => {
     expect(hasChainProvenance({ ...base, transactionHash: '0xdead' })).toBe(true);
     expect(hasChainProvenance({ ...base, blockHash: '0xbeef' })).toBe(true);
+  });
+});
+
+describe('REQUOTE_REQUIRED', () => {
+  it('is terminal, so polling stops there instead of running forever', () => {
+    // Added on main on 2026-11-11. Before this frontend knew the phase, a
+    // migration that reached it would have been polled indefinitely.
+    expect(isTerminalPhase('REQUOTE_REQUIRED')).toBe(true);
+    expect(shouldKeepPolling('REQUOTE_REQUIRED')).toBe(false);
+  });
+
+  it('is off the forward track, like the other exceptional outcomes', () => {
+    expect(isOffTrack('REQUOTE_REQUIRED')).toBe(true);
+    expect(phasePosition('REQUOTE_REQUIRED')).toBeUndefined();
+  });
+
+  it('leaves nothing current on the timeline', () => {
+    const steps = buildTimeline('REQUOTE_REQUIRED', HISTORY.slice(0, 4));
+    expect(steps.some((step) => step.state === 'current')).toBe(false);
+    // The source was never closed: that step must not read as done.
+    expect(steps.find((step) => step.phase === 'SOURCE_CLOSED')?.state).toBe('pending');
+  });
+});
+
+describe('isSimulatedTransport', () => {
+  const base: Evidence = {
+    evidenceId: '0x01',
+    migrationId: '0x02',
+    type: 'TRANSPORT_DESTINATION',
+    schemaVersion: 1,
+    provider: 'DEBTSHIFT_SIMULATOR',
+    network: 'eip155:31338',
+    rawObservationHash: '0x03',
+    normalizedPayload: {},
+    observedAt: '2026-11-11T22:50:00.000Z',
+    verificationState: 'FINALIZED',
+    verificationMethod: 'receipt',
+    verifierVersion: '1',
+  };
+
+  it('marks only the transport simulator observations', () => {
+    expect(isSimulatedTransport(base)).toBe(true);
+  });
+
+  it('does not mark real chain evidence in the same sandbox migration', () => {
+    // A sandbox migration has both kinds side by side; one label for all of
+    // them would misdescribe the real receipts.
+    expect(isSimulatedTransport({ ...base, provider: 'DIRECT_RPC' })).toBe(false);
+    expect(isSimulatedTransport({ ...base, provider: 'EIP712' })).toBe(false);
+    expect(isSimulatedTransport({ ...base, provider: 'NEAR_INTENTS_1CLICK' })).toBe(false);
+  });
+});
+
+describe('readRecoveryReason', () => {
+  const opened: Evidence = {
+    evidenceId: '0x0c2e',
+    migrationId: '0x3a59',
+    type: 'RECOVERY_OPENED',
+    schemaVersion: 1,
+    provider: 'DEBTSHIFT_WORKER',
+    network: 'eip155:31337',
+    rawObservationHash: '0x01',
+    normalizedPayload: {
+      reason: 'FINALIZED_CHAIN_EVIDENCE_REORGED',
+      policy: 'HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION',
+    },
+    observedAt: '2026-11-12T01:02:32.826Z',
+    verificationState: 'FINALIZED',
+    verificationMethod: 'state',
+    verifierVersion: '1',
+  };
+
+  it('reads the reason and the policy the backend recorded', () => {
+    expect(readRecoveryReason([opened])).toEqual({
+      reason: 'FINALIZED_CHAIN_EVIDENCE_REORGED',
+      policy: 'HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION',
+    });
+  });
+
+  it('returns the reason alone when no policy is recorded', () => {
+    expect(
+      readRecoveryReason([{ ...opened, normalizedPayload: { reason: 'TRANSPORT_REFUNDED' } }]),
+    ).toEqual({ reason: 'TRANSPORT_REFUNDED' });
+  });
+
+  it('invents nothing when there is no recovery evidence or no string reason', () => {
+    expect(readRecoveryReason([])).toBeUndefined();
+    expect(readRecoveryReason([{ ...opened, normalizedPayload: {} }])).toBeUndefined();
+    expect(readRecoveryReason([{ ...opened, normalizedPayload: { reason: 42 } }])).toBeUndefined();
+    expect(readRecoveryReason([{ ...opened, type: 'SOURCE_CLOSE' }])).toBeUndefined();
   });
 });

@@ -282,7 +282,15 @@ describe('signature 2 — the execution review', () => {
     await reachPlanStep();
     const text = document.body.textContent ?? '';
     expect(text).toContain('DebtShift simulator (test assets)');
-    expect(text).not.toMatch(/1Click (testnet|transaction)(?! transaction\.)/);
+
+    // Every mention of a 1Click transaction on this screen must be a denial.
+    // Checking the sense, not the mere presence of the words: the banner
+    // legitimately says "not a 1Click transaction".
+    const mentions = [...text.matchAll(/(.{0,12})1Click (testnet )?transaction/g)];
+    expect(mentions.length).toBeGreaterThan(0);
+    for (const mention of mentions) {
+      expect(mention[1], mention[0]).toMatch(/not an? $/);
+    }
   });
 
   it('shows three countdowns and marks exactly one as governing', async () => {
@@ -375,5 +383,115 @@ describe('submission', () => {
     expect(stored).not.toContain(prepared.intentHash);
     expect(stored).not.toContain(prepared.plan.targetDebtMaxUnits);
     expect(stored.toLowerCase()).not.toContain('signature');
+  });
+});
+
+/* ----------------------------------------------------- strategy 2026-11-12 */
+
+/** The same real payload, carrying the shape the contract now specifies. */
+function withEnvironment(environment: Record<string, unknown> | undefined) {
+  const { simulation: _legacy, ...rest } = prepared as unknown as Record<string, unknown>;
+  return environment === undefined ? rest : { ...rest, environment };
+}
+
+async function reachSubmitStep() {
+  await reachPolicyStep();
+  fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+  await screen.findByText(/authorize this exact execution/i);
+  fireEvent.click(screen.getByRole('button', { name: /sign the execution plan/i }));
+  return screen.findByRole('button', { name: /submit both signatures/i });
+}
+
+describe('the environment comes from the backend', () => {
+  it('labels today legacy response as the contract-backed sandbox', async () => {
+    await reachPolicyStep();
+    const banner = screen.getByRole('note');
+    expect(banner.textContent).toContain('Contract-backed sandbox · test funds');
+    expect(banner.textContent).toContain('Mode sandbox · transport DEBTSHIFT_SIMULATOR');
+  });
+
+  it('reads the new environment shape without the legacy field', async () => {
+    prepareMock.mockResolvedValue(
+      withEnvironment({
+        mode: 'testnet',
+        transportProvider: 'DEBTSHIFT_SIMULATOR',
+        executionEnabled: true,
+        warning: 'Public testnet assets only.',
+      }),
+    );
+    await reachPolicyStep();
+
+    const banner = screen.getByRole('note');
+    expect(banner.textContent).toContain('Public testnet · simulated transport');
+    expect(banner.textContent).toContain('Public testnet assets only.');
+  });
+
+  it('renders the review even when the backend sends no warning', async () => {
+    prepareMock.mockResolvedValue(
+      withEnvironment({
+        mode: 'sandbox',
+        transportProvider: 'DEBTSHIFT_SIMULATOR',
+        executionEnabled: true,
+      }),
+    );
+    await reachPolicyStep();
+    expect(screen.getByRole('button', { name: /^sign the policy$/i })).toBeDefined();
+  });
+});
+
+describe('when the backend does not allow execution', () => {
+  it('disables submission on mainnet while the server switch is off', async () => {
+    prepareMock.mockResolvedValue(
+      withEnvironment({
+        mode: 'mainnet',
+        transportProvider: 'NEAR_INTENTS_1CLICK',
+        executionEnabled: false,
+      }),
+    );
+    const submit = await reachSubmitStep();
+
+    expect(submit).toHaveProperty('disabled', true);
+    expect(screen.getByRole('note').textContent).toContain('Mainnet execution disabled');
+    expect(screen.getByText(/Nothing in this browser can enable it\./)).toBeDefined();
+
+    fireEvent.click(submit);
+    expect(executeMock).not.toHaveBeenCalled();
+  });
+
+  it('never offers submission in a read-only environment', async () => {
+    prepareMock.mockResolvedValue(
+      withEnvironment({
+        mode: 'mainnet-readonly',
+        transportProvider: 'NEAR_INTENTS_1CLICK',
+        executionEnabled: true,
+      }),
+    );
+    const submit = await reachSubmitStep();
+    expect(submit).toHaveProperty('disabled', true);
+    expect(screen.getByText(/read-only environment/i)).toBeDefined();
+  });
+
+  it('fails closed when the backend reports no environment at all', async () => {
+    // Neither shape present: the app must not assume a sandbox.
+    prepareMock.mockResolvedValue(withEnvironment(undefined));
+    const submit = await reachSubmitStep();
+
+    expect(submit).toHaveProperty('disabled', true);
+    expect(screen.getByRole('note').textContent).toContain('Environment not reported');
+    fireEvent.click(submit);
+    expect(executeMock).not.toHaveBeenCalled();
+  });
+
+  it('allows submission on mainnet only when the backend reports it enabled', async () => {
+    prepareMock.mockResolvedValue(
+      withEnvironment({
+        mode: 'mainnet',
+        transportProvider: 'NEAR_INTENTS_1CLICK',
+        executionEnabled: true,
+      }),
+    );
+    const submit = await reachSubmitStep();
+    expect(submit).toHaveProperty('disabled', false);
+    expect(screen.getByRole('note').textContent).toContain('Mainnet · real funds');
   });
 });

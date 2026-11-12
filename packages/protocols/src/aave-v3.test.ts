@@ -4,9 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AAVE_POOL_WRITE_ABI,
   AaveV3ReadAdapter,
+  buildAaveCollateralClaimAuthorization,
   buildAaveBorrowerCloseTransactions,
   ERC20_METADATA_ABI,
   rayToBps,
+  readAaveReserveTokenAddresses,
 } from './aave-v3.js';
 
 const POOL = '0x1000000000000000000000000000000000000001';
@@ -114,6 +116,48 @@ describe('Aave V3 direct-read adapter', () => {
       functionName: 'withdraw',
       args: [COLLATERAL, 10n * 10n ** 18n, RECEIVER],
     });
+  });
+
+  it('constructs only the exact aToken claim approval for atomic adapter execution', () => {
+    const transaction = buildAaveCollateralClaimAuthorization(
+      COLLATERAL,
+      DATA_PROVIDER,
+      10n * 10n ** 18n,
+    );
+
+    expect(transaction.to).toBe(COLLATERAL);
+    expect(decodeFunctionData({ abi: ERC20_METADATA_ABI, data: transaction.data })).toMatchObject({
+      functionName: 'approve',
+      args: [DATA_PROVIDER, 10n * 10n ** 18n],
+    });
+    expect(() => buildAaveCollateralClaimAuthorization(COLLATERAL, DATA_PROVIDER, 0n)).toThrow(
+      'must be positive',
+    );
+  });
+
+  it('reads and normalizes the reserve-specific aToken and debt-token identities', async () => {
+    const aToken = '0x5000000000000000000000000000000000000005';
+    const stableDebtToken = '0x6000000000000000000000000000000000000006';
+    const variableDebtToken = '0x7000000000000000000000000000000000000007';
+    const client = {
+      readContract: vi.fn(async () => [aToken, stableDebtToken, variableDebtToken]),
+    } as unknown as PublicClient;
+
+    await expect(
+      readAaveReserveTokenAddresses(client, DATA_PROVIDER, COLLATERAL, 123n),
+    ).resolves.toEqual({
+      aToken,
+      stableDebtToken,
+      variableDebtToken,
+    });
+    expect(client.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: DATA_PROVIDER,
+        functionName: 'getReserveTokensAddresses',
+        args: [COLLATERAL],
+        blockNumber: 123n,
+      }),
+    );
   });
 
   it('converts Aave ray rates to nearest basis points without floating point math', () => {

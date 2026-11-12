@@ -9,8 +9,11 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   getAddress,
+  hexToNumber,
   isAddressEqual,
   keccak256,
+  size,
+  sliceHex,
   zeroAddress,
   type Address,
   type Hex,
@@ -42,6 +45,31 @@ const MARKET_COMPONENTS = [
   { name: 'fee', type: 'uint128' },
 ] as const;
 
+const AUTHORIZATION_COMPONENTS = [
+  { name: 'authorizer', type: 'address' },
+  { name: 'authorized', type: 'address' },
+  { name: 'isAuthorized', type: 'bool' },
+  { name: 'nonce', type: 'uint256' },
+  { name: 'deadline', type: 'uint256' },
+] as const;
+
+const SIGNATURE_COMPONENTS = [
+  { name: 'v', type: 'uint8' },
+  { name: 'r', type: 'bytes32' },
+  { name: 's', type: 'bytes32' },
+] as const;
+
+export const MORPHO_AUTHORIZATION_TYPES = {
+  Authorization: AUTHORIZATION_COMPONENTS,
+} as const;
+
+export const MORPHO_AUTHORIZATION_PAIR_PARAMETERS = [
+  { name: 'enable', type: 'tuple', components: AUTHORIZATION_COMPONENTS },
+  { name: 'enableSignature', type: 'tuple', components: SIGNATURE_COMPONENTS },
+  { name: 'disable', type: 'tuple', components: AUTHORIZATION_COMPONENTS },
+  { name: 'disableSignature', type: 'tuple', components: SIGNATURE_COMPONENTS },
+] as const;
+
 export const MORPHO_BLUE_READ_ABI = [
   {
     type: 'function',
@@ -70,6 +98,23 @@ export const MORPHO_BLUE_READ_ABI = [
       { name: 'borrowShares', type: 'uint128' },
       { name: 'collateral', type: 'uint128' },
     ],
+  },
+  {
+    type: 'function',
+    name: 'nonce',
+    stateMutability: 'view',
+    inputs: [{ name: 'authorizer', type: 'address' }],
+    outputs: [{ name: 'nonce', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'isAuthorized',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'authorizer', type: 'address' },
+      { name: 'authorized', type: 'address' },
+    ],
+    outputs: [{ name: 'authorized', type: 'bool' }],
   },
 ] as const;
 
@@ -143,6 +188,19 @@ export interface MorphoMarketParams {
   readonly oracle: Address;
   readonly irm: Address;
   readonly lltv: bigint;
+}
+
+export interface MorphoAuthorization {
+  readonly authorizer: Address;
+  readonly authorized: Address;
+  readonly isAuthorized: boolean;
+  readonly nonce: bigint;
+  readonly deadline: bigint;
+}
+
+export interface MorphoAuthorizationPair {
+  readonly enable: MorphoAuthorization;
+  readonly disable: MorphoAuthorization;
 }
 
 export interface MorphoMarketState {
@@ -412,6 +470,67 @@ export interface PreparedMorphoOpenPosition {
   readonly transactions: readonly PreparedEvmTransaction[];
 }
 
+export function buildMorphoAuthorizationPair(
+  authorizerInput: Address,
+  authorizedInput: Address,
+  startingNonce: bigint,
+  deadline: bigint,
+): MorphoAuthorizationPair {
+  if (startingNonce < 0n) throw new Error('Morpho authorization nonce cannot be negative.');
+  if (deadline <= 0n) throw new Error('Morpho authorization deadline must be positive.');
+  const authorizer = getAddress(authorizerInput);
+  const authorized = getAddress(authorizedInput);
+  return {
+    enable: {
+      authorizer,
+      authorized,
+      isAuthorized: true,
+      nonce: startingNonce,
+      deadline,
+    },
+    disable: {
+      authorizer,
+      authorized,
+      isAuthorized: false,
+      nonce: startingNonce + 1n,
+      deadline,
+    },
+  };
+}
+
+export function morphoAuthorizationTypedData(
+  chainId: number,
+  morphoInput: Address,
+  authorization: MorphoAuthorization,
+) {
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+    throw new Error('Morpho authorization chain ID must be a positive safe integer.');
+  }
+  return {
+    domain: {
+      chainId,
+      verifyingContract: getAddress(morphoInput),
+    },
+    types: MORPHO_AUTHORIZATION_TYPES,
+    primaryType: 'Authorization',
+    message: authorization,
+  } as const;
+}
+
+export function encodeMorphoAuthorizationPair(
+  pair: MorphoAuthorizationPair,
+  enableSignature: Hex,
+  disableSignature: Hex,
+): Hex {
+  assertAuthorizationPair(pair);
+  return encodeAbiParameters(MORPHO_AUTHORIZATION_PAIR_PARAMETERS, [
+    pair.enable,
+    splitMorphoSignature(enableSignature),
+    pair.disable,
+    splitMorphoSignature(disableSignature),
+  ]);
+}
+
 export function buildMorphoOpenPositionTransactions(
   morphoInput: Address,
   paramsInput: MorphoMarketParams,
@@ -466,6 +585,33 @@ export function buildMorphoOpenPositionTransactions(
         description: 'Borrow the bounded loan amount to the signed receiver.',
       },
     ],
+  };
+}
+
+function assertAuthorizationPair(pair: MorphoAuthorizationPair): void {
+  if (
+    !isAddressEqual(pair.enable.authorizer, pair.disable.authorizer) ||
+    !isAddressEqual(pair.enable.authorized, pair.disable.authorized) ||
+    !pair.enable.isAuthorized ||
+    pair.disable.isAuthorized ||
+    pair.enable.nonce < 0n ||
+    pair.disable.nonce !== pair.enable.nonce + 1n ||
+    pair.enable.deadline <= 0n ||
+    pair.disable.deadline <= 0n
+  ) {
+    throw new Error('Invalid consecutive Morpho enable/disable authorization pair.');
+  }
+}
+
+function splitMorphoSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
+  if (size(signature) !== 65) throw new Error('Morpho authorization signature must be 65 bytes.');
+  const rawV = hexToNumber(sliceHex(signature, 64, 65));
+  const v = rawV <= 1 ? rawV + 27 : rawV;
+  if (v !== 27 && v !== 28) throw new Error('Morpho authorization signature v must be 27 or 28.');
+  return {
+    v,
+    r: sliceHex(signature, 0, 32),
+    s: sliceHex(signature, 32, 64),
   };
 }
 

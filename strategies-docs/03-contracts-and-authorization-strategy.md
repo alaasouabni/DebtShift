@@ -77,7 +77,7 @@ requotes the plan without drawing temporary liquidity.
 
 ### Source ownership proof gate
 
-The preferred EOA path is provisional until a pinned Aave fork proves it:
+The selected EOA path is proven against pinned Aave V3 Base state:
 
 1. Borrower grants a bounded allowance over the relevant aToken.
 2. Adapter receives test-vault debt asset.
@@ -86,7 +86,15 @@ The preferred EOA path is provisional until a pinned Aave fork proves it:
 5. Adapter withdraws the underlying collateral to migration escrow.
 6. The whole transaction reverts if allowance, repayment, transfer, withdrawal, or post-state validation fails.
 
-If this cannot be made safe for the chosen reserve, select one documented alternative:
+The production module pins the pool, collateral aToken, debt variable-debt token, collateral asset,
+and debt asset as immutable deployment inputs. It reads current variable debt inside the atomic close,
+requires it to remain within the signed cap, verifies zero debt after repayment, pulls exactly the
+signed collateral minimum rather than the borrower's whole aToken balance, verifies the underlying
+receiver delta, clears temporary approvals, and retains no token balance. A missing aToken allowance
+or a debt-cap breach reverts the vault draw, repayment, nonce consumption, and collateral movement.
+
+The borrower-controlled smart-account and borrower-submitted transaction paths remain documented
+fallbacks for a future unsupported reserve, but are not selected for the pinned Base WETH/USDC route:
 
 - A borrower-controlled smart account that owns the lending position and executes the batch.
 - A borrower-submitted source transaction followed by verified coordination.
@@ -112,11 +120,29 @@ No solver-funded arbitrary-EOA path may proceed without an atomic or enforceable
 
 ### Morpho authorization
 
-- Discover requirements using the current SDK and fresh position data.
-- Bind the exact Morpho market parameters: loan token, collateral token, oracle, IRM, and LLTV.
-- Use bounded, deadline-aware authorization.
-- Verify target state directly after the transaction.
-- Preserve the native Morpho LTV/LLTV values in evidence.
+- The production module binds one Morpho singleton and one exact market identity at construction:
+  loan token, collateral token, oracle, IRM, and LLTV must reconstruct an initialized market.
+- The module is bound once to one `DestinationAdapter`; no executor or owner can call the lending
+  entry point directly after deployment.
+- For an EOA borrower, authorization data contains two native Morpho EIP-712 authorizations signed
+  over the Morpho domain: enable the exact module at nonce `N`, then disable it at nonce `N + 1`.
+  Both authorizations identify the same borrower and module and carry live deadlines.
+- One destination transaction enables the module, supplies exact measured collateral, borrows the
+  exact feasibility-bound amount, and consumes the signed disable authorization. Failure of the
+  supply, borrow, receiver transfer, or revocation reverts collateral movement, debt creation, both
+  nonce increments, and destination-plan consumption together.
+- The module rejects a pre-existing collateral or debt position in the selected target market. This
+  keeps post-state deltas unambiguous; augmenting an existing target position is not authorized by
+  the current route type.
+- Completion requires authorization to be false, the Morpho nonce to advance by exactly two, exact
+  collateral and borrow-share deltas, the exact debt-receiver asset delta, cleared temporary token
+  allowance, and no new module residual. Pre-existing unsolicited token dust is tolerated but cannot
+  be consumed or increased by the migration.
+- Native Morpho LTV/LLTV values and direct position observations remain execution evidence. The
+  stricter DebtShift capacity and LTV buffer are enforced by current feasibility before the module is
+  called.
+- A smart-account borrower requires a future explicit batch/direct-authorization path; the EOA
+  signature path is not silently reused for an unsupported account type.
 
 ## Migration escrow
 
@@ -163,31 +189,55 @@ This vault demonstrates temporary financing mechanics; it is not presented as a 
 - No contract claims to guarantee cross-chain repayment: each contract enforces local custody and
   signed bounds, while the orchestrator and risk service handle changing remote capacity.
 
-## Mainnet 1Click canary boundary
+## Mainnet production execution boundary
 
-The live canary is an application-level transport proof and does not use the DebtShift lending contracts.
+There is no isolated 1Click canary contract path. `mainnet` executes the complete signed refinance
+through the same source adapter, vault, escrows, destination adapter, settlement, and registry used
+by the production workflow.
 
-- The sending wallet manually authorizes and submits the exact deposit transaction.
-- No source adapter, destination adapter, migration escrow, or liquidity vault is called.
-- Recipient and refund addresses are team-controlled and statically allowlisted for the canary environment.
-- The input cap is configured in origin-token base units.
-- The canary record uses a distinct identifier namespace and cannot be referenced as proof for a refinance migration.
-- A successful canary demonstrates genuine 1Click transport integration only.
+- `MAINNET_EXECUTION_ENABLED=false` blocks every irreversible application command before broadcast.
+- Enabling the application switch grants no contract authority by itself.
+- The source adapter accepts only an allowlisted relayer and a valid borrower-signed plan, then draws
+  only the migration-bound vault reservation.
+- The source escrow may release collateral only to the deposit address bound to the committed 1Click
+  quote and signed plan, or to the signed recovery receiver under an authorized recovery command.
+- The destination escrow accepts only the exact token/amount/receiver proven by the finalized
+  provider and chain receipts.
+- The destination adapter opens only the configured Morpho market under current zero-shortfall
+  feasibility and atomically pays the solver/vault, costs, and borrower residual.
+- The first deployment policy fixes the route, base-unit exposure limits, receivers, relayer, and
+  recovery reserve. These limits are configuration and authorization, not a separate business flow.
+- The complete transaction is attempted only after sandbox, testnet, fork, non-broadcast mainnet
+  simulation, deployment verification, and explicit owner approval pass.
 
-## Canonical EVM events
+The application switch, borrower signatures, contract roles, pause state, and funding/feasibility
+checks are independent layers. No single layer can authorize a different market, token, amount,
+receiver, quote, fee, or deadline.
 
-- `MigrationAuthorized`
-- `LiquidityReserved`
-- `SupplementaryFundingSecured`
-- `SourceClosed`
-- `CollateralAssigned`
-- `RouteDispatched`
-- `DestinationOpened`
-- `LiquiditySettled`
-- `MigrationRecoveryOpened`
-- `MigrationCompleted`
+## Canonical migration events and authoritative surfaces
 
-Each event must include the migration ID and enough indexed identity fields for unambiguous reconciliation. Events supplement transaction state; they do not replace post-transaction reads.
+| Event                         | Authoritative emitter / record                                      |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `MigrationAuthorized`         | Source `SourceAdapter` EVM log after signature and plan validation. |
+| `LiquidityReserved`           | Source liquidity-vault EVM log.                                     |
+| `SupplementaryFundingSecured` | Destination migration-escrow EVM log.                               |
+| `SourceClosed`                | Source `SourceAdapter` EVM log.                                     |
+| `CollateralAssigned`          | Destination migration-escrow EVM log.                               |
+| `RouteDispatched`             | Durable worker/provider evidence after provider acceptance.         |
+| `DestinationOpened`           | Destination `DestinationAdapter` EVM log.                           |
+| `LiquiditySettled`            | Source liquidity-vault EVM log.                                     |
+| `MigrationRecoveryOpened`     | Atomic PostgreSQL recovery case, evidence, phase, and audit record. |
+| `MigrationCompleted`          | PostgreSQL terminal receipt bundle and NEAR registry finalization.  |
+
+The source adapter temporarily emits the legacy `ExecutionPlanConsumed` alias beside
+`MigrationAuthorized` so existing consumers are not broken before a versioned removal. Contract-log
+tests assert the exact emitter, signature topic, indexed migration/asset/actor/plan identity, and ABI
+payload for all seven contract-owned events. Events that occur only after cross-chain provider or
+workflow reconciliation are not falsely emitted by a source or destination EVM contract.
+
+Every event includes the migration ID and enough indexed identity fields for unambiguous
+reconciliation. Events supplement transaction state; they do not replace post-transaction reads,
+confirmation-depth checks, receipt canonicality validation, or durable evidence.
 
 ## NEAR registry
 

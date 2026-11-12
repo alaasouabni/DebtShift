@@ -365,6 +365,7 @@ async function buildContext(
     },
     signedIntent: {
       intent: {
+        minAprReductionBps: 100,
         safetyPolicy: {
           kind: 'MAX_LTV_BPS',
           maximumLtvBps: 7000,
@@ -380,6 +381,7 @@ async function buildContext(
     sourceSnapshot: {
       collateralUnits: COLLATERAL_UNITS.toString(),
       debtUnits: BORROW_UNITS.toString(),
+      borrowAprBps: 700,
     } as unknown as MigrationExecutionContext['sourceSnapshot'],
     quote,
     transportLeg: {

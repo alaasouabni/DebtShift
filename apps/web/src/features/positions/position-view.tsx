@@ -26,6 +26,7 @@ import {
 } from '../../lib/formatting/index';
 import { Alert, Badge, Button, ButtonLink, SectionRule } from '../../components/ui/index';
 import { HashValue } from '../../components/shell/index';
+import { isPrivateSandboxChain } from '../../lib/chains';
 import { isConnected, useWallet } from '../wallet/wallet-context';
 
 /*
@@ -38,7 +39,19 @@ import { isConnected, useWallet } from '../wallet/wallet-context';
  * route with SOURCE_POSITION_STALE whatever this page shows — the caption says
  * so. Do not grow this into a second copy of the policy.
  */
-const DISPLAY_FRESHNESS_WINDOW_SECONDS = 30;
+const SANDBOX_FRESHNESS_WINDOW_SECONDS = 30;
+
+/*
+ * A deployment against another policy (a testnet or live read-only backend)
+ * sets `NEXT_PUBLIC_FRESHNESS_WINDOW_SECONDS` to that policy's window. Still a
+ * display courtesy only: the backend's rejection is the truth either way.
+ */
+function configuredFreshnessWindow(): number {
+  const raw = Number.parseInt(process.env.NEXT_PUBLIC_FRESHNESS_WINDOW_SECONDS ?? '', 10);
+  return Number.isInteger(raw) && raw > 0 ? raw : SANDBOX_FRESHNESS_WINDOW_SECONDS;
+}
+
+const DISPLAY_FRESHNESS_WINDOW_SECONDS = configuredFreshnessWindow();
 
 interface LoadState {
   readonly kind: 'idle' | 'loading' | 'ready' | 'empty' | 'error';
@@ -311,8 +324,10 @@ export function PositionView() {
           >
             It was observed {formatRelativeAge(snapshot.block.observedAt)}. The backend will reject
             every route with <span className="mono">SOURCE_POSITION_STALE</span> until a newer block
-            is read. On the local stack this usually means Anvil has mined no block while idle
-            rather than that anything is wrong.
+            is read.
+            {isPrivateSandboxChain(position.market.chainId)
+              ? ' On a private sandbox chain this usually means no block has been mined while idle, rather than that anything is wrong.'
+              : null}
           </Alert>
         ) : null}
       </section>
@@ -533,7 +548,7 @@ export function PositionView() {
             </Button>
           </div>
           <p style={{ margin: 0, fontSize: 13, lineHeight: '18px', color: 'var(--ink-muted)' }}>
-            The {DISPLAY_FRESHNESS_WINDOW_SECONDS} s window is the simulator policy&apos;s, shown
+            The {DISPLAY_FRESHNESS_WINDOW_SECONDS} s window is the configured policy&apos;s, shown
             here as a courtesy. The backend decides, and it fails closed.
           </p>
         </div>

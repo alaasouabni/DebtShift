@@ -61,6 +61,29 @@ Every evidence record contains:
 
 Raw provider responses are retained in a protected diagnostic form, but business logic operates only on validated normalized data.
 
+## Provider-neutral execution boundary
+
+There is one command/evidence state machine for every environment. It depends on explicit ports for
+source execution, liquidity reservation, transport, destination execution, settlement, chain
+canonicality, and receipt registration. Handlers cannot accept a concrete simulator type or call
+simulator-only restoration/state methods.
+
+Composition rules:
+
+- `sandbox` and `testnet` supply contract-backed test adapters and the receipt-producing transport
+  simulator.
+- `mainnet-readonly` supplies read ports only and cannot construct irreversible command handlers.
+- `mainnet` supplies real Aave, vault/escrow, 1Click, Morpho, settlement, and registry adapters.
+- `MAINNET_EXECUTION_ENABLED=false` rejects each irreversible command before reservation, committed
+  quote, deposit, contract broadcast, or registry write.
+- No production error can select, restore, or fall back to a simulator adapter.
+- Provider selection and execution capability are persisted with every migration so a restart cannot
+  rehydrate it under another mode.
+
+The transport port reports observations; it does not decide workflow phase. Sandbox observations
+must reference actual local-chain custody transactions. Mainnet observations require provider data
+plus independent RPC receipts, balance deltas, receiver identity, confirmations, and canonicality.
+
 ## Transactional outbox
 
 1. A database transaction locks the migration.
@@ -112,6 +135,11 @@ For each migration:
 - Watchers re-read the canonical block hash before advancement.
 - A mismatched block retracts affected evidence and re-derives the phase.
 - Retraction after a dependent external action creates an incident and recovery case; history is never deleted.
+- A deep reorg incident is not eligible for automatic generic recovery. The worker stops command
+  derivation until an operator reconciles direct chain state and selects a custody-specific action.
+- `SOURCE_FINALITY_CONFIRMATIONS` and `DESTINATION_FINALITY_CONFIRMATIONS` are validated positive
+  integers. Local Anvil uses one confirmation; each deployed environment must set chain-appropriate
+  values before funded execution.
 
 ## Transport handling
 
@@ -149,7 +177,8 @@ For each migration:
 ### Transport refund
 
 - Verify actual refund custody.
-- If test policy permits, return collateral to the borrower.
+- Require the committed quote and signed plan to use the migration-specific source recovery escrow
+  as the provider refund receiver. Release to the borrower only through the recorded recovery policy.
 - Record the unresolved economic result of the already-closed source position.
 - End `FAILED_SAFE` unless a separately authorized restoration succeeds.
 
@@ -193,6 +222,8 @@ For each migration:
 - Collateral and debt assets are never netted against one another.
 - Chains are part of asset identity.
 - Settlement requires zero unexplained imbalance.
+- Before source close, a separately isolated recovery-reserve entry must cover the configured
+  post-source-close emergency exposure. It is released only from verified terminal evidence.
 - Dust disposition is explicit and bounded.
 - A non-zero residual obligation prevents `SETTLED`.
 - `SETTLED` additionally requires finalized evidence that destination proceeds plus authorized

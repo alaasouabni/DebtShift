@@ -85,9 +85,9 @@ const REQUIRED_PLAN_FIELDS = [
 
 describe('the fixture is a real prepared migration', () => {
   it('is the simulator, explicitly marked', () => {
-    expect(prepared.simulation.provider).toBe('DEBTSHIFT_SIMULATOR');
-    expect(prepared.simulation.mode).toBe('SIMULATED');
-    expect(prepared.simulation.warning).toBe(
+    expect(prepared.simulation?.provider).toBe('DEBTSHIFT_SIMULATOR');
+    expect(prepared.simulation?.mode).toBe('SIMULATED');
+    expect(prepared.simulation?.warning).toBe(
       'This route uses test assets and is not a 1Click testnet transaction.',
     );
   });

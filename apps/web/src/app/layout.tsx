@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import { SiteFooter, SiteHeader } from '../components/shell/index';
+import { EnvironmentProvider } from '../features/environment/environment-context';
 import { WalletProvider } from '../features/wallet/wallet-context';
 import { THEME_BOOTSTRAP_SCRIPT } from '../lib/theme';
 
@@ -40,13 +41,15 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         />
       </head>
       <body>
-        <WalletProvider>
-          <div className="shell">
-            <SiteHeader />
-            <main style={{ flexGrow: 1 }}>{children}</main>
-            <SiteFooter />
-          </div>
-        </WalletProvider>
+        <EnvironmentProvider>
+          <WalletProvider>
+            <div className="shell">
+              <SiteHeader />
+              <main style={{ flexGrow: 1 }}>{children}</main>
+              <SiteFooter />
+            </div>
+          </WalletProvider>
+        </EnvironmentProvider>
       </body>
     </html>
   );

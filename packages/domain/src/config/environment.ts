@@ -32,8 +32,10 @@ export const debtShiftEnvironmentSchema = z
     REDIS_URL: z.url().default('redis://localhost:6379'),
     SOURCE_CHAIN_ID: z.coerce.number().int().positive().default(31_337),
     SOURCE_RPC_URL: z.url().default('http://localhost:8545'),
+    SOURCE_FINALITY_CONFIRMATIONS: z.coerce.number().int().min(1).max(2_048).default(1),
     DESTINATION_CHAIN_ID: z.coerce.number().int().positive().default(31_338),
     DESTINATION_RPC_URL: z.url().default('http://localhost:8546'),
+    DESTINATION_FINALITY_CONFIRMATIONS: z.coerce.number().int().min(1).max(2_048).default(1),
     EIP712_VERIFYING_CONTRACT: evmAddressSchema.default(
       '0x5fc8d32690cc91d4c39d9d3abcbd16989f875707',
     ),

@@ -15,7 +15,9 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '../../lib/api/client';
 import { chainLabel, isConnected, useWallet } from '../../features/wallet/wallet-context';
+import { chainName } from '../../lib/chains';
 import { truncateHex } from '../../lib/formatting/index';
+import { useEnvironment } from '../../features/environment/environment-context';
 import { ThemeToggle } from '../../features/theme/theme-toggle';
 import { Badge, Button } from '../ui/index';
 
@@ -109,20 +111,19 @@ export function HashValue({
 /**
  * The environment label.
  *
- * Today the backend only supports the simulator write path, so this reads
- * `Simulator · test funds`. It takes the label from a prop where a page knows
- * better (for example the warning string prepare returned) rather than from a
- * hardcoded constant scattered across pages.
+ * It shows what the backend last reported. Before any report it shows the
+ * label configured for this deployment, and says in its tooltip that the
+ * backend has not confirmed it yet. It is never a control: nothing here can
+ * change what the backend allows.
  */
-export function EnvironmentBadge({ live }: { readonly live?: boolean }) {
-  return live ? (
-    <Badge tone="neutral" title="Live market data is read-only. Execution is disabled.">
-      Live market data · execution disabled
-    </Badge>
-  ) : (
-    <Badge tone="accent" title="This environment uses test assets only.">
-      Simulator · test funds
-    </Badge>
+export function EnvironmentBadge() {
+  const { badge, confirmed } = useEnvironment();
+  return (
+    <span data-environment-confirmed={confirmed ? 'true' : 'false'}>
+      <Badge tone={badge.tone} title={badge.title}>
+        {badge.label}
+      </Badge>
+    </span>
   );
 }
 
@@ -248,6 +249,27 @@ export function SiteHeader() {
 
 export function SiteFooter() {
   const [health, setHealth] = useState<{ ok: boolean; at?: string }>({ ok: false });
+  // Which chains this deployment works on comes from the backend's enabled
+  // markets, not from a constant: the footer used to say 31337/31338 for
+  // everyone, which is only true of the local sandbox.
+  const [chainIds, setChainIds] = useState<readonly number[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.markets().then(
+      (markets) => {
+        if (cancelled) return;
+        const ids = [...new Set(markets.map((market) => market.chainId))].sort((a, b) => a - b);
+        setChainIds(ids);
+      },
+      () => {
+        if (!cancelled) setChainIds([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,7 +305,11 @@ export function SiteFooter() {
           lineHeight: '20px',
         }}
       >
-        <span className="num">Source chain 31337 · Destination chain 31338</span>
+        <span className="num">
+          {chainIds.length === 0
+            ? 'Chains not reported'
+            : chainIds.map((id) => chainName(id)).join(' → ')}
+        </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <span
             aria-hidden="true"
@@ -298,7 +324,8 @@ export function SiteFooter() {
             ? `API healthy${checkedAt ? ` · checked ${checkedAt}` : ''}`
             : 'API unreachable'}
         </span>
-        <a href="http://localhost:3001/docs" style={{ color: '#6BCAD6' }}>
+        {/* Derived from the configured API base, so it follows the deployment. */}
+        <a href={`${api.baseUrl.replace(/\/v1$/u, '')}/docs`} style={{ color: '#6BCAD6' }}>
           API docs
         </a>
         <span className="hdr__grow" style={{ flexGrow: 1 }} />

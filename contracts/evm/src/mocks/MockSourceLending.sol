@@ -2,9 +2,10 @@
 pragma solidity 0.8.30;
 
 import { IERC20 } from "../interfaces/IERC20.sol";
+import { ISourceLending } from "../interfaces/ISourceLending.sol";
 import { SafeToken } from "../libraries/SafeToken.sol";
 
-contract MockSourceLending {
+contract MockSourceLending is ISourceLending {
     using SafeToken for IERC20;
 
     error InvalidAmount();
@@ -18,8 +19,8 @@ contract MockSourceLending {
         uint256 debtUnits;
     }
 
-    IERC20 public immutable collateralToken;
-    IERC20 public immutable debtToken;
+    IERC20 public immutable override collateralToken;
+    IERC20 public immutable override debtToken;
     mapping(address borrower => Position position) public positions;
 
     event PositionOpened(address indexed borrower, uint256 collateralUnits, uint256 debtUnits);
@@ -50,7 +51,7 @@ contract MockSourceLending {
         uint256 maximumDebtUnits,
         uint256 minimumCollateralUnits,
         address collateralReceiver
-    ) external returns (uint256 repaidDebtUnits, uint256 releasedCollateralUnits) {
+    ) external override returns (uint256 repaidDebtUnits, uint256 releasedCollateralUnits) {
         Position memory position = positions[borrower];
         if (position.collateralUnits == 0) revert PositionNotFound();
         if (position.debtUnits > maximumDebtUnits) {

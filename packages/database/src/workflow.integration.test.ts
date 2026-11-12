@@ -177,6 +177,176 @@ describe('durable workflow and transactional outbox', () => {
     expect(Number(eventCount.rows[0]?.count)).toBe(1);
   });
 
+  it('persists and resolves one durable recovery case with exact residual claims', async () => {
+    const residualAssets = [
+      {
+        kind: 'COLLATERAL_CUSTODY',
+        chainId: 31338,
+        asset: '0x4000000000000000000000000000000000000004',
+        amountUnits: '9900000000000000000',
+      },
+      {
+        kind: 'SOLVER_RECEIVABLE',
+        chainId: 31337,
+        asset: '0x3000000000000000000000000000000000000003',
+        principalUnits: '10000000000',
+        feeUnits: '50000000',
+        totalClaimUnits: '10050000000',
+      },
+    ];
+    const opened = evidenceSchema.parse({
+      evidenceId: hash('2'),
+      migrationId: hash('5'),
+      type: 'RECOVERY_OPENED',
+      schemaVersion: 1,
+      provider: 'DEBTSHIFT_POLICY_ENGINE',
+      network: 'eip155:31338',
+      chainId: 31_338,
+      blockNumber: '101',
+      blockHash: hash('3'),
+      transactionHash: hash('4'),
+      rawObservationHash: hash('6'),
+      normalizedPayload: {
+        reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
+        policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        residualAssets,
+      },
+      observedAt: '2026-11-09T01:02:00.000Z',
+      verificationState: 'FINALIZED',
+      verificationMethod: 'FAILED_FEASIBILITY_RECEIPT_AND_RECOVERY_POLICY',
+      verifierVersion: '1',
+    });
+
+    await expect(advanceMigrationWithEvidence(database, opened, 'worker')).resolves.toBe(
+      'RECOVERY',
+    );
+    await expect(advanceMigrationWithEvidence(database, opened, 'worker')).resolves.toBe(
+      'RECOVERY',
+    );
+    const active = await postgres.query<{
+      status: string;
+      reason: string;
+      policy: string;
+      residual_assets: ReadonlyArray<Record<string, unknown>>;
+    }>(`SELECT status, reason, policy, residual_assets FROM recovery_cases`);
+    expect(active.rows).toEqual([
+      {
+        status: 'OPEN',
+        reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
+        policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        residual_assets: residualAssets,
+      },
+    ]);
+
+    const completed = evidenceSchema.parse({
+      ...opened,
+      evidenceId: hash('8'),
+      type: 'RECOVERY_COMPLETED',
+      provider: 'LOCAL_RECOVERY',
+      network: 'eip155:31338',
+      transactionHash: hash('9'),
+      rawObservationHash: hash('a'),
+      normalizedPayload: { policy: opened.normalizedPayload.policy, residualAssets },
+      observedAt: '2026-11-09T01:03:00.000Z',
+      verificationMethod: 'RECEIPT_AND_STATE',
+    });
+    await expect(advanceMigrationWithEvidence(database, completed, 'worker')).resolves.toBe(
+      'FAILED_SAFE',
+    );
+    const resolved = await postgres.query<{ status: string; resolved_at: Date | string | null }>(
+      `SELECT status, resolved_at FROM recovery_cases`,
+    );
+    expect(resolved.rows[0]?.status).toBe('RESOLVED_FAILED_SAFE');
+    expect(resolved.rows[0]?.resolved_at).not.toBeNull();
+  });
+
+  it('terminates pre-source deterioration as requote-required and releases persistence state', async () => {
+    await postgres.exec(`
+      INSERT INTO intents (intent_hash, wallet_id, nonce, expiration, payload, signature)
+      VALUES ('${hash('2')}', '00000000-0000-0000-0000-000000000001', 9,
+        2000000000, '{}', '0x00');
+      INSERT INTO execution_plans (
+        plan_hash, migration_id, intent_hash, nonce, deadline, route_hash, payload, signature
+      ) VALUES ('${hash('3')}', '${hash('4')}', '${hash('2')}', 10, 1999999999,
+        '${hash('5')}', '{}', '0x00');
+      INSERT INTO provider_quotes (
+        quote_hash, quote_id, provider, mode, amount_in_units,
+        expected_amount_out_units, minimum_amount_out_units, payload,
+        raw_response_hash, expires_at
+      ) VALUES ('${hash('6')}', 'requote-workflow', 'DEBTSHIFT_SIMULATOR', 'SIMULATED',
+        100, 99, 98, '{}', '${hash('7')}', now() + interval '1 hour');
+      INSERT INTO migrations (
+        migration_id, intent_hash, plan_hash, quote_hash, phase, expires_at
+      ) VALUES ('${hash('4')}', '${hash('2')}', '${hash('3')}', '${hash('6')}',
+        'RESERVED', now() + interval '1 hour');
+      INSERT INTO liquidity_reservations (
+        reservation_id, migration_id, reservation_hash, provider, chain_id, asset,
+        principal_units, fee_cap_units, status, expires_at
+      ) VALUES ('${hash('5')}', '${hash('4')}', '${hash('7')}',
+        '0x8000000000000000000000000000000000000008', 31337,
+        '0x3000000000000000000000000000000000000003', 100, 5, 'ACTIVE',
+        now() + interval '1 hour');
+      INSERT INTO evidence (
+        evidence_id, migration_id, type, schema_version, provider, network,
+        raw_observation_hash, normalized_payload, observed_at, verification_state,
+        verification_method, verifier_version
+      ) VALUES
+        ('${hash('1')}', '${hash('4')}', 'SOURCE_POSITION_SNAPSHOT', 1, 'LOCAL_TEST',
+          'anvil:31337', '${hash('8')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
+        ('${hash('3')}', '${hash('4')}', 'ROUTE_QUOTE', 1, 'DEBTSHIFT_SIMULATOR',
+          'simulator', '${hash('9')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
+        ('${hash('4')}', '${hash('4')}', 'INTENT_AUTHORIZATION', 1, 'WALLET',
+          'eip712:31337', '${hash('b')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
+        ('${hash('5')}', '${hash('4')}', 'EXECUTION_PLAN_AUTHORIZATION', 1, 'WALLET',
+          'eip712:31337', '${hash('d')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
+        ('${hash('6')}', '${hash('4')}', 'FINANCING_FEASIBILITY', 1,
+          'DETERMINISTIC_ENGINE_V1', 'eip155:31337', '${hash('e')}', '{}', now(),
+          'FINALIZED', 'TEST', '1'),
+        ('${hash('a')}', '${hash('4')}', 'LIQUIDITY_RESERVATION', 1,
+          'LOCAL_TEST_VAULT', 'eip155:31337', '${hash('0')}', '{}', now(),
+          'FINALIZED', 'TEST', '1');
+    `);
+    const record = evidenceSchema.parse({
+      evidenceId: hash('c'),
+      migrationId: hash('4'),
+      type: 'REQUOTE_REQUIRED',
+      schemaVersion: 1,
+      provider: 'LOCAL_TEST_VAULT',
+      network: 'eip155:31337',
+      chainId: 31_337,
+      blockNumber: '102',
+      blockHash: hash('d'),
+      transactionHash: hash('e'),
+      rawObservationHash: hash('f'),
+      normalizedPayload: {
+        reason: 'DESTINATION_CAPACITY_DETERIORATED_BEFORE_SOURCE_CLOSE',
+        reservation: { status: 'RELEASED', principalReceivableUnits: '0' },
+        sourcePosition: { disposition: 'UNCHANGED' },
+      },
+      observedAt: '2026-11-09T01:04:00.000Z',
+      verificationState: 'FINALIZED',
+      verificationMethod: 'RECEIPT_AND_STATE',
+      verifierVersion: '1',
+    });
+
+    await expect(advanceMigrationWithEvidence(database, record, 'worker')).resolves.toBe(
+      'REQUOTE_REQUIRED',
+    );
+    await expect(advanceMigrationWithEvidence(database, record, 'worker')).resolves.toBe(
+      'REQUOTE_REQUIRED',
+    );
+    const [migration, reservation] = await Promise.all([
+      postgres.query<{ phase: string; version: number }>(
+        `SELECT phase, version FROM migrations WHERE migration_id = '${hash('4')}'`,
+      ),
+      postgres.query<{ status: string }>(
+        `SELECT status FROM liquidity_reservations WHERE migration_id = '${hash('4')}'`,
+      ),
+    ]);
+    expect(migration.rows[0]).toEqual({ phase: 'REQUOTE_REQUIRED', version: 1 });
+    expect(reservation.rows[0]?.status).toBe('RELEASED');
+  });
+
   it('recovers a stale running command and keeps completion idempotent', async () => {
     const result = await postgres.query<{ command_id: string }>(
       `SELECT command_id FROM commands WHERE type = 'RESERVE_LIQUIDITY'`,

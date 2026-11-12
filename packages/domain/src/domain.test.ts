@@ -10,12 +10,18 @@ import {
   computeRouteHash,
   getExecutionPlanTypedData,
   getRefinanceIntentTypedData,
+  hashCanonicalText,
   hashExecutionPlan,
   hashExecutionFinancing,
   hashRefinanceIntent,
   hashSourcePosition,
 } from './hashing.js';
-import { assertAllowedPhaseTransition, deriveMigrationPhase } from './phase.js';
+import type { Evidence } from './migration.js';
+import {
+  assertAllowedPhaseTransition,
+  deriveMigrationPhase,
+  phaseEvidenceFromRecords,
+} from './phase.js';
 import { baseUnitAmountSchema, evmAddressSchema } from './primitives.js';
 import {
   verifyExecutionPlanEoaSignature,
@@ -207,6 +213,7 @@ function phaseEvidence(
     ledgerReconciliation: false,
     nearReceipt: false,
     expired: false,
+    requoteRequired: false,
     recoveryOpened: false,
     recoveryCompleted: false,
     ...overrides,
@@ -303,6 +310,43 @@ describe('evidence-derived migration phases', () => {
     expect(deriveMigrationPhase(phaseEvidence({ expired: true, sourceClose: true }))).toBe(
       'RECOVERY',
     );
+  });
+
+  it('requires a requote only while the source position remains open', () => {
+    expect(deriveMigrationPhase(phaseEvidence({ requoteRequired: true }))).toBe('REQUOTE_REQUIRED');
+    expect(() =>
+      deriveMigrationPhase(phaseEvidence({ requoteRequired: true, sourceClose: true })),
+    ).toThrow('cannot coexist');
+    expect(() => assertAllowedPhaseTransition('RESERVED', 'REQUOTE_REQUIRED')).not.toThrow();
+    expect(() => assertAllowedPhaseTransition('AUTHORIZED', 'REQUOTE_REQUIRED')).not.toThrow();
+  });
+
+  it('removes append-only retracted evidence from phase predicates', () => {
+    const sourceClose: Evidence = {
+      evidenceId: hashCanonicalText('source-close'),
+      migrationId: hashCanonicalText('migration'),
+      type: 'SOURCE_CLOSE',
+      schemaVersion: 1,
+      provider: 'test',
+      network: 'eip155:31337',
+      rawObservationHash: hashCanonicalText('source-close-observation'),
+      normalizedPayload: {},
+      observedAt: '2026-11-11T00:00:00.000Z',
+      verificationState: 'FINALIZED',
+      verificationMethod: 'RECEIPT_AND_STATE',
+      verifierVersion: 'test-v1',
+    };
+    const retraction: Evidence = {
+      ...sourceClose,
+      evidenceId: hashCanonicalText('source-close-retraction'),
+      rawObservationHash: hashCanonicalText('source-close-retraction-observation'),
+      verificationState: 'RETRACTED',
+      verificationMethod: 'CANONICAL_BLOCK_REVALIDATION',
+      supersedesEvidenceId: sourceClose.evidenceId,
+    };
+
+    expect(phaseEvidenceFromRecords([sourceClose]).sourceClose).toBe(true);
+    expect(phaseEvidenceFromRecords([sourceClose, retraction]).sourceClose).toBe(false);
   });
 
   it('rejects illegal backward or terminal transitions', () => {

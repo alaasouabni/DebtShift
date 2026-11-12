@@ -45,3 +45,34 @@ export function evidenceProvenanceLine(evidence: Evidence): string {
 export function hasChainProvenance(evidence: Evidence): boolean {
   return present(evidence.transactionHash) || present(evidence.blockHash);
 }
+
+/**
+ * True when this observation came from the transport simulator.
+ *
+ * The frontend contract (2026-11-12): link actual EVM/NEAR receipts, and label
+ * ONLY the transport-provider observation as simulated. A sandbox migration
+ * therefore has real chain evidence beside simulated transport evidence, and
+ * the two must not be painted with one brush.
+ */
+export function isSimulatedTransport(evidence: Evidence): boolean {
+  return evidence.provider === 'DEBTSHIFT_SIMULATOR';
+}
+
+/**
+ * Why recovery opened, as the backend recorded it.
+ *
+ * Read from the `RECOVERY_OPENED` evidence payload, e.g.
+ * `{ reason: 'FINALIZED_CHAIN_EVIDENCE_REORGED',
+ *    policy: 'HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION' }` — observed on
+ * a real sandbox migration. Returns `undefined` when there is no such evidence
+ * or it carries no string reason; nothing is invented in its place.
+ */
+export function readRecoveryReason(
+  evidence: readonly Evidence[],
+): { readonly reason: string; readonly policy?: string } | undefined {
+  const opened = evidence.find((item) => item.type === 'RECOVERY_OPENED');
+  const reason = opened?.normalizedPayload.reason;
+  if (typeof reason !== 'string' || reason.trim() === '') return undefined;
+  const policy = opened?.normalizedPayload.policy;
+  return typeof policy === 'string' && policy.trim() !== '' ? { reason, policy } : { reason };
+}

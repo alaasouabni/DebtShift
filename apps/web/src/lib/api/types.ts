@@ -353,11 +353,24 @@ export interface ExecutionPlan {
   readonly nonce: string;
 }
 
+/*
+ * `simulation` is what the API returns today; `environment` is what the
+ * frontend contract specifies since the 2026-11-12 strategy update. Both are
+ * optional here because either may be present while the backend migrates.
+ * Never read them directly — `readEnvironment` in `lib/environment` is the one
+ * place that understands both and fails closed when neither is usable.
+ */
 export interface PreparedMigration {
-  readonly simulation: {
+  readonly simulation?: {
     readonly provider: 'DEBTSHIFT_SIMULATOR';
     readonly mode: 'SIMULATED';
     readonly warning: string;
+  };
+  readonly environment?: {
+    readonly mode: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet';
+    readonly transportProvider: TransportProvider;
+    readonly executionEnabled: boolean;
+    readonly warning?: string;
   };
   readonly verifyingContract: Address;
   readonly intent: RefinanceIntent;
@@ -404,6 +417,7 @@ export const MIGRATION_PHASES = [
   'COMPLETED',
   'RECOVERY',
   'FAILED_SAFE',
+  'REQUOTE_REQUIRED',
   'EXPIRED',
 ] as const;
 
@@ -412,7 +426,17 @@ export type MigrationPhase = (typeof MIGRATION_PHASES)[number];
 /** The ten ordered forward phases, in order. Recovery states are not on this track. */
 export const FORWARD_PHASES = MIGRATION_PHASES.slice(0, 10) as readonly MigrationPhase[];
 
-export const TERMINAL_PHASES: readonly MigrationPhase[] = ['COMPLETED', 'FAILED_SAFE', 'EXPIRED'];
+/*
+ * REQUOTE_REQUIRED is terminal: a pre-source feasibility check failed, the
+ * undrawn reservation was released and the source position is untouched. The
+ * backend's transition table gives it no successors, so polling stops there.
+ */
+export const TERMINAL_PHASES: readonly MigrationPhase[] = [
+  'COMPLETED',
+  'FAILED_SAFE',
+  'REQUOTE_REQUIRED',
+  'EXPIRED',
+];
 
 export function isTerminalPhase(phase: string): boolean {
   return TERMINAL_PHASES.includes(phase as MigrationPhase);
@@ -454,6 +478,7 @@ export type EvidenceType =
   | 'LEDGER_RECONCILIATION'
   | 'NEAR_RECEIPT'
   | 'MIGRATION_EXPIRED'
+  | 'REQUOTE_REQUIRED'
   | 'RECOVERY_OPENED'
   | 'RECOVERY_COMPLETED';
 

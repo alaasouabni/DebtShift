@@ -1,0 +1,1 @@
+ALTER TYPE "public"."migration_phase" ADD VALUE 'REQUOTE_REQUIRED' BEFORE 'EXPIRED';

@@ -148,7 +148,7 @@ Invalid, incomplete, or unsupported output is discarded and replaced by determin
 | Morpho discovery and analytics | `https://api.morpho.org` REST                                               | No                                   | Morpho SDK and direct contract/oracle reads                        |
 | Morpho market identity         | Official API/SDK using all five market parameters                           | Market ID is re-derived locally      | Direct Morpho contract state                                       |
 | 1Click assets and preview      | `https://1click.chaindefuser.com/v0/tokens` and `dry: true` quote           | No                                   | Runtime schema validation; unavailable means no live route         |
-| 1Click canary status           | Production `/v0/status` plus returned transaction data                      | Provider observation only            | Independent origin/destination RPC receipts and balances           |
+| 1Click execution status        | Production `/v0/status` plus returned transaction data                      | Provider observation only            | Independent origin/destination RPC receipts and balances           |
 | NEAR testnet registry          | `https://test.rpc.fastnear.com`                                             | NEAR receipt and contract view       | `https://archival-rpc.testnet.near.org` with strict rate limiting  |
 | Token prices for authorization | Protocol-native Aave and Morpho oracles                                     | Yes, within protocol-specific policy | Cross-check indexed values; mismatch fails closed                  |
 | USD values for display         | Aave/Morpho public APIs derived from their market data                      | No                                   | Hide USD view when unavailable                                     |
@@ -205,8 +205,9 @@ Morpho’s public API currently documents a standard limit of 750 requests per m
 
 The software stack and data access can run without a paid subscription. The following are not free and must be treated separately:
 
-- Gas for the real mainnet 1Click canary.
-- The small real asset amount used by that canary.
+- Deployment and gas for the small final mainnet refinance attempt.
+- The real vault principal, recovery reserve, collateral exposure, and relayer balances required by
+  that attempt.
 - Any 1Click fee or price impact returned by the committed quote.
 - Developer hardware and electricity for local Ollama inference.
 
@@ -218,7 +219,8 @@ NEAR testnet deployment uses test tokens. Local chains, simulators, PostgreSQL, 
 - [ ] Implement official Base and Arbitrum RPC adapters.
 - [ ] Implement Aave GraphQL discovery and direct-read verification.
 - [ ] Implement Morpho REST discovery and direct-read verification.
-- [ ] Implement 1Click catalog, dry quote, and isolated canary adapters.
+- [ ] Implement 1Click catalog/dry-quote reads and the committed quote, deposit, status, refund, and
+      receipt adapter used by the complete `mainnet` workflow.
 - [ ] Implement NEAR testnet RPC failover.
 - [ ] Add provider health, caching, rate limiting, and circuit breakers.
 - [ ] Implement the canonical sources-and-uses feasibility analysis and exclusive cost-component

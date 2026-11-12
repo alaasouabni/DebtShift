@@ -5,9 +5,9 @@ import { MigrationEscrow } from "./MigrationEscrow.sol";
 import { DebtShiftHashing } from "./DebtShiftHashing.sol";
 import { TestLiquidityVault } from "./TestLiquidityVault.sol";
 import { IERC20 } from "./interfaces/IERC20.sol";
+import { ISourceLending } from "./interfaces/ISourceLending.sol";
 import { SafeToken } from "./libraries/SafeToken.sol";
 import { SignatureChecker } from "./libraries/SignatureChecker.sol";
-import { MockSourceLending } from "./mocks/MockSourceLending.sol";
 import { ReentrancyGuard } from "./security/ReentrancyGuard.sol";
 
 contract SourceAdapter is ReentrancyGuard {
@@ -18,13 +18,14 @@ contract SourceAdapter is ReentrancyGuard {
     error Expired();
     error MigrationAlreadyConsumed();
     error AssetMismatch();
-    error InvalidAuthorization();
+    error InvalidPlan();
+    error InvalidSignature();
     error NonceAlreadyConsumed();
 
     address public owner;
     bool public paused;
     TestLiquidityVault public immutable vault;
-    MockSourceLending public immutable lending;
+    ISourceLending public immutable lending;
     MigrationEscrow public immutable escrow;
     IERC20 public immutable debtToken;
     IERC20 public immutable collateralToken;
@@ -44,11 +45,17 @@ contract SourceAdapter is ReentrancyGuard {
         address indexed borrower,
         uint256 nonce
     );
+    event MigrationAuthorized(
+        bytes32 indexed migrationId,
+        bytes32 indexed planHash,
+        address indexed borrower,
+        uint256 nonce
+    );
 
     constructor(
         address owner_,
         TestLiquidityVault vault_,
-        MockSourceLending lending_,
+        ISourceLending lending_,
         MigrationEscrow escrow_
     ) {
         if (owner_ == address(0)) revert Unauthorized();
@@ -74,6 +81,14 @@ contract SourceAdapter is ReentrancyGuard {
         paused = paused_;
     }
 
+    function executionPlanHash(DebtShiftHashing.ExecutionPlanHashInput calldata plan)
+        external
+        view
+        returns (bytes32)
+    {
+        return DebtShiftHashing.hashExecutionPlan(plan, block.chainid, address(this));
+    }
+
     function closeSource(
         DebtShiftHashing.ExecutionPlanHashInput calldata plan,
         bytes calldata borrowerSignature
@@ -89,11 +104,11 @@ contract SourceAdapter is ReentrancyGuard {
                         plan.intentHash, plan.transportQuoteHash, plan.nonce
                     ) || plan.borrower == address(0) || plan.sourceRepaymentMax == 0
                 || plan.sourceCollateralMin == 0 || plan.principalMax < plan.sourceRepaymentMax
-        ) revert InvalidAuthorization();
+        ) revert InvalidPlan();
 
         bytes32 planHash = DebtShiftHashing.hashExecutionPlan(plan, block.chainid, address(this));
         if (!SignatureChecker.isValidSignatureNow(plan.borrower, planHash, borrowerSignature)) {
-            revert InvalidAuthorization();
+            revert InvalidSignature();
         }
         vault.assertExecutable(plan.migrationId, planHash);
 
@@ -118,6 +133,7 @@ contract SourceAdapter is ReentrancyGuard {
         collateralToken.forceApprove(address(escrow), collateralUnits);
         escrow.assign(plan.migrationId, collateralToken, address(this), collateralUnits);
         emit ExecutionPlanConsumed(plan.migrationId, planHash, plan.borrower, plan.nonce);
+        emit MigrationAuthorized(plan.migrationId, planHash, plan.borrower, plan.nonce);
         emit SourceClosed(plan.migrationId, plan.borrower, repaidDebtUnits, collateralUnits);
     }
 }

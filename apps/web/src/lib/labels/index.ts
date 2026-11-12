@@ -96,6 +96,12 @@ export const PHASE_LABELS: Record<MigrationPhase, PhaseLabel> = {
       'The migration did not complete. Custody and residual claims are known and recorded. This does not mean the solver was repaid.',
     tone: 'warning',
   },
+  REQUOTE_REQUIRED: {
+    label: 'New plan required',
+    caption:
+      'Market capacity changed before anything moved. The reservation was released and your source position is unchanged. Nothing entered recovery — review and sign a fresh plan.',
+    tone: 'warning',
+  },
   EXPIRED: {
     label: 'Expired',
     caption: 'The authorized window closed before completion.',
@@ -155,6 +161,7 @@ export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
   LEDGER_RECONCILIATION: 'Ledger reconciled',
   NEAR_RECEIPT: 'NEAR receipt finalized',
   MIGRATION_EXPIRED: 'Authorization window expired',
+  REQUOTE_REQUIRED: 'Feasibility failed before source close — requote required',
   RECOVERY_OPENED: 'Recovery opened',
   RECOVERY_COMPLETED: 'Recovery completed',
 };
