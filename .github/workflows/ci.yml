@@ -35,6 +35,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check:evm
+      - run: npm run check:evm-deployment
       - run: npm run test --workspace @debtshift/api
       - run: npm run test --workspace @debtshift/worker
       - run: npm run demo:happy

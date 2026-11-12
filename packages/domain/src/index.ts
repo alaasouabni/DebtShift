@@ -1,6 +1,7 @@
 export * from './assets.js';
 export * from './authorization.js';
 export * from './config/environment.js';
+export * from './config/deployment-manifest.js';
 export * from './config/live-market.js';
 export * from './financing.js';
 export * from './hashing.js';
