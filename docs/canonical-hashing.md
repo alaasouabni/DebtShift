@@ -2,7 +2,7 @@
 
 DebtShift never hashes JSON, display strings, floating-point values, or implementation-specific object layouts. Version 1 identifiers use explicit EVM ABI encoding and Keccak-256. User authorizations use EIP-712 with domain name `DebtShift`, version `1`, the source chain ID, and the source-chain authorization contract.
 
-The machine-readable fixture is [`fixtures/canonical-hashes-v1.json`](./fixtures/canonical-hashes-v1.json). Its five outputs are independently reproduced by:
+The machine-readable fixture is [`fixtures/canonical-hashes-v2.json`](./fixtures/canonical-hashes-v2.json). Its outputs are independently reproduced by:
 
 - TypeScript: `packages/domain/src/domain.test.ts`, using the production functions in `packages/domain/src/hashing.ts`.
 - Solidity: `contracts/evm/test/CanonicalHashFixture.t.sol`, using `contracts/evm/src/DebtShiftHashing.sol`.

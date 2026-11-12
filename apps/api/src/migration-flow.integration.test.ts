@@ -61,11 +61,11 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
         destination.publicClient,
       );
       const environment = parseDebtShiftEnvironment({
-        DEBTSHIFT_ENV: 'local',
+        DEBTSHIFT_MODE: 'sandbox',
         SOURCE_RPC_URL: source.rpcUrl,
         DESTINATION_RPC_URL: destination.rpcUrl,
         EIP712_VERIFYING_CONTRACT: deployment.source.adapter,
-        LOCAL_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
+        SANDBOX_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
         SOURCE_DEBT_TOKEN_ADDRESS: deployment.source.debtToken,
         SOURCE_COLLATERAL_TOKEN_ADDRESS: deployment.source.collateralToken,
         SOURCE_LENDING_ADDRESS: deployment.source.lending,
@@ -77,7 +77,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
         DESTINATION_LENDING_ADDRESS: deployment.destination.lending,
         DESTINATION_ESCROW_ADDRESS: deployment.destination.escrow,
         DESTINATION_ADAPTER_ADDRESS: deployment.destination.adapter,
-        LOCAL_EXECUTOR_ADDRESS: deployment.deployer,
+        EXECUTOR_ADDRESS: deployment.deployer,
       });
       const config = new ConfigService(environment);
       const databaseService = { db: database } as DatabaseService;
@@ -115,7 +115,22 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
         },
         quote: prepared.quote,
         sourceSnapshot: prepared.sourceSnapshot,
+        sourceAuthorization: prepared.sourceAuthorization,
+        targetAuthorization: prepared.targetAuthorization,
       };
+      const lockedMainnet = new MigrationsService(
+        databaseService,
+        protocols,
+        marketTools,
+        new ConfigService({
+          ...environment,
+          DEBTSHIFT_MODE: 'mainnet',
+          MAINNET_EXECUTION_ENABLED: false,
+        }),
+      );
+      await expect(lockedMainnet.execute(request)).rejects.toThrow(
+        'Mainnet execution is disabled by MAINNET_EXECUTION_ENABLED=false.',
+      );
       const migrations = new MigrationsService(databaseService, protocols, marketTools, config);
       const created = await migrations.execute(request);
       expect(created.created).toBe(true);
@@ -125,7 +140,11 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
       const details = await getMigrationDetails(database, created.migrationId);
       expect(details?.migration.phase).toBe('AUTHORIZED');
       expect(details?.commands[0]?.type).toBe('RESERVE_LIQUIDITY');
-      expect(prepared.simulation.mode).toBe('SIMULATED');
+      expect(prepared.execution).toMatchObject({
+        mode: 'sandbox',
+        transportMode: 'SIMULATED',
+        simulatedTransport: true,
+      });
       expect(prepared.routeAnalysis.analysis.analyses[0]?.comparison.evaluations).toHaveLength(2);
       expect(prepared.routeAnalysis.analysis.analyses[0]?.comparison.selectedCandidateId).toBe(
         'local-morpho-balanced',

@@ -448,6 +448,25 @@ export async function listActiveFinalizedChainEvidence(
   database: DebtShiftDatabase,
   migrationId: string,
 ): Promise<readonly Evidence[]> {
+  const records = await listActiveFinalizedEvidence(database, migrationId);
+  return records.filter(
+    (record) =>
+      record.chainId !== undefined &&
+      record.blockNumber !== undefined &&
+      record.blockHash !== undefined,
+  );
+}
+
+/**
+ * Returns the non-superseded finalized evidence set used to build the terminal
+ * receipt bundle. This deliberately includes provider/workflow evidence that
+ * has no EVM block coordinates; the chain-only view above remains the input to
+ * canonicality revalidation.
+ */
+export async function listActiveFinalizedEvidence(
+  database: DebtShiftDatabase,
+  migrationId: string,
+): Promise<readonly Evidence[]> {
   const rows = await database
     .select()
     .from(evidenceTable)
@@ -460,11 +479,7 @@ export async function listActiveFinalizedChainEvidence(
   );
   return records.filter(
     (record) =>
-      record.verificationState === 'FINALIZED' &&
-      record.chainId !== undefined &&
-      record.blockNumber !== undefined &&
-      record.blockHash !== undefined &&
-      !supersededEvidenceIds.has(record.evidenceId),
+      record.verificationState === 'FINALIZED' && !supersededEvidenceIds.has(record.evidenceId),
   );
 }
 

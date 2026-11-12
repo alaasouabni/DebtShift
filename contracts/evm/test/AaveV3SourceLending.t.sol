@@ -75,6 +75,8 @@ contract AaveV3SourceLendingTest {
         debtToken.mint(address(this), 20_000_000_000);
         debtToken.approve(address(vault), 20_000_000_000);
         vault.deposit(IERC20(address(debtToken)), 20_000_000_000);
+        debtToken.mint(address(this), 100_000_000_000);
+        debtToken.approve(address(vault), type(uint256).max);
 
         vm.prank(borrower);
         aToken.approve(address(aaveLending), SOURCE_COLLATERAL);
@@ -189,6 +191,7 @@ contract AaveV3SourceLendingTest {
             principalMax: SOURCE_DEBT,
             feeMax: SOLVER_FEE,
             destinationReceiver: address(0xD357),
+            transportRefundReceiver: address(escrow),
             refundReceiver: borrower,
             payoutReceiver: borrower,
             deadline: uint64(block.timestamp + 30 minutes),
@@ -230,6 +233,6 @@ contract AaveV3SourceLendingTest {
         view
         returns (TestLiquidityVault.ReservationStatus status)
     {
-        (,,,,,, status,,) = vault.reservations(migrationId);
+        (,,,,,, status,,,,) = vault.reservations(migrationId);
     }
 }

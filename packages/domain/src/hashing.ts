@@ -62,6 +62,7 @@ export const executionPlanTypes = {
     { name: 'principalMax', type: 'uint256' },
     { name: 'feeMax', type: 'uint256' },
     { name: 'destinationReceiver', type: 'address' },
+    { name: 'transportRefundReceiver', type: 'address' },
     { name: 'refundReceiver', type: 'address' },
     { name: 'payoutReceiver', type: 'address' },
     { name: 'deadline', type: 'uint64' },
@@ -72,7 +73,7 @@ export const executionPlanTypes = {
 function debtShiftDomain(chainId: number, verifyingContract: Address) {
   return {
     name: 'DebtShift',
-    version: '1',
+    version: '2',
     chainId,
     verifyingContract,
   } as const;
@@ -184,7 +185,7 @@ export function computeRouteHash(plan: ExecutionPlan): Hex {
   return keccak256(
     encodeAbiParameters(
       parseAbiParameters(
-        'bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, uint256, uint256, uint256, uint256, bytes32, bytes32, bytes32, address, address, address, bytes32, bytes32, address, uint256, uint256, bytes32, uint64',
+        'bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, bytes32, uint256, uint256, uint256, uint256, bytes32, bytes32, bytes32, address, address, address, address, bytes32, bytes32, address, uint256, uint256, bytes32, uint64',
       ),
       [
         plan.sourcePositionId,
@@ -202,6 +203,7 @@ export function computeRouteHash(plan: ExecutionPlan): Hex {
         plan.transportQuoteHash,
         hashCanonicalText(plan.transportDepositAddress),
         plan.destinationReceiver,
+        plan.transportRefundReceiver,
         plan.refundReceiver,
         plan.fundingProvider,
         plan.reservationHash,
@@ -326,6 +328,7 @@ export function getExecutionPlanTypedData(plan: ExecutionPlan, verifyingContract
       principalMax: BigInt(plan.principalMaxUnits),
       feeMax: BigInt(plan.feeMaxUnits),
       destinationReceiver: plan.destinationReceiver,
+      transportRefundReceiver: plan.transportRefundReceiver,
       refundReceiver: plan.refundReceiver,
       payoutReceiver: plan.payoutReceiver,
       deadline: BigInt(plan.deadline),

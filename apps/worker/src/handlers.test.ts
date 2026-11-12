@@ -8,7 +8,7 @@ import { DeterministicTransportSimulator, transportQuoteRequestSchema } from '@d
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  createSimulatedWorkflowHandlers,
+  createWorkflowHandlers,
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
   type FinalizedChainAction,
@@ -16,6 +16,11 @@ import {
   type WorkflowContextStore,
 } from './handlers.js';
 import { RetryableCommandError, type CommandHandler } from './processor.js';
+import {
+  PendingSandboxRegistryPort,
+  sandboxEvidenceProviders,
+  SimulatedTransportExecutionPort,
+} from './sandbox/simulated-transport.js';
 
 const MIGRATION_ID = `0x${'11'.repeat(32)}` as const;
 const ORIGIN_TRANSACTION = `0x${'22'.repeat(32)}` as const;
@@ -53,7 +58,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(simulator, false);
     const store = new MemoryContextStore(context);
     const execution = fakeExecution();
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'DISPATCH_TRANSPORT').execute(
       command('DISPATCH_TRANSPORT'),
@@ -78,7 +83,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(firstSimulator, true);
     const store = new MemoryContextStore(context);
     const firstExecution = fakeExecution();
-    const firstHandlers = createSimulatedWorkflowHandlers(store, firstExecution, firstSimulator);
+    const firstHandlers = createSandboxWorkflowHandlers(store, firstExecution, firstSimulator);
 
     await expect(
       getHandler(firstHandlers, 'VERIFY_DESTINATION').execute(command('VERIFY_DESTINATION')),
@@ -90,7 +95,7 @@ describe('simulated workflow handlers', () => {
       outcome: 'SUCCESS',
     });
     const restartedExecution = fakeExecution();
-    const restartedHandlers = createSimulatedWorkflowHandlers(
+    const restartedHandlers = createSandboxWorkflowHandlers(
       store,
       restartedExecution,
       restartedSimulator,
@@ -112,7 +117,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(simulator, true);
     const store = new MemoryContextStore(context);
     const execution = fakeExecution();
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
       command('VERIFY_DESTINATION'),
@@ -136,7 +141,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(simulator, true, '1900000000');
     const store = new MemoryContextStore(context);
     const execution = fakeExecution();
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
       command('VERIFY_DESTINATION'),
@@ -149,7 +154,7 @@ describe('simulated workflow handlers', () => {
   it('emits both settlement and reconciliation evidence from one finalized action', async () => {
     const simulator = new DeterministicTransportSimulator();
     const store = new MemoryContextStore(await buildContext(simulator, true));
-    const handlers = createSimulatedWorkflowHandlers(store, fakeExecution(), simulator);
+    const handlers = createSandboxWorkflowHandlers(store, fakeExecution(), simulator);
 
     const records = await getHandler(handlers, 'SETTLE_LIQUIDITY').execute(
       command('SETTLE_LIQUIDITY'),
@@ -195,7 +200,7 @@ describe('simulated workflow handlers', () => {
         observedBlockHash: `0x${'92'.repeat(32)}`,
       },
     ]);
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
       command('VERIFY_DESTINATION'),
@@ -244,7 +249,7 @@ describe('simulated workflow handlers', () => {
         throw new PostSourceCapacityDeteriorationError(failedAction);
       }),
     };
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'OPEN_TARGET').execute(command('OPEN_TARGET'));
 
@@ -283,7 +288,7 @@ describe('simulated workflow handlers', () => {
         throw new PreSourceCapacityDeteriorationError(releasedAction);
       }),
     };
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'CLOSE_SOURCE').execute(command('CLOSE_SOURCE'));
 
@@ -358,6 +363,10 @@ async function buildContext(
         deadline,
       },
     } as unknown as MigrationExecutionContext['signedPlan'],
+    targetLendingAuthorization: {
+      authorization: { kind: 'NONE' },
+      encodedAuthorization: '0x',
+    },
     sourceSnapshot: {
       collateralUnits: '10000000000000000000',
     } as MigrationExecutionContext['sourceSnapshot'],
@@ -397,6 +406,20 @@ function fakeExecution(): MigrationExecutionPort {
     settleLiquidity: perform,
     executeRecovery: perform,
   };
+}
+
+function createSandboxWorkflowHandlers(
+  store: WorkflowContextStore,
+  execution: MigrationExecutionPort,
+  simulator: DeterministicTransportSimulator,
+): ReadonlyMap<string, CommandHandler> {
+  return createWorkflowHandlers({
+    store,
+    execution,
+    transport: new SimulatedTransportExecutionPort(simulator),
+    registry: new PendingSandboxRegistryPort(),
+    evidenceProviders: sandboxEvidenceProviders,
+  });
 }
 
 function action(): FinalizedChainAction {

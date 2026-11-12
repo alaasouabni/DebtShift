@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@debtshift/domain": "0.1.0",
+    "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
     "viem": "2.57.17",
     "zod": "4.6.7"
   }

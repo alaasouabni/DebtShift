@@ -43,9 +43,14 @@ import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
-import { createSimulatedWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
-import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
+import { createWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
+import { DualAnvilSandboxExecutionPort } from './simulator/dual-anvil-execution.js';
 import { DurableCommandProcessor, PostgresCommandPersistence } from './processor.js';
+import {
+  PendingSandboxRegistryPort,
+  sandboxEvidenceProviders,
+  SimulatedTransportExecutionPort,
+} from './sandbox/simulated-transport.js';
 
 const ANVIL_PATH = resolveAnvilPath();
 const ANVIL_AVAILABLE = spawnSync(ANVIL_PATH, ['--version'], { windowsHide: true }).status === 0;
@@ -610,10 +615,10 @@ async function withWorkflow(
       destination.publicClient,
     );
     const environment = parseDebtShiftEnvironment({
-      DEBTSHIFT_ENV: 'local',
+      DEBTSHIFT_MODE: 'sandbox',
       SOURCE_RPC_URL: source.rpcUrl,
       DESTINATION_RPC_URL: destination.rpcUrl,
-      LOCAL_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
+      SANDBOX_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
       SOURCE_DEBT_TOKEN_ADDRESS: deployment.source.debtToken,
       SOURCE_COLLATERAL_TOKEN_ADDRESS: deployment.source.collateralToken,
       SOURCE_VAULT_ADDRESS: deployment.source.vault,
@@ -632,11 +637,13 @@ async function withWorkflow(
       });
       return new DurableCommandProcessor(
         new PostgresCommandPersistence(database),
-        createSimulatedWorkflowHandlers(
-          new PostgresWorkflowContextStore(database),
-          new DualAnvilSimulationExecutionPort(environment),
-          simulator,
-        ),
+        createWorkflowHandlers({
+          store: new PostgresWorkflowContextStore(database),
+          execution: new DualAnvilSandboxExecutionPort(environment),
+          transport: new SimulatedTransportExecutionPort(simulator),
+          registry: new PendingSandboxRegistryPort(),
+          evidenceProviders: sandboxEvidenceProviders,
+        }),
       );
     };
     await test({ database, deployment, source, destination, createProcessor });
@@ -752,6 +759,7 @@ async function createMigration(
     transportQuoteHash: quote.quoteHash,
     transportDepositAddress: quote.depositAddress,
     destinationReceiver: deployment.destination.escrow,
+    transportRefundReceiver: deployment.source.escrow,
     refundReceiver: deployment.borrower,
     fundingProvider: deployment.source.vault,
     reservationHash: hashCanonicalText(`reservation:${migrationId}`),
@@ -815,6 +823,10 @@ async function createMigration(
     },
   });
   await createAuthorizedMigration(database, {
+    sourceLendingAuthorization: {
+      kind: 'NONE',
+      authorization: { kind: 'NONE' },
+    },
     signedIntent: { intent, intentHash, signature: intentSignature },
     signedPlan: {
       plan,
@@ -823,6 +835,10 @@ async function createMigration(
     },
     quote,
     sourceSnapshot,
+    targetLendingAuthorization: {
+      authorization: { kind: 'NONE' },
+      encodedAuthorization: '0x',
+    },
   });
   return migrationId;
 }

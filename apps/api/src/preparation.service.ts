@@ -34,6 +34,9 @@ const preparationRequestSchema = z.object({ borrower: evmAddressSchema }).strict
 @Injectable()
 export class PreparationService {
   readonly #verifyingContract: Address;
+  readonly #mode: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet';
+  readonly #fundedExecutionEnabled: boolean;
+  readonly #sourceDebtBufferBps: number;
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -45,6 +48,12 @@ export class PreparationService {
     @Inject(ConfigService) config: ConfigService,
   ) {
     this.#verifyingContract = config.getOrThrow<Address>('EIP712_VERIFYING_CONTRACT');
+    this.#mode = config.getOrThrow<'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet'>(
+      'DEBTSHIFT_MODE',
+    );
+    this.#fundedExecutionEnabled =
+      this.#mode !== 'mainnet' || config.getOrThrow<boolean>('MAINNET_EXECUTION_ENABLED');
+    this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
   }
 
   async getPosition(wallet: string) {
@@ -59,9 +68,12 @@ export class PreparationService {
     try {
       const { borrower } = preparationRequestSchema.parse(input);
       const route = this.protocols.route;
-      if (route.execution.kind !== 'SIMULATOR') {
+      if (route.execution.kind !== 'EXECUTABLE') {
+        throw new Error('Funded debt-migration preparation is disabled in mainnet-readonly mode.');
+      }
+      if (route.execution.mode !== this.#mode) {
         throw new Error(
-          'Funded debt-migration preparation is disabled for live read-only market data.',
+          `Route execution mode ${route.execution.mode} does not match runtime mode ${this.#mode}.`,
         );
       }
       const routeAnalysis = await this.routeAnalysis.analyze({ wallet: borrower });
@@ -74,6 +86,15 @@ export class PreparationService {
       if (selected === undefined || !selected.eligible) {
         throw new Error('No approved executable route satisfies the deterministic policy.');
       }
+      const expectedSourceRepaymentMaximum = addBasisPointHeadroom(
+        BigInt(snapshot.debtUnits),
+        this.#sourceDebtBufferBps,
+      );
+      if (
+        BigInt(selected.financing.sourceDebtPayoffAssetUnits) !== expectedSourceRepaymentMaximum
+      ) {
+        throw new Error('Route financing does not include the configured debt-accrual headroom.');
+      }
       const policy = this.marketIntelligence.createPolicy(selected.provenance.evaluatedAt);
       const quote = await this.transport.getQuote(
         transportQuoteRequestSchema.parse({
@@ -82,7 +103,7 @@ export class PreparationService {
           amountInUnits: snapshot.collateralUnits,
           maxSlippageBps: 50,
           destinationReceiver: route.execution.destinationEscrow,
-          refundReceiver: borrower,
+          refundReceiver: route.execution.sourceEscrow,
         }),
       );
       await storeProviderQuote(this.database.db, quote);
@@ -95,7 +116,7 @@ export class PreparationService {
         sourcePosition: snapshot.position,
         allowedTargets: [route.targetMarket],
         feeAsset: route.destinationDebtAsset,
-        maxSourceDebtUnits: snapshot.debtUnits,
+        maxSourceDebtUnits: selected.financing.sourceDebtPayoffAssetUnits,
         minSourceCollateralUnits: snapshot.collateralUnits,
         maxTotalFeeUnits: selected.financing.solverFeeUnits,
         maxSlippageBps: 50,
@@ -199,7 +220,7 @@ export class PreparationService {
         sourceCollateralAsset: route.sourceCollateralAsset,
         destinationDebtAsset: route.destinationDebtAsset,
         destinationCollateralAsset: route.destinationCollateralAsset,
-        sourceRepaymentMaxUnits: snapshot.debtUnits,
+        sourceRepaymentMaxUnits: selected.financing.sourceDebtPayoffAssetUnits,
         sourceCollateralMinUnits: snapshot.collateralUnits,
         targetDebtMaxUnits: financing.requiredDestinationBorrowUnits,
         minDestinationCollateralUnits: quote.minAmountOutUnits,
@@ -207,12 +228,13 @@ export class PreparationService {
         transportQuoteHash: quote.quoteHash,
         transportDepositAddress: quote.depositAddress,
         destinationReceiver: route.execution.destinationEscrow,
+        transportRefundReceiver: route.execution.sourceEscrow,
         refundReceiver: borrower,
         fundingProvider: route.execution.sourceVault,
         reservationHash: hashCanonicalText(`debtshift.reservation.v1:${migrationId}`),
         payoutAsset: route.destinationDebtAsset,
         payoutReceiver: route.execution.executor,
-        principalMaxUnits: snapshot.debtUnits,
+        principalMaxUnits: selected.financing.solverPrincipalUnits,
         feeMaxUnits: financing.solverFeeUnits,
         financing,
         routeHash: `0x${'00'.repeat(32)}`,
@@ -223,18 +245,27 @@ export class PreparationService {
         ...unsignedPlan,
         routeHash: computeRouteHash(unsignedPlan),
       });
+      const [sourceAuthorization, targetAuthorization] = await Promise.all([
+        this.protocols.prepareSourceAuthorization(plan),
+        this.protocols.prepareTargetAuthorization(borrower, BigInt(plan.deadline)),
+      ]);
 
       return {
-        simulation: {
-          provider: 'DEBTSHIFT_SIMULATOR',
-          mode: 'SIMULATED',
-          warning: 'This route uses test assets and is not a 1Click testnet transaction.',
+        execution: {
+          mode: this.#mode,
+          transportProvider: quote.provider,
+          transportMode: quote.mode,
+          simulatedTransport: quote.mode === 'SIMULATED',
+          fundedExecutionEnabled: this.#fundedExecutionEnabled,
+          warning: executionWarning(this.#mode),
         },
         verifyingContract: this.#verifyingContract,
         intent,
         intentHash,
         plan,
         planHash: hashExecutionPlan(plan, this.#verifyingContract),
+        sourceAuthorization,
+        targetAuthorization,
         quote,
         sourceSnapshot: snapshot,
         routeAnalysis,
@@ -253,7 +284,24 @@ function minBigInt(left: bigint, right: bigint): bigint {
   return left < right ? left : right;
 }
 
+function addBasisPointHeadroom(amount: bigint, basisPoints: number): bigint {
+  return (amount * BigInt(10_000 + basisPoints) + 9_999n) / 10_000n;
+}
+
 function badRequest(error: unknown): BadRequestException {
   if (error instanceof BadRequestException) return error;
-  return new BadRequestException(error instanceof Error ? error.message : 'Invalid local request.');
+  return new BadRequestException(error instanceof Error ? error.message : 'Invalid request.');
+}
+
+function executionWarning(mode: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet'): string {
+  if (mode === 'sandbox') {
+    return 'Contract-backed sandbox: test assets and an explicitly simulated external transport provider.';
+  }
+  if (mode === 'testnet') {
+    return 'Public testnet contracts: the external transport provider is simulated because 1Click has no testnet.';
+  }
+  if (mode === 'mainnet') {
+    return 'Mainnet plan: real funds can move only when the server execution switch and every authorization gate pass.';
+  }
+  return 'Read-only mode cannot prepare funded execution.';
 }

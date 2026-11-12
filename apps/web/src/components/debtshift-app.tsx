@@ -2,11 +2,16 @@
 
 import {
   getExecutionPlanTypedData,
+  getMorphoAuthorizationTypedData,
   getRefinanceIntentTypedData,
   type ExecutionPlan,
   type PositionSnapshot,
+  type PreparedSourceLendingAuthorization,
+  type PreparedTargetLendingAuthorization,
   type ProviderQuote,
   type RefinanceIntent,
+  type SignedTargetLendingAuthorization,
+  type SubmittedSourceLendingAuthorization,
 } from '@debtshift/domain';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createWalletClient, custom, type Address, type EIP1193Provider, type Hex } from 'viem';
@@ -16,9 +21,12 @@ const terminalPhases = new Set(['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 
 const warningPhases = new Set(['RECOVERY', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED']);
 
 interface PreparedMigration {
-  readonly simulation: {
-    readonly provider: 'DEBTSHIFT_SIMULATOR';
-    readonly mode: 'SIMULATED';
+  readonly execution: {
+    readonly mode: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet';
+    readonly transportProvider: ProviderQuote['provider'];
+    readonly transportMode: ProviderQuote['mode'];
+    readonly simulatedTransport: boolean;
+    readonly fundedExecutionEnabled: boolean;
     readonly warning: string;
   };
   readonly verifyingContract: Address;
@@ -26,6 +34,8 @@ interface PreparedMigration {
   readonly intentHash: Hex;
   readonly plan: ExecutionPlan;
   readonly planHash: Hex;
+  readonly sourceAuthorization: PreparedSourceLendingAuthorization;
+  readonly targetAuthorization: PreparedTargetLendingAuthorization;
   readonly quote: ProviderQuote;
   readonly sourceSnapshot: PositionSnapshot;
   readonly routeAnalysis: RouteAnalysisResponse;
@@ -271,6 +281,24 @@ export function DebtShiftApp() {
     setError(undefined);
     try {
       const wallet = createWalletClient({ transport: custom(provider) });
+      let targetAuthorization: SignedTargetLendingAuthorization = { kind: 'NONE' };
+      if (prepared.targetAuthorization.kind === 'MORPHO_BLUE') {
+        await wallet.switchChain({ id: prepared.targetAuthorization.chainId });
+        const enableSignature = await wallet.signTypedData({
+          account,
+          ...getMorphoAuthorizationTypedData(prepared.targetAuthorization, 'enable'),
+        });
+        const disableSignature = await wallet.signTypedData({
+          account,
+          ...getMorphoAuthorizationTypedData(prepared.targetAuthorization, 'disable'),
+        });
+        targetAuthorization = {
+          ...prepared.targetAuthorization,
+          enableSignature,
+          disableSignature,
+        };
+        await wallet.switchChain({ id: prepared.intent.sourcePosition.market.chainId });
+      }
       const intentSignature = await wallet.signTypedData({
         account,
         ...getRefinanceIntentTypedData(prepared.intent, prepared.verifyingContract),
@@ -279,6 +307,18 @@ export function DebtShiftApp() {
         account,
         ...getExecutionPlanTypedData(prepared.plan, prepared.verifyingContract),
       });
+      let sourceAuthorization: SubmittedSourceLendingAuthorization = { kind: 'NONE' };
+      if (prepared.sourceAuthorization.kind === 'ERC20_APPROVAL') {
+        await wallet.switchChain({ id: prepared.sourceAuthorization.chainId });
+        const transactionHash = await wallet.sendTransaction({
+          account,
+          chain: null,
+          to: prepared.sourceAuthorization.transaction.to,
+          data: prepared.sourceAuthorization.transaction.data as Hex,
+          value: BigInt(prepared.sourceAuthorization.transaction.valueUnits),
+        });
+        sourceAuthorization = { ...prepared.sourceAuthorization, transactionHash };
+      }
       const result = await api<{ migrationId: string }>('/migrations/execute', {
         method: 'POST',
         body: JSON.stringify({
@@ -294,6 +334,8 @@ export function DebtShiftApp() {
           },
           quote: prepared.quote,
           sourceSnapshot: prepared.sourceSnapshot,
+          sourceAuthorization,
+          targetAuthorization,
         }),
       });
       setMigrationId(result.migrationId);
@@ -591,13 +633,13 @@ export function DebtShiftApp() {
               <>
                 <div className="routeLine">
                   <div>
-                    <small>Local Base-like</small>
-                    <strong>Aave-compatible</strong>
+                    <small>Chain {prepared.plan.sourceMarket.chainId}</small>
+                    <strong>{prepared.plan.sourceMarket.protocol}</strong>
                   </div>
                   <span aria-hidden="true">→</span>
                   <div>
-                    <small>Local Arbitrum-like</small>
-                    <strong>Morpho-compatible</strong>
+                    <small>Chain {prepared.plan.targetMarket.chainId}</small>
+                    <strong>{prepared.plan.targetMarket.protocol}</strong>
                   </div>
                 </div>
                 <dl className="routeTerms">
@@ -609,13 +651,13 @@ export function DebtShiftApp() {
                   <Metric label="Maximum fee" value={`${economics.maximumFee} sUSDC`} />
                   <Metric label="Deadline" value={formatTime(prepared.plan.deadline)} compact />
                 </dl>
-                <div className="simulationWarning">{prepared.simulation.warning}</div>
+                <div className="simulationWarning">{prepared.execution.warning}</div>
                 {migrationId === undefined && (
                   <button
                     className="primaryAction"
                     type="button"
                     onClick={() => void authorizeAndExecute()}
-                    disabled={busy !== null}
+                    disabled={busy !== null || !prepared.execution.fundedExecutionEnabled}
                   >
                     {busy === 'authorize'
                       ? 'Check your wallet twice…'

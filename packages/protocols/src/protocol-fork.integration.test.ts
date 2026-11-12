@@ -213,7 +213,7 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
     });
     await write(morphoLiquidityWallet, publicClient, USDC, ERC20_TRANSFER_ABI, 'transfer', [
       borrower.address,
-      100n * 10n ** 6n,
+      1_100n * 10n ** 6n,
     ]);
     await testClient.stopImpersonatingAccount({ address: MORPHO });
 
@@ -350,6 +350,7 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
       principalMax: maximumRepayUnits,
       feeMax: 0n,
       destinationReceiver: destinationEscrow,
+      transportRefundReceiver: sourceEscrow,
       refundReceiver: borrower.address,
       payoutReceiver: borrower.address,
       deadline,
@@ -358,7 +359,7 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
     const typedPlan = {
       domain: {
         name: 'DebtShift',
-        version: '1',
+        version: '2',
         chainId: BASE_CHAIN_ID,
         verifyingContract: sourceAdapter,
       },
@@ -405,6 +406,10 @@ runForkTests('pinned Aave V3 and Morpho Blue Base fork', () => {
       functionName: 'latestFeasibilityHash',
       args: [migrationId],
     });
+    await write(wallet, publicClient, USDC, ERC20_METADATA_ABI, 'approve', [
+      vault,
+      maximumRepayUnits,
+    ]);
     await write(wallet, publicClient, vault, vaultArtifact.abi, 'reserve', [
       migrationId,
       USDC,

@@ -17,13 +17,13 @@ contract CanonicalHashFixtureTest {
     bytes32 internal constant EXPECTED_POSITION =
         0xc0552755e1b8638016061a1864011b9be643b108a402cd4fee6be1086fe0b229;
     bytes32 internal constant EXPECTED_INTENT =
-        0x3c4460663723c694cd7d18bf8ac67a18bcf65c6d8cbf8859597980f3221f9be0;
+        0xc2e5a504712bc821fa9e832436b40d73c0e22a6455b20cb5936ee309cadc4f68;
     bytes32 internal constant EXPECTED_MIGRATION =
-        0x6ea3ae4a5060567ee39012471204d1554b6c71f8eaf23f156fc89f3d8209af85;
+        0xa7a7958ed9a149c205e67a7b5985d63b4932f7f326ea3f45a0d0d0cc969d8662;
     bytes32 internal constant EXPECTED_ROUTE =
-        0x4b31a759ac1beda55e80ec96b52b7e59f6aba136be4586a5e85944b10f49be4c;
+        0xc994f5511dd058f4a504da5ba0c56415e06d695b13ff91ef8ed2bbfafe7aed9e;
     bytes32 internal constant EXPECTED_PLAN =
-        0xd1e44f009a8b9a6e559f469395a223fe91b8548a33ba8fa3a2a9617b806005d0;
+        0x8a692505f195855ff08566af7cb4cfbfe3acd3934ff4bca295cd51e629cd824e;
 
     function testCanonicalHashFixture() public pure {
         bytes32 sourceMarket = DebtShiftHashing.hashMarketReference(
@@ -101,6 +101,7 @@ contract CanonicalHashFixtureTest {
                 principalMax: 10_000_000_000,
                 feeMax: 50_000_000,
                 destinationReceiver: 0x7000000000000000000000000000000000000007,
+                transportRefundReceiver: 0x7100000000000000000000000000000000000007,
                 refundReceiver: BORROWER,
                 payoutReceiver: 0x8000000000000000000000000000000000000008,
                 deadline: 1_793_999_000,
@@ -139,6 +140,7 @@ contract CanonicalHashFixtureTest {
                 transportQuoteHash: QUOTE_HASH,
                 transportDepositAddressHash: keccak256("simulator:deposit:migration-7"),
                 destinationReceiver: 0x7000000000000000000000000000000000000007,
+                transportRefundReceiver: 0x7100000000000000000000000000000000000007,
                 refundReceiver: BORROWER,
                 fundingProvider: 0x8000000000000000000000000000000000000008,
                 reservationHash: RESERVATION_HASH,

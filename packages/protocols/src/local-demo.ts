@@ -102,6 +102,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
       principalMax: 10_000_000_000n,
       feeMax: 50_000_000n,
       destinationReceiver: deployment.destination.escrow,
+      transportRefundReceiver: deployment.source.escrow,
       refundReceiver: deployment.borrower,
       payoutReceiver: deployment.deployer,
       deadline,
@@ -110,7 +111,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
     const typedPlan = {
       domain: {
         name: 'DebtShift',
-        version: '1',
+        version: '2',
         chainId: sourceChain.chain.id,
         verifyingContract: deployment.source.adapter,
       },
@@ -163,6 +164,14 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
     await write(
       sourceWallet,
       sourceChain.publicClient,
+      token.abi,
+      deployment.source.debtToken,
+      'approve',
+      [deployment.source.vault, 10_050_000_000n],
+    );
+    await write(
+      sourceWallet,
+      sourceChain.publicClient,
       vault.abi,
       deployment.source.vault,
       'reserve',
@@ -207,6 +216,14 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
         deployment.source.collateralToken,
         'balanceOf',
         [deployment.borrower],
+      );
+      await write(
+        sourceWallet,
+        sourceChain.publicClient,
+        vault.abi,
+        deployment.source.vault,
+        'settleFromRecoveryReserve',
+        [LOCAL_MIGRATION_ID],
       );
     } else {
       await write(
@@ -307,6 +324,7 @@ export async function runLocalDemo(outcome: LocalDemoOutcome): Promise<LocalDemo
             solverFeeUnits: 50_000_000n,
             capitalizedCostUnits: 0n,
             capitalizedCostReceiver: '0x0000000000000000000000000000000000000000',
+            lendingAuthorization: '0x',
           },
         ],
       );
@@ -444,9 +462,9 @@ function assertTerminalState(
   } else if (
     destinationPosition[0] !== 0n ||
     destinationPosition[1] !== 0n ||
-    vaultReceivableUnits !== 10_000_000_000n
+    vaultReceivableUnits !== 0n
   ) {
-    throw new Error('Refund-path residual obligation was not preserved.');
+    throw new Error('Refund-path collateral and recovery-reserve settlement did not reconcile.');
   }
 }
 

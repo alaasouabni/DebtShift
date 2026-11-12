@@ -23,6 +23,7 @@ import type { DebtShiftDatabase } from './client.js';
 import {
   createAuthorizedMigration,
   getMigrationDetails,
+  getMigrationExecutionContext,
   storeAssetCatalogVersion,
   storeProviderObservation,
 } from './migration-repository.js';
@@ -68,11 +69,17 @@ describe('authorized migration repository', () => {
       'FINANCING_FEASIBILITY',
       'INTENT_AUTHORIZATION',
       'ROUTE_QUOTE',
+      'SOURCE_LENDING_AUTHORIZATION',
       'SOURCE_POSITION_SNAPSHOT',
     ]);
     expect(details?.events).toHaveLength(1);
     expect(details?.commands).toHaveLength(1);
     expect(details?.commands[0]?.type).toBe('RESERVE_LIQUIDITY');
+    const context = await getMigrationExecutionContext(database, created.migrationId);
+    expect(context?.targetLendingAuthorization).toEqual({
+      authorization: { kind: 'NONE' },
+      encodedAuthorization: '0x',
+    });
     const reservation = await postgres.query<{
       status: string;
       principal_units: string;
@@ -245,6 +252,7 @@ function buildInput() {
     transportQuoteHash: QUOTE_HASH,
     transportDepositAddress: 'simulator:fixture',
     destinationReceiver: '0x7000000000000000000000000000000000000007',
+    transportRefundReceiver: '0x7100000000000000000000000000000000000007',
     refundReceiver: BORROWER,
     fundingProvider: '0x8000000000000000000000000000000000000008',
     reservationHash: `0x${'bb'.repeat(32)}`,
@@ -305,7 +313,7 @@ function buildInput() {
     minAmountOutUnits: '9800000000000000000',
     fees: [],
     destinationReceiver: plan.destinationReceiver,
-    refundReceiver: plan.refundReceiver,
+    refundReceiver: plan.transportRefundReceiver,
     depositAddress: plan.transportDepositAddress,
     expiresAt: '2030-01-01T00:00:00.000Z',
     correlationId: 'sim-fixture',
@@ -324,5 +332,18 @@ function buildInput() {
       observedAt: '2026-11-09T00:00:00.000Z',
     },
   });
-  return { signedIntent, signedPlan, quote, sourceSnapshot };
+  return {
+    signedIntent,
+    signedPlan,
+    quote,
+    sourceSnapshot,
+    sourceLendingAuthorization: {
+      kind: 'NONE' as const,
+      authorization: { kind: 'NONE' as const },
+    },
+    targetLendingAuthorization: {
+      authorization: { kind: 'NONE' as const },
+      encodedAuthorization: '0x' as const,
+    },
+  };
 }

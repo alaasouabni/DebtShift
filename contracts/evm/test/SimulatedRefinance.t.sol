@@ -91,6 +91,8 @@ contract SimulatedRefinanceTest {
         sourceDebtToken.mint(address(this), 30_000_000_000);
         sourceDebtToken.approve(address(vault), 30_000_000_000);
         vault.deposit(IERC20(address(sourceDebtToken)), 30_000_000_000);
+        sourceDebtToken.mint(address(this), 100_000_000_000);
+        sourceDebtToken.approve(address(vault), type(uint256).max);
 
         destinationDebtToken = new TestToken("Destination USD", "dUSDC", 6, address(this));
         destinationCollateralToken = new TestToken("Destination Ether", "dWETH", 18, address(this));
@@ -182,6 +184,33 @@ contract SimulatedRefinanceTest {
         require(
             sourceDebtToken.balanceOf(address(vault)) == 30_000_000_000 + SOLVER_FEE,
             "vault settlement mismatch"
+        );
+        require(
+            vault.lockedRecoveryReserves(address(sourceDebtToken)) == 0,
+            "recovery reserve remained locked"
+        );
+    }
+
+    function testRecoveryReserveIsIsolatedAndCanSettleFailedForwardExecution() public {
+        require(
+            vault.freeLiquidity(IERC20(address(sourceDebtToken))) == 20_000_000_000,
+            "locked recovery reserve counted as lendable liquidity"
+        );
+        (,,,,,,,,, address reserveProvider, uint256 reserveUnits) = vault.reservations(migrationId);
+        require(reserveProvider == address(this), "recovery reserve provider mismatch");
+        require(reserveUnits == SOURCE_DEBT + SOLVER_FEE, "recovery reserve amount mismatch");
+
+        sourceAdapter.closeSource(plan, _sign(planHash));
+        vault.settleFromRecoveryReserve(migrationId);
+
+        require(vault.principalReceivable(address(sourceDebtToken)) == 0, "receivable remains");
+        require(
+            vault.lockedRecoveryReserves(address(sourceDebtToken)) == 0,
+            "recovery reserve remains locked"
+        );
+        require(
+            sourceDebtToken.balanceOf(address(vault)) == 30_000_000_000 + SOLVER_FEE,
+            "recovery reserve did not repay the vault"
         );
     }
 
@@ -453,6 +482,10 @@ contract SimulatedRefinanceTest {
             vault.principalReceivable(address(sourceDebtToken)) == 0,
             "released reservation created receivable"
         );
+        require(
+            vault.lockedRecoveryReserves(address(sourceDebtToken)) == 0,
+            "released reservation retained the recovery reserve"
+        );
         (uint256 collateralUnits, uint256 debtUnits) = sourceLending.positions(borrower);
         require(collateralUnits == SOURCE_COLLATERAL, "source collateral moved");
         require(debtUnits == SOURCE_DEBT, "source debt moved");
@@ -494,7 +527,7 @@ contract SimulatedRefinanceTest {
         );
 
         sourceAdapter.closeSource(bufferedPlan, _sign(bufferedPlanHash));
-        (,,,,,,,, uint256 receivableUnits) = vault.reservations(bufferedPlan.migrationId);
+        (,,,,,,,, uint256 receivableUnits,,) = vault.reservations(bufferedPlan.migrationId);
         require(receivableUnits == SOURCE_DEBT, "unused principal remained receivable");
         require(
             vault.principalReceivable(address(sourceDebtToken)) == SOURCE_DEBT,
@@ -503,6 +536,19 @@ contract SimulatedRefinanceTest {
 
         sourceDebtToken.mint(address(this), SOURCE_DEBT + SOLVER_FEE);
         sourceDebtToken.approve(address(vault), SOURCE_DEBT + SOLVER_FEE);
+        (bool staleSuccess,) = address(vault)
+            .call(
+                abi.encodeCall(
+                    TestLiquidityVault.settle, (bufferedPlan.migrationId, address(this), SOLVER_FEE)
+                )
+            );
+        require(!staleSuccess, "buffered feasibility ignored the returned principal");
+
+        evidence.sequence = 2;
+        evidence.solverPrincipalUnits = SOURCE_DEBT;
+        evidence.totalRequiredUnits = SOURCE_DEBT + SOLVER_FEE;
+        evidence.requiredDestinationBorrowUnits = SOURCE_DEBT + SOLVER_FEE;
+        vault.recordFeasibility(bufferedPlan.migrationId, evidence);
         vault.settle(bufferedPlan.migrationId, address(this), SOLVER_FEE);
         require(
             vault.principalReceivable(address(sourceDebtToken)) == 0,
@@ -605,6 +651,7 @@ contract SimulatedRefinanceTest {
             destinationReceiver: address(destinationEscrow) == address(0)
                 ? address(0xD357)
                 : address(destinationEscrow),
+            transportRefundReceiver: address(sourceEscrow),
             refundReceiver: planBorrower,
             payoutReceiver: planBorrower,
             deadline: uint64(block.timestamp + 30 minutes),
@@ -907,6 +954,6 @@ contract SimulatedRefinanceTest {
         view
         returns (TestLiquidityVault.ReservationStatus status)
     {
-        (,,,,,, status,,) = vault.reservations(id);
+        (,,,,,, status,,,,) = vault.reservations(id);
     }
 }

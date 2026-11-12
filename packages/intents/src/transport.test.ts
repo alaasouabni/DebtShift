@@ -132,6 +132,24 @@ describe('deterministic transport simulator', () => {
     ]);
   });
 
+  it('rejects observations from a different provider or simulation mode', async () => {
+    const simulator = new DeterministicTransportSimulator({ processingPolls: 0 });
+    const quote = await simulator.getQuote(quoteRequest());
+    await simulator.submitOrigin({
+      quoteHash: quote.quoteHash,
+      originTransactionHash: ORIGIN_TRANSACTION,
+    });
+    const observation = await simulator.getStatus(quote.quoteId);
+    const verification = verifyTransportDelivery(quote, {
+      ...observation,
+      provider: 'NEAR_INTENTS_1CLICK',
+      simulated: false,
+    });
+
+    expect(verification.valid).toBe(false);
+    expect(verification.failures).toEqual(['PROVIDER_MISMATCH', 'SIMULATION_MODE_MISMATCH']);
+  });
+
   it('rejects origin submission after quote expiration', async () => {
     let clock = now;
     const simulator = new DeterministicTransportSimulator({

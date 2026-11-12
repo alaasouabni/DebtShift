@@ -102,7 +102,8 @@ contract SourceAdapter is ReentrancyGuard {
             plan.migrationId
                     != DebtShiftHashing.computeMigrationId(
                         plan.intentHash, plan.transportQuoteHash, plan.nonce
-                    ) || plan.borrower == address(0) || plan.sourceRepaymentMax == 0
+                    ) || plan.borrower == address(0)
+                || plan.transportRefundReceiver != address(escrow) || plan.sourceRepaymentMax == 0
                 || plan.sourceCollateralMin == 0 || plan.principalMax < plan.sourceRepaymentMax
         ) revert InvalidPlan();
 

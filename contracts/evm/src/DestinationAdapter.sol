@@ -262,7 +262,8 @@ contract DestinationAdapter is ReentrancyGuard {
         if (consumedNonces[plan.borrower][plan.nonce]) revert NonceAlreadyConsumed();
         if (
             plan.borrower == address(0) || plan.destinationReceiver != address(escrow)
-                || plan.refundReceiver == address(0) || plan.payoutReceiver == address(0)
+                || plan.transportRefundReceiver == address(0) || plan.refundReceiver == address(0)
+                || plan.payoutReceiver == address(0)
                 || plan.migrationId
                     != DebtShiftHashing.computeMigrationId(
                         plan.intentHash, plan.transportQuoteHash, plan.nonce

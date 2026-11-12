@@ -12,7 +12,7 @@ credentials in the example file are for disposable development services only.
 
 Apply the checked-in schema with `npm run db:migrate --workspace @debtshift/database` before starting
 the API or worker. The worker consumes the PostgreSQL transactional outbox through Redis/BullMQ and
-rehydrates simulator poll state and mined contract events after restart. `LOCAL_EXECUTOR_PRIVATE_KEY`
+rehydrates simulator poll state and mined contract events after restart. `SANDBOX_EXECUTOR_PRIVATE_KEY`
 in `.env.example` is Anvil's public disposable deployer key; never replace it with a funded key.
 
 For the interactive application:
@@ -28,7 +28,7 @@ For the interactive application:
    follow the evidence timeline. The UI labels every transport observation as a DebtShift simulation.
 
 The API re-reads the signed source snapshot at its historical block and at the current head before
-accepting execution. The local worker refuses to start in any funded mainnet mode.
+accepting execution. The sandbox worker cannot be composed into testnet or mainnet modes.
 
 ## EVM contracts
 
@@ -55,10 +55,14 @@ CI will be used to determine whether the limitation is host-specific.
 
 ## Environment modes
 
-- `local` and `ci`: test assets and `DEBTSHIFT_SIMULATOR` only.
-- `testnet`: NEAR registry testnet plus simulated transport.
-- `mainnet-readonly`: public protocol reads and 1Click dry quotes; no asset movement.
-- `mainnet-canary`: default-disabled isolated 1Click transport proof requiring manual approval.
+- `sandbox`: private-chain contracts and test assets; only the external transport boundary is
+  explicitly simulated.
+- `testnet`: public test contracts and NEAR testnet registry plus explicitly simulated transport.
+- `mainnet-readonly`: public protocol reads and 1Click dry quotes; no write-capable workflow runtime.
+- `mainnet`: the complete production refinance workflow, guarded by
+  `MAINNET_EXECUTION_ENABLED=false` by default.
 
-The application must reject any funded production transport configuration outside the isolated
-canary capability.
+Local development and CI both select `DEBTSHIFT_MODE=sandbox`; they are engineering topologies, not
+additional product modes. Production modes never fall back to sandbox providers. Do not set
+`MAINNET_EXECUTION_ENABLED=true` without completing the documented release gates and obtaining
+explicit financial authorization.

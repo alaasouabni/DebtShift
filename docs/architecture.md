@@ -6,7 +6,7 @@ wording.
 ```text
 Browser wallet -> web -> API -> PostgreSQL/outbox -> worker
                             |                     |
-                            |                     +-> transport simulator / isolated 1Click client
+                            |                     +-> mode-selected transport port
                             |                     +-> NEAR agreement registry
                             |                     +-> EVM adapters and verified receipts
                             +-> deterministic optimizer / financing analysis / risk validation
@@ -18,8 +18,8 @@ delivery only. Every phase is re-derived from signed terms and verified evidence
 or queue acknowledgement never proves a financial side effect.
 
 The browser owns borrower signing. The API proposes exact EIP-712 payloads and validates returned
-signatures. The worker can perform only the bounded test actions permitted by the signed plan and
-deployed contracts. AI providers receive a minimized, read-only explanation payload after route
+signatures. The worker can perform only the bounded actions permitted by the signed plan, runtime
+mode, execution switch, and deployed contracts. AI providers receive a minimized, read-only explanation payload after route
 selection and have no execution tools.
 
 The solver-financing design uses a mandatory sources-and-uses proof. Maximum safe destination
@@ -36,9 +36,11 @@ the exact collateral custody and solver receivable instead of creating an unsafe
 
 The authoritative detailed design lives in `strategies-docs/01-architecture-blueprint.md`.
 
-Runtime market data is selected once at the API composition root. Local/CI/testnet loads only the
-explicit simulator providers; mainnet read-only loads direct Aave, Morpho, Chainlink, and 1Click
-read-only providers from a schema-validated registry; the isolated canary disables lending providers
-entirely. Core services import only provider ports, and lint rules reject simulator imports from
-production modules. The detailed rules are in
+Runtime providers are selected once at composition roots. `sandbox` uses deployed private-chain
+contracts and an explicitly simulated external transport adapter. `testnet` uses public test
+contracts and the NEAR testnet registry while retaining that labeled transport adapter.
+`mainnet-readonly` constructs no write-capable workflow providers. `mainnet` requires direct Aave,
+Morpho, oracle, official committed 1Click, and registry adapters plus the fail-closed server
+execution switch. Core services import only provider ports, and lint rules reject simulator or
+sandbox imports from production modules. The detailed rules are in
 `strategies-docs/12-production-provider-boundaries.md`.

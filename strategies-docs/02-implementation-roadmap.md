@@ -262,14 +262,14 @@ workflow.
 
 ### Tasks
 
-- [ ] Replace simulator-specific worker construction with provider-neutral source, liquidity,
+- [x] Replace simulator-specific worker construction with provider-neutral source, liquidity,
       transport, destination, settlement, canonicality, and registry ports.
 - [ ] Add validated `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet` composition roots with no
       production fallback to simulation.
-- [ ] Add fail-closed `MAINNET_EXECUTION_ENABLED`, defaulting to `false`, and enforce it at the API
+- [x] Add fail-closed `MAINNET_EXECUTION_ENABLED`, defaulting to `false`, and enforce it at the API
       and every irreversible worker command boundary.
 - [ ] Validate the 1Click client against the current official OpenAPI/API reference.
-- [ ] Encode the absence of public 1Click testnet as an environment rule without making simulation
+- [x] Encode the absence of public 1Click testnet as an environment rule without making simulation
       the primary workflow.
 - [ ] Fetch/version the live token catalog and map asset IDs by chain and contract address.
 - [ ] Retain `dry: true` quotes in `mainnet-readonly` and implement committed quotes only in `mainnet`.

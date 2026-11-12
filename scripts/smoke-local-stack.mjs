@@ -14,8 +14,12 @@ const prepared = await request('/v1/migrations/prepare', {
   method: 'POST',
   body: JSON.stringify({ borrower: borrower.address }),
 });
-if (prepared.simulation?.provider !== 'DEBTSHIFT_SIMULATOR') {
-  throw new Error('Prepared route is not explicitly simulator-backed.');
+if (
+  prepared.execution?.mode !== 'sandbox' ||
+  prepared.execution?.transportProvider !== 'DEBTSHIFT_SIMULATOR' ||
+  prepared.execution?.simulatedTransport !== true
+) {
+  throw new Error('Prepared route is not the contract-backed sandbox route.');
 }
 const [intentSignature, planSignature] = await Promise.all([
   borrower.signTypedData(getRefinanceIntentTypedData(prepared.intent, prepared.verifyingContract)),

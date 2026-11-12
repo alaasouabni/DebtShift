@@ -6,12 +6,12 @@ library DebtShiftHashing {
         "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
     );
     bytes32 internal constant NAME_HASH = keccak256("DebtShift");
-    bytes32 internal constant VERSION_HASH = keccak256("1");
+    bytes32 internal constant VERSION_HASH = keccak256("2");
     bytes32 internal constant REFINANCE_INTENT_TYPEHASH = keccak256(
         "RefinanceIntent(address borrower,bytes32 sourcePositionId,bytes32 allowedTargetsHash,bytes32 feeAssetHash,uint256 maxSourceDebt,uint256 minSourceCollateral,uint256 maxTotalFee,uint32 maxSlippageBps,uint32 minAprReductionBps,bytes32 safetyPolicyHash,uint32 maxDurationSeconds,uint64 expiration,uint256 nonce)"
     );
     bytes32 internal constant EXECUTION_PLAN_TYPEHASH = keccak256(
-        "ExecutionPlan(bytes32 intentHash,bytes32 migrationId,address borrower,bytes32 sourcePositionId,bytes32 routeHash,bytes32 transportQuoteHash,uint256 sourceRepaymentMax,uint256 sourceCollateralMin,uint256 targetDebtMax,uint256 minDestinationCollateral,uint256 principalMax,uint256 feeMax,address destinationReceiver,address refundReceiver,address payoutReceiver,uint64 deadline,uint256 nonce)"
+        "ExecutionPlan(bytes32 intentHash,bytes32 migrationId,address borrower,bytes32 sourcePositionId,bytes32 routeHash,bytes32 transportQuoteHash,uint256 sourceRepaymentMax,uint256 sourceCollateralMin,uint256 targetDebtMax,uint256 minDestinationCollateral,uint256 principalMax,uint256 feeMax,address destinationReceiver,address transportRefundReceiver,address refundReceiver,address payoutReceiver,uint64 deadline,uint256 nonce)"
     );
 
     struct RefinanceIntentHashInput {
@@ -44,6 +44,7 @@ library DebtShiftHashing {
         uint256 principalMax;
         uint256 feeMax;
         address destinationReceiver;
+        address transportRefundReceiver;
         address refundReceiver;
         address payoutReceiver;
         uint64 deadline;
@@ -66,6 +67,7 @@ library DebtShiftHashing {
         bytes32 transportQuoteHash;
         bytes32 transportDepositAddressHash;
         address destinationReceiver;
+        address transportRefundReceiver;
         address refundReceiver;
         address fundingProvider;
         bytes32 reservationHash;

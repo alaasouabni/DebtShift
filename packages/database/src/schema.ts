@@ -1,3 +1,4 @@
+import type { PersistedTargetLendingAuthorization } from '@debtshift/domain';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -256,6 +257,10 @@ export const executionPlans = pgTable(
     routeHash: bytes32('route_hash').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     signature: text('signature').notNull(),
+    targetLendingAuthorization: jsonb('target_lending_authorization')
+      .$type<PersistedTargetLendingAuthorization>()
+      .notNull()
+      .default({ authorization: { kind: 'NONE' }, encodedAuthorization: '0x' }),
     createdAt: createdAt(),
   },
   (table) => [

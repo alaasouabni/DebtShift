@@ -17,9 +17,9 @@ const optionalPrivateKey = z
 export const debtShiftEnvironmentSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    DEBTSHIFT_ENV: z
-      .enum(['local', 'ci', 'testnet', 'mainnet-readonly', 'mainnet-canary', 'mainnet-controlled'])
-      .default('local'),
+    DEBTSHIFT_MODE: z
+      .enum(['sandbox', 'testnet', 'mainnet-readonly', 'mainnet'])
+      .default('sandbox'),
     MARKET_DATA_PROVIDER: z.enum(['SIMULATOR', 'LIVE_READ_ONLY', 'DISABLED']).default('SIMULATOR'),
     LIVE_MARKET_CONFIG_JSON: optionalString,
     WEB_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -32,14 +32,18 @@ export const debtShiftEnvironmentSchema = z
     REDIS_URL: z.url().default('redis://localhost:6379'),
     SOURCE_CHAIN_ID: z.coerce.number().int().positive().default(31_337),
     SOURCE_RPC_URL: z.url().default('http://localhost:8545'),
+    SOURCE_DEPLOYMENT_BLOCK_NUMBER: z.coerce.number().int().nonnegative().default(0),
     SOURCE_FINALITY_CONFIRMATIONS: z.coerce.number().int().min(1).max(2_048).default(1),
+    SOURCE_DEBT_BUFFER_BPS: z.coerce.number().int().min(1).max(500).default(10),
     DESTINATION_CHAIN_ID: z.coerce.number().int().positive().default(31_338),
     DESTINATION_RPC_URL: z.url().default('http://localhost:8546'),
+    DESTINATION_DEPLOYMENT_BLOCK_NUMBER: z.coerce.number().int().nonnegative().default(0),
     DESTINATION_FINALITY_CONFIRMATIONS: z.coerce.number().int().min(1).max(2_048).default(1),
     EIP712_VERIFYING_CONTRACT: evmAddressSchema.default(
       '0x5fc8d32690cc91d4c39d9d3abcbd16989f875707',
     ),
-    LOCAL_EXECUTOR_PRIVATE_KEY: optionalPrivateKey,
+    SANDBOX_EXECUTOR_PRIVATE_KEY: optionalPrivateKey,
+    EXECUTOR_PRIVATE_KEY: optionalPrivateKey,
     SOURCE_DEBT_TOKEN_ADDRESS: evmAddressSchema.default(
       '0x5fbdb2315678afecb367f032d93f642f64180aa3',
     ),
@@ -65,13 +69,11 @@ export const debtShiftEnvironmentSchema = z
     DESTINATION_ADAPTER_ADDRESS: evmAddressSchema.default(
       '0xdc64a140aa3e981100a9beca4e685f962f0cf6c9',
     ),
-    LOCAL_EXECUTOR_ADDRESS: evmAddressSchema.default('0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'),
+    EXECUTOR_ADDRESS: evmAddressSchema.default('0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'),
     TRANSPORT_PROVIDER: z
       .enum(['DEBTSHIFT_SIMULATOR', 'NEAR_INTENTS_1CLICK'])
       .default('DEBTSHIFT_SIMULATOR'),
-    INTENTS_MODE: z
-      .enum(['simulated', 'mainnet-readonly', 'mainnet-canary', 'mainnet-controlled'])
-      .default('simulated'),
+    INTENTS_MODE: z.enum(['simulated', 'mainnet-readonly', 'mainnet']).default('simulated'),
     INTENTS_BASE_URL: z.url().default('https://1click.chaindefuser.com'),
     INTENTS_AUTH_TOKEN: optionalString,
     INTENTS_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(8_000),
@@ -106,25 +108,28 @@ export const debtShiftEnvironmentSchema = z
       ])
       .default('SUCCESS'),
     SIMULATOR_PROCESSING_POLLS: z.coerce.number().int().min(0).max(100).default(1),
-    NEAR_NETWORK: z.enum(['sandbox', 'testnet', 'mainnet']).default('testnet'),
+    NEAR_NETWORK: z.enum(['sandbox', 'testnet', 'mainnet']).default('sandbox'),
     NEAR_RPC_URL: z.url().default('https://test.rpc.fastnear.com'),
     NEAR_REGISTRY_ACCOUNT: optionalString,
+    NEAR_SIGNER_ACCOUNT_ID: optionalString,
+    NEAR_SIGNER_PRIVATE_KEY: optionalString,
+    NEAR_STORAGE_DEPOSIT_YOCTO: z
+      .string()
+      .regex(/^(0|[1-9][0-9]*)$/)
+      .default('1000000000000000000000000'),
+    NEAR_FUNCTION_CALL_GAS: z
+      .string()
+      .regex(/^[1-9][0-9]*$/)
+      .default('100000000000000'),
     AGENT_MODE: z.enum(['DETERMINISTIC', 'LOCAL_AI', 'USER_API']).default('DETERMINISTIC'),
     OLLAMA_BASE_URL: z.url().default('http://127.0.0.1:11434'),
     OLLAMA_MODEL: z.string().min(1).default('qwen3.5:4b'),
     ALLOW_CUSTOM_AI_ENDPOINTS: booleanString,
-    MAINNET_CANARY_ENABLED: booleanString,
-    MAINNET_CANARY_ORIGIN_ASSET: optionalString,
-    MAINNET_CANARY_DESTINATION_ASSET: optionalString,
-    MAINNET_CANARY_MAX_INPUT_UNITS: z.string().regex(/^\d+$/).default('0'),
-    MAINNET_CANARY_RECIPIENT: optionalString,
-    MAINNET_CANARY_REFUND_RECEIVER: optionalString,
+    MAINNET_EXECUTION_ENABLED: booleanString,
     LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
     OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   })
   .superRefine((environment, context) => {
-    const simulatedEnvironment = ['local', 'ci', 'testnet'].includes(environment.DEBTSHIFT_ENV);
-
     if (environment.INTENTS_RETRY_MAX_DELAY_MS < environment.INTENTS_RETRY_BASE_DELAY_MS) {
       context.addIssue({
         code: 'custom',
@@ -133,10 +138,13 @@ export const debtShiftEnvironmentSchema = z
       });
     }
 
-    if (simulatedEnvironment && environment.MARKET_DATA_PROVIDER !== 'SIMULATOR') {
+    if (
+      environment.DEBTSHIFT_MODE === 'sandbox' &&
+      environment.MARKET_DATA_PROVIDER !== 'SIMULATOR'
+    ) {
       context.addIssue({
         code: 'custom',
-        message: 'Local, CI, and testnet environments require simulator market data.',
+        message: 'Sandbox mode requires the contract-backed sandbox market provider.',
         path: ['MARKET_DATA_PROVIDER'],
       });
     }
@@ -151,81 +159,200 @@ export const debtShiftEnvironmentSchema = z
           path: ['LIVE_MARKET_CONFIG_JSON'],
         });
       }
-      if (environment.INTENTS_AUTH_TOKEN.length === 0) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Live read-only quotes require an INTENTS_AUTH_TOKEN.',
-          path: ['INTENTS_AUTH_TOKEN'],
-        });
-      }
     }
 
     if (
-      simulatedEnvironment &&
+      (environment.DEBTSHIFT_MODE === 'sandbox' || environment.DEBTSHIFT_MODE === 'testnet') &&
       (environment.TRANSPORT_PROVIDER !== 'DEBTSHIFT_SIMULATOR' ||
         environment.INTENTS_MODE !== 'simulated')
     ) {
       context.addIssue({
         code: 'custom',
-        message: 'Local, CI, and testnet environments require the DebtShift simulator.',
+        message: 'Sandbox and testnet modes require the explicitly simulated transport adapter.',
         path: ['INTENTS_MODE'],
       });
     }
 
     if (
-      environment.DEBTSHIFT_ENV === 'mainnet-readonly' &&
-      (environment.TRANSPORT_PROVIDER !== 'NEAR_INTENTS_1CLICK' ||
-        environment.INTENTS_MODE !== 'mainnet-readonly' ||
-        environment.MARKET_DATA_PROVIDER !== 'LIVE_READ_ONLY')
+      environment.DEBTSHIFT_MODE === 'testnet' &&
+      (environment.MARKET_DATA_PROVIDER !== 'LIVE_READ_ONLY' ||
+        environment.NEAR_NETWORK !== 'testnet')
     ) {
       context.addIssue({
         code: 'custom',
-        message: 'Mainnet read-only mode must use live market data and 1Click dry quotes only.',
-        path: ['INTENTS_MODE'],
+        message: 'Testnet mode requires onchain market reads and the NEAR testnet registry.',
+        path: ['DEBTSHIFT_MODE'],
       });
     }
 
-    if (environment.MAINNET_CANARY_ENABLED && environment.DEBTSHIFT_ENV !== 'mainnet-canary') {
+    if (
+      environment.DEBTSHIFT_MODE === 'mainnet-readonly' &&
+      (environment.TRANSPORT_PROVIDER !== 'NEAR_INTENTS_1CLICK' ||
+        environment.INTENTS_MODE !== 'mainnet-readonly' ||
+        environment.MARKET_DATA_PROVIDER !== 'LIVE_READ_ONLY' ||
+        environment.NEAR_NETWORK !== 'mainnet')
+    ) {
       context.addIssue({
         code: 'custom',
-        message: 'The mainnet canary capability is only valid in the mainnet-canary environment.',
-        path: ['MAINNET_CANARY_ENABLED'],
+        message:
+          'Mainnet read-only mode must use live market data, 1Click dry quotes, and the mainnet registry.',
+        path: ['DEBTSHIFT_MODE'],
       });
     }
 
-    if (environment.DEBTSHIFT_ENV === 'mainnet-canary') {
-      const configured =
-        environment.MAINNET_CANARY_ENABLED &&
-        environment.MARKET_DATA_PROVIDER === 'DISABLED' &&
-        environment.TRANSPORT_PROVIDER === 'NEAR_INTENTS_1CLICK' &&
-        environment.INTENTS_MODE === 'mainnet-canary' &&
-        BigInt(environment.MAINNET_CANARY_MAX_INPUT_UNITS) > 0n &&
-        environment.MAINNET_CANARY_ORIGIN_ASSET.length > 0 &&
-        environment.MAINNET_CANARY_DESTINATION_ASSET.length > 0 &&
-        environment.MAINNET_CANARY_RECIPIENT.length > 0 &&
-        environment.MAINNET_CANARY_REFUND_RECEIVER.length > 0;
-
-      if (!configured) {
-        context.addIssue({
-          code: 'custom',
-          message:
-            'Mainnet canary mode requires disabled lending data and an enabled, capped, fully allowlisted route.',
-          path: ['MAINNET_CANARY_ENABLED'],
-        });
-      }
-    }
-
-    if (environment.DEBTSHIFT_ENV === 'mainnet-controlled') {
+    if (
+      environment.DEBTSHIFT_MODE === 'mainnet' &&
+      (environment.TRANSPORT_PROVIDER !== 'NEAR_INTENTS_1CLICK' ||
+        environment.INTENTS_MODE !== 'mainnet' ||
+        environment.MARKET_DATA_PROVIDER !== 'LIVE_READ_ONLY' ||
+        environment.NEAR_NETWORK !== 'mainnet')
+    ) {
       context.addIssue({
         code: 'custom',
-        message: 'General funded mainnet refinancing is disabled in this release.',
-        path: ['DEBTSHIFT_ENV'],
+        message:
+          'Mainnet mode requires live market data, committed 1Click transport, and the mainnet registry.',
+        path: ['DEBTSHIFT_MODE'],
+      });
+    }
+
+    if (
+      (environment.DEBTSHIFT_MODE === 'mainnet-readonly' ||
+        environment.DEBTSHIFT_MODE === 'mainnet') &&
+      environment.INTENTS_AUTH_TOKEN.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Official 1Click access requires an INTENTS_AUTH_TOKEN.',
+        path: ['INTENTS_AUTH_TOKEN'],
+      });
+    }
+
+    if (environment.MAINNET_EXECUTION_ENABLED && environment.DEBTSHIFT_MODE !== 'mainnet') {
+      context.addIssue({
+        code: 'custom',
+        message: 'MAINNET_EXECUTION_ENABLED may be true only in mainnet mode.',
+        path: ['MAINNET_EXECUTION_ENABLED'],
+      });
+    }
+    if (
+      (environment.DEBTSHIFT_MODE === 'testnet' ||
+        (environment.DEBTSHIFT_MODE === 'mainnet' && environment.MAINNET_EXECUTION_ENABLED)) &&
+      environment.EXECUTOR_PRIVATE_KEY.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Funded testnet or mainnet execution requires EXECUTOR_PRIVATE_KEY.',
+        path: ['EXECUTOR_PRIVATE_KEY'],
+      });
+    }
+
+    const nearWriteConfigurationRequired =
+      environment.DEBTSHIFT_MODE === 'testnet' ||
+      (environment.DEBTSHIFT_MODE === 'mainnet' && environment.MAINNET_EXECUTION_ENABLED);
+    if (
+      nearWriteConfigurationRequired &&
+      (environment.NEAR_REGISTRY_ACCOUNT.length === 0 ||
+        environment.NEAR_SIGNER_ACCOUNT_ID.length === 0 ||
+        environment.NEAR_SIGNER_PRIVATE_KEY.length === 0)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Funded testnet or mainnet execution requires the NEAR registry account and verifier signer credentials.',
+        path: ['NEAR_REGISTRY_ACCOUNT'],
+      });
+    }
+
+    const partialNearSignerConfiguration = [
+      environment.NEAR_SIGNER_ACCOUNT_ID,
+      environment.NEAR_SIGNER_PRIVATE_KEY,
+    ].filter((value) => value.length !== 0).length;
+    if (partialNearSignerConfiguration === 1) {
+      context.addIssue({
+        code: 'custom',
+        message: 'NEAR signer account and private key must be configured together.',
+        path: ['NEAR_SIGNER_ACCOUNT_ID'],
       });
     }
   });
 
 export type DebtShiftEnvironment = z.infer<typeof debtShiftEnvironmentSchema>;
 
+const explicitExecutionConfigurationKeys = [
+  'SOURCE_DEPLOYMENT_BLOCK_NUMBER',
+  'DESTINATION_DEPLOYMENT_BLOCK_NUMBER',
+  'EIP712_VERIFYING_CONTRACT',
+  'SOURCE_DEBT_TOKEN_ADDRESS',
+  'SOURCE_COLLATERAL_TOKEN_ADDRESS',
+  'SOURCE_LENDING_ADDRESS',
+  'SOURCE_VAULT_ADDRESS',
+  'SOURCE_ESCROW_ADDRESS',
+  'SOURCE_ADAPTER_ADDRESS',
+  'DESTINATION_DEBT_TOKEN_ADDRESS',
+  'DESTINATION_COLLATERAL_TOKEN_ADDRESS',
+  'DESTINATION_LENDING_ADDRESS',
+  'DESTINATION_ESCROW_ADDRESS',
+  'DESTINATION_ADAPTER_ADDRESS',
+  'EXECUTOR_ADDRESS',
+] as const;
+
+const removedEnvironmentKeys = [
+  'DEBTSHIFT_ENV',
+  'MAINNET_CANARY_ENABLED',
+  'MAINNET_CANARY_ORIGIN_ASSET',
+  'MAINNET_CANARY_DESTINATION_ASSET',
+  'MAINNET_CANARY_MAX_INPUT_UNITS',
+  'MAINNET_CANARY_RECIPIENT',
+  'MAINNET_CANARY_REFUND_RECEIVER',
+  'LOCAL_EXECUTOR_PRIVATE_KEY',
+  'LOCAL_EXECUTOR_ADDRESS',
+] as const;
+
 export function parseDebtShiftEnvironment(input: unknown): Readonly<DebtShiftEnvironment> {
-  return Object.freeze(debtShiftEnvironmentSchema.parse(input));
+  const source = isEnvironmentRecord(input) ? input : {};
+  const removed = removedEnvironmentKeys.filter((key) => Object.hasOwn(source, key));
+  if (removed.length !== 0) {
+    throw new Error(
+      `Removed environment configuration is not accepted: ${removed.join(', ')}. Use the four-mode runtime configuration.`,
+    );
+  }
+  const environment = debtShiftEnvironmentSchema.parse(input);
+  if (environment.DEBTSHIFT_MODE === 'testnet' || environment.DEBTSHIFT_MODE === 'mainnet') {
+    const missing = explicitExecutionConfigurationKeys.filter(
+      (key) => typeof source[key] !== 'string' || source[key].trim().length === 0,
+    );
+    if (missing.length !== 0) {
+      throw new Error(
+        `${environment.DEBTSHIFT_MODE} requires explicit execution deployment configuration: ${missing.join(', ')}.`,
+      );
+    }
+  }
+  return Object.freeze(environment);
+}
+
+function isEnvironmentRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+export class ExecutionModeDisabledError extends Error {
+  override readonly name = 'ExecutionModeDisabledError';
+}
+
+/**
+ * Guards entry into a workflow that can reserve funds or enqueue chain writes.
+ * Contract authorization, policy limits, and pause controls remain independent gates.
+ */
+export function assertFundedExecutionEnabled(
+  environment: Pick<DebtShiftEnvironment, 'DEBTSHIFT_MODE' | 'MAINNET_EXECUTION_ENABLED'>,
+): void {
+  if (environment.DEBTSHIFT_MODE === 'mainnet-readonly') {
+    throw new ExecutionModeDisabledError(
+      'Funded execution is unavailable in mainnet-readonly mode.',
+    );
+  }
+  if (environment.DEBTSHIFT_MODE === 'mainnet' && !environment.MAINNET_EXECUTION_ENABLED) {
+    throw new ExecutionModeDisabledError(
+      'Mainnet execution is disabled by MAINNET_EXECUTION_ENABLED=false.',
+    );
+  }
 }

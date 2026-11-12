@@ -1,7 +1,17 @@
 import {
   hashCanonicalText,
+  persistedSourceLendingAuthorizationSchema,
+  persistedTargetLendingAuthorizationSchema,
   positionSnapshotSchema,
+  signedTargetLendingAuthorizationSchema,
+  type ExecutionPlan,
+  type PersistedSourceLendingAuthorization,
+  type PersistedTargetLendingAuthorization,
   type PositionSnapshot,
+  type PreparedSourceLendingAuthorization,
+  type PreparedTargetLendingAuthorization,
+  type SubmittedSourceLendingAuthorization,
+  type SignedTargetLendingAuthorization,
 } from '@debtshift/domain';
 import { loadFoundryArtifact } from '@debtshift/protocols';
 import { Inject, Injectable } from '@nestjs/common';
@@ -22,7 +32,7 @@ export class LocalProtocolService implements ProtocolDataPort {
   readonly #sourceLendingArtifact = loadFoundryArtifact('MockSourceLending');
 
   constructor(@Inject(ConfigService) config: ConfigService) {
-    this.#environment = config.getOrThrow<string>('DEBTSHIFT_ENV');
+    this.#environment = config.getOrThrow<string>('DEBTSHIFT_MODE');
     const sourceChainId = config.getOrThrow<number>('SOURCE_CHAIN_ID');
     const destinationChainId = config.getOrThrow<number>('DESTINATION_CHAIN_ID');
     this.#sourceLending = config.getOrThrow<Address>('SOURCE_LENDING_ADDRESS');
@@ -67,10 +77,12 @@ export class LocalProtocolService implements ProtocolDataPort {
         symbol: 'dWETH',
       },
       execution: {
-        kind: 'SIMULATOR',
+        kind: 'EXECUTABLE',
+        mode: 'sandbox',
         destinationEscrow: config.getOrThrow<Address>('DESTINATION_ESCROW_ADDRESS'),
+        sourceEscrow: config.getOrThrow<Address>('SOURCE_ESCROW_ADDRESS'),
         sourceVault: config.getOrThrow<Address>('SOURCE_VAULT_ADDRESS'),
-        executor: config.getOrThrow<Address>('LOCAL_EXECUTOR_ADDRESS'),
+        executor: config.getOrThrow<Address>('EXECUTOR_ADDRESS'),
       },
     };
   }
@@ -139,6 +151,46 @@ export class LocalProtocolService implements ProtocolDataPort {
     }
   }
 
+  async prepareSourceAuthorization(
+    _plan: ExecutionPlan,
+  ): Promise<PreparedSourceLendingAuthorization> {
+    this.#assertSimulatorEnvironment();
+    return { kind: 'NONE' };
+  }
+
+  async verifySourceAuthorization(
+    input: SubmittedSourceLendingAuthorization,
+    _plan: ExecutionPlan,
+  ): Promise<PersistedSourceLendingAuthorization> {
+    this.#assertSimulatorEnvironment();
+    if (input.kind !== 'NONE') {
+      throw new Error('The sandbox source adapter does not accept an ERC-20 claim approval.');
+    }
+    return persistedSourceLendingAuthorizationSchema.parse({
+      kind: 'NONE',
+      authorization: input,
+    });
+  }
+
+  async prepareTargetAuthorization(): Promise<PreparedTargetLendingAuthorization> {
+    this.#assertSimulatorEnvironment();
+    return { kind: 'NONE' };
+  }
+
+  async verifyTargetAuthorization(
+    input: SignedTargetLendingAuthorization,
+  ): Promise<PersistedTargetLendingAuthorization> {
+    this.#assertSimulatorEnvironment();
+    const authorization = signedTargetLendingAuthorizationSchema.parse(input);
+    if (authorization.kind !== 'NONE') {
+      throw new Error('The sandbox target adapter does not accept a Morpho authorization pair.');
+    }
+    return persistedTargetLendingAuthorizationSchema.parse({
+      authorization,
+      encodedAuthorization: '0x',
+    });
+  }
+
   async #readPosition(borrower: Address, blockNumber?: bigint): Promise<readonly [bigint, bigint]> {
     const artifact = await this.#sourceLendingArtifact;
     const result = await this.#client.readContract({
@@ -160,8 +212,8 @@ export class LocalProtocolService implements ProtocolDataPort {
   }
 
   #assertSimulatorEnvironment(): void {
-    if (!['local', 'ci', 'testnet'].includes(this.#environment)) {
-      throw new Error('Local fixture routes are disabled outside simulator environments.');
+    if (this.#environment !== 'sandbox') {
+      throw new Error('Contract sandbox routes are disabled outside sandbox mode.');
     }
   }
 }

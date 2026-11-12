@@ -21,6 +21,7 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((file) => file.endsWith('.sql'))
   .sort();
 const hash = (digit: string) => `0x${digit.repeat(64)}`;
+const sourceAuthorizationEvidenceId = `0x${'16'.repeat(32)}`;
 
 describe('durable workflow and transactional outbox', () => {
   const postgres = new PGlite();
@@ -72,6 +73,9 @@ describe('durable workflow and transactional outbox', () => {
           'eip712:31337', '${hash('c')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
         ('${hash('d')}', '${hash('5')}', 'EXECUTION_PLAN_AUTHORIZATION', 1, 'WALLET',
           'eip712:31337', '${hash('e')}', '{}', now(), 'FINALIZED', 'TEST', '1'),
+        ('${sourceAuthorizationEvidenceId}', '${hash('5')}', 'SOURCE_LENDING_AUTHORIZATION', 1,
+          'SANDBOX_NOT_REQUIRED', 'eip155:31337', '${hash('7')}', '{}', now(),
+          'FINALIZED', 'TEST', '1'),
         ('${hash('f')}', '${hash('5')}', 'FINANCING_FEASIBILITY', 1,
           'DETERMINISTIC_ENGINE_V1', 'eip155:31337', '${hash('0')}', '{}', now(),
           'FINALIZED', 'TEST', '1');

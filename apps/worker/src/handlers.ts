@@ -12,11 +12,11 @@ import {
   hashCanonicalText,
   type Evidence,
   type EvidenceType,
+  type TransportProvider,
 } from '@debtshift/domain';
 import {
   verifyTransportDelivery,
   verifyTransportRefund,
-  type DeterministicTransportSimulator,
   type TransportObservation,
 } from '@debtshift/intents';
 import type { Hex } from 'viem';
@@ -77,6 +77,34 @@ export interface MigrationExecutionPort {
   ): Promise<FinalizedChainAction>;
 }
 
+export interface TransportExecutionPort {
+  readonly provider: TransportProvider;
+  bindOrigin(
+    context: MigrationExecutionContext,
+    originTransactionHash: Hex,
+  ): Promise<{
+    readonly providerReference: string;
+    readonly observationCount: number;
+  }>;
+  observe(context: MigrationExecutionContext): Promise<{
+    readonly observation: TransportObservation;
+    readonly observationCount: number;
+  }>;
+}
+
+export interface WorkflowEvidenceProviders {
+  readonly financing: string;
+  readonly liquidity: string;
+  readonly source: string;
+  readonly target: string;
+  readonly ledger: string;
+  readonly recovery: string;
+}
+
+export interface ReceiptRegistryPort {
+  finalize(context: MigrationExecutionContext): Promise<Evidence>;
+}
+
 export interface WorkflowContextStore {
   get(migrationId: string): Promise<MigrationExecutionContext>;
   listActiveFinalizedChainEvidence(migrationId: string): Promise<readonly Evidence[]>;
@@ -101,11 +129,21 @@ export class PostgresWorkflowContextStore implements WorkflowContextStore {
   }
 }
 
-export function createSimulatedWorkflowHandlers(
-  store: WorkflowContextStore,
-  execution: MigrationExecutionPort,
-  simulator: DeterministicTransportSimulator,
-): ReadonlyMap<string, CommandHandler> {
+export interface WorkflowHandlerDependencies {
+  readonly store: WorkflowContextStore;
+  readonly execution: MigrationExecutionPort;
+  readonly transport: TransportExecutionPort;
+  readonly registry: ReceiptRegistryPort;
+  readonly evidenceProviders: WorkflowEvidenceProviders;
+}
+
+export function createWorkflowHandlers({
+  store,
+  execution,
+  transport,
+  registry,
+  evidenceProviders,
+}: WorkflowHandlerDependencies): ReadonlyMap<string, CommandHandler> {
   return new Map<string, CommandHandler>([
     [
       'RESERVE_LIQUIDITY',
@@ -115,13 +153,13 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'LIQUIDITY_RESERVATION',
-            'LOCAL_TEST_VAULT',
+            evidenceProviders.liquidity,
             action,
           ),
         ];
@@ -139,13 +177,13 @@ export function createSimulatedWorkflowHandlers(
             chainEvidence(
               context.migration.migrationId,
               'FINANCING_REVALIDATION',
-              'DEBTSHIFT_RISK_VALIDATOR',
+              evidenceProviders.financing,
               error.action,
             ),
             chainEvidence(
               context.migration.migrationId,
               'REQUOTE_REQUIRED',
-              'LOCAL_TEST_VAULT',
+              evidenceProviders.liquidity,
               error.action,
             ),
           ];
@@ -154,13 +192,13 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'SOURCE_CLOSE',
-            'LOCAL_SOURCE_ADAPTER',
+            evidenceProviders.source,
             action,
           ),
         ];
@@ -170,22 +208,18 @@ export function createSimulatedWorkflowHandlers(
       'DISPATCH_TRANSPORT',
       handler(store, execution, async (context) => {
         const action = await execution.dispatchTransport(context);
-        restoreSimulator(simulator, context);
-        const providerReference = await simulator.submitOrigin({
-          quoteHash: context.quote.quoteHash as Hex,
-          originTransactionHash: action.transactionHash,
-        });
+        const binding = await transport.bindOrigin(context, action.transactionHash);
         await store.updateTransport(context.migration.migrationId, {
           providerState: 'PROCESSING',
-          providerReference,
+          providerReference: binding.providerReference,
           originTransactionHash: action.transactionHash,
-          observationCount: simulator.getState(providerReference).pollCount,
+          observationCount: binding.observationCount,
         });
         return [
           chainEvidence(
             context.migration.migrationId,
             'TRANSPORT_ORIGIN',
-            'DEBTSHIFT_SIMULATOR',
+            transport.provider,
             action,
           ),
         ];
@@ -194,14 +228,11 @@ export function createSimulatedWorkflowHandlers(
     [
       'VERIFY_DESTINATION',
       handler(store, execution, async (context) => {
-        restoreSimulator(simulator, context);
-        const providerReference = context.transportLeg.providerReference ?? context.quote.quoteId;
-        const observation = await simulator.getStatus(providerReference);
-        const state = simulator.getState(providerReference);
+        const { observation, observationCount } = await transport.observe(context);
         await store.updateTransport(context.migration.migrationId, {
           providerState: observation.status,
-          providerReference,
-          observationCount: state.pollCount,
+          providerReference: observation.providerReference,
+          observationCount,
           ...(observation.destinationTransactionHash === undefined
             ? {}
             : { destinationTransactionHash: observation.destinationTransactionHash }),
@@ -230,7 +261,7 @@ export function createSimulatedWorkflowHandlers(
             chainEvidence(
               context.migration.migrationId,
               'TRANSPORT_DESTINATION',
-              'DEBTSHIFT_SIMULATOR',
+              observation.provider,
               action,
               observation,
             ),
@@ -266,7 +297,7 @@ export function createSimulatedWorkflowHandlers(
             chainEvidence(
               context.migration.migrationId,
               'FINANCING_REVALIDATION',
-              'DEBTSHIFT_RISK_VALIDATOR',
+              evidenceProviders.financing,
               error.action,
             ),
             capacityDeteriorationRecoveryEvidence(context, error.action),
@@ -276,13 +307,13 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'TARGET_POSITION',
-            'LOCAL_TARGET_ADAPTER',
+            evidenceProviders.target,
             action,
           ),
         ];
@@ -296,19 +327,19 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'LIQUIDITY_SETTLEMENT',
-            'LOCAL_TEST_VAULT',
+            evidenceProviders.liquidity,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'LEDGER_RECONCILIATION',
-            'DEBTSHIFT_LEDGER',
+            evidenceProviders.ledger,
             action,
           ),
         ];
@@ -316,11 +347,7 @@ export function createSimulatedWorkflowHandlers(
     ],
     [
       'FINALIZE_NEAR_RECEIPT',
-      {
-        execute: async () => {
-          throw new RetryableCommandError('NEAR receipt finalization is not enabled before M7.');
-        },
-      },
+      handler(store, execution, async (context) => [await registry.finalize(context)]),
     ],
     [
       'EXECUTE_RECOVERY',
@@ -331,7 +358,7 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'RECOVERY_COMPLETED',
-            'LOCAL_RECOVERY',
+            evidenceProviders.recovery,
             await execution.executeRecovery(context, 'POLICY_SELECTED_RECOVERY'),
           ),
         ],
@@ -459,18 +486,6 @@ function canonicalityFailureEvidence(
     });
   });
   return [outcome, ...retractions];
-}
-
-function restoreSimulator(
-  simulator: DeterministicTransportSimulator,
-  context: MigrationExecutionContext,
-): void {
-  simulator.restoreQuote(context.quote, {
-    pollCount: context.transportLeg.observationCount,
-    ...(context.transportLeg.originTransactionHash === null
-      ? {}
-      : { originTransactionHash: context.transportLeg.originTransactionHash as Hex }),
-  });
 }
 
 function chainEvidence(

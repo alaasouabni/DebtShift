@@ -177,6 +177,14 @@ export async function deployLocalDebtShift(
     sourceDebtToken,
     20_000_000_000n,
   ]);
+  await write(
+    sourceDeployer,
+    sourcePublicClient,
+    artifacts.testToken.abi,
+    sourceDebtToken,
+    'mint',
+    [deployerAccount.address, 100_000_000_000n],
+  );
 
   const destinationDebtToken = await deploy(
     destinationDeployer,

@@ -18,6 +18,7 @@ export interface PhaseEvidence {
   readonly routeQuote: boolean;
   readonly intentAuthorization: boolean;
   readonly executionPlanAuthorization: boolean;
+  readonly sourceLendingAuthorization: boolean;
   readonly financingFeasibility: boolean;
   readonly financingRevalidation: boolean;
   readonly supplementaryFunding: boolean;
@@ -40,6 +41,7 @@ const evidenceFieldByType: Readonly<Record<EvidenceType, keyof PhaseEvidence>> =
   ROUTE_QUOTE: 'routeQuote',
   INTENT_AUTHORIZATION: 'intentAuthorization',
   EXECUTION_PLAN_AUTHORIZATION: 'executionPlanAuthorization',
+  SOURCE_LENDING_AUTHORIZATION: 'sourceLendingAuthorization',
   FINANCING_FEASIBILITY: 'financingFeasibility',
   FINANCING_REVALIDATION: 'financingRevalidation',
   SUPPLEMENTARY_FUNDING: 'supplementaryFunding',
@@ -63,6 +65,7 @@ export function phaseEvidenceFromRecords(records: readonly Evidence[]): PhaseEvi
     routeQuote: false,
     intentAuthorization: false,
     executionPlanAuthorization: false,
+    sourceLendingAuthorization: false,
     financingFeasibility: false,
     financingRevalidation: false,
     supplementaryFunding: false,
@@ -122,6 +125,7 @@ export function deriveMigrationPhase(evidence: PhaseEvidence): MigrationPhase {
   const authorized =
     evidence.intentAuthorization &&
     evidence.executionPlanAuthorization &&
+    evidence.sourceLendingAuthorization &&
     evidence.financingFeasibility;
   const settled = evidence.liquiditySettlement && evidence.ledgerReconciliation;
   const predicates: readonly [MigrationPhase, boolean][] = [

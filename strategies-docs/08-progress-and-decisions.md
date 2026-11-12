@@ -4,20 +4,20 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Milestone tracker
 
-| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                     |
-| ----------------------------------- | ----------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                             |
-| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                              |
-| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                        |
-| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                     |
-| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-11 | Production Aave and Morpho modules pass the complete signed-adapter flow at pinned Base state; authorization, rollback, event payloads, feasibility, escrow, settlement, unit/fuzz/invariant gates all pass.                         |
-| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                  |
-| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, and source/destination reorg guards pass; remaining recovery, alerting, and ledger branches remain.  |
-| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                    |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and a compiling sandbox test exist; the supported Linux sandbox run and CI remain. |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Live reads and dry-only client exist, but the worker is simulator-bound. It must be refactored to one workflow with sandbox, testnet, mainnet-readonly, and full mainnet compositions before deployment.                             |
-| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                    |
-| M10 Reproducible release            | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                    |
+| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                                                        |
+| ----------------------------------- | ----------- | ---------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                                                                |
+| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                                                                 |
+| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                                                           |
+| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                        |
+| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-11 | Production Aave and Morpho modules pass the complete signed-adapter flow at pinned Base state; authorization, rollback, event payloads, feasibility, escrow, settlement, unit/fuzz/invariant gates all pass.                                                            |
+| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                     |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, and source/destination reorg guards pass; remaining recovery, alerting, and ledger branches remain.                                     |
+| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                       |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and a compiling sandbox test exist; the supported Linux sandbox run and CI remain.                                    |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, strict composition, generic preparation metadata, and sandbox adapters now pass the full TypeScript gate. Committed 1Click, registry, testnet, and mainnet execution adapters remain. |
+| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                       |
+| M10 Reproducible release            | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                       |
 
 ## Submission-critical mode
 
@@ -35,11 +35,12 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Current active task
 
-- **Task:** P0.2 - extract the worker into one provider-neutral workflow and mode-specific composition
-  roots.
+- **Task:** P0.3 - implement the official committed 1Click lifecycle and production execution
+  adapter composition for the one configured route.
 - **Status:** NOT_STARTED
-- **Next verification:** Prove that production handlers import only execution ports, sandbox is an
-  adapter for the same handlers, and `mainnet-readonly` cannot construct write-capable providers.
+- **Next verification:** Validate current official request/status schemas, bind the committed quote
+  and deposit address to the signed plan, persist raw observations, and prove mainnet cannot receive
+  sandbox adapters or broadcast while the execution switch is false.
 
 ## Decision log
 
@@ -317,6 +318,29 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-12 - Four-mode runtime and provider-neutral worker boundary implemented
+
+- Replaced `local`, `ci`, `mainnet-canary`, and `mainnet-controlled` runtime values with exactly
+  `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet`. Removed canary configuration and made
+  legacy variables fail startup instead of silently selecting defaults.
+- Added `MAINNET_EXECUTION_ENABLED=false` by default. API scheduling and all worker command handlers
+  reject mainnet execution while disabled; `mainnet-readonly` constructs no write-capable adapters.
+- Required explicit execution deployment addresses in testnet and mainnet so production cannot
+  inherit deterministic Anvil addresses. Renamed sandbox-only executor configuration accordingly.
+- Replaced the simulator-specific handler factory with one workflow over execution, transport, and
+  receipt-registry ports. Evidence provider identities are injected, and strict composition rejects
+  mode or transport-provider mismatches.
+- Kept the deterministic transport implementation behind a sandbox adapter while the same handler
+  flow continues to execute real dual-Anvil contract transactions and independently verified
+  receipts. Transport evidence now rejects provider and simulated/live mode mismatches.
+- Generalized route preparation and UI metadata from a simulation-only response to runtime execution
+  metadata. Live protocol routes can expose explicit testnet/mainnet execution bindings, while
+  `mainnet-readonly` remains non-executable.
+- `npm run check` passed across all ten workspaces: formatting, lint, typecheck, 138 TypeScript tests
+  (with the opt-in production fork test skipped), and production builds including Next.js.
+- No mainnet transaction, committed 1Click request, external deployment, or fund movement occurred.
+  The worker still fails closed when testnet or enabled-mainnet adapters are absent.
 
 ### 2026-11-12 - Submission architecture corrected before implementation
 
