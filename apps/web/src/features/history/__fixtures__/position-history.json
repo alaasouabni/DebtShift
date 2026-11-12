@@ -1,0 +1,88 @@
+[
+  {
+    "position": {
+      "positionId": "0x126dbb1e057f980a423c60074f2a7c7075c4e57347a99abc37799cf925e527de",
+      "walletId": "6031f31e-910d-44d7-a2e8-7c64c38848d0",
+      "marketPk": "442bd025-d691-41f6-9ffb-e9219593efbc",
+      "protocolPositionId": "0x126dbb1e057f980a423c60074f2a7c7075c4e57347a99abc37799cf925e527de",
+      "latestSnapshotId": "0x2738055103ca9c1dc255b863221219fb9cfd1d3641db2cc23802069dc65ff846",
+      "active": true,
+      "discoveredAt": "2026-11-11T22:51:40.000Z",
+      "createdAt": "2026-11-11T22:51:43.691Z",
+      "updatedAt": "2026-11-11T22:59:59.456Z"
+    },
+    "market": {
+      "marketPk": "442bd025-d691-41f6-9ffb-e9219593efbc",
+      "chainId": "31337",
+      "protocol": "LOCAL_AAVE_MOCK",
+      "deployment": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "marketId": "0x456866d088913085255907bec2d30e1262f40446d4927fbba78207114cfb29e0",
+      "debtAsset": {
+        "symbol": "sUSDC",
+        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "chainId": 31337,
+        "decimals": 6
+      },
+      "collateralAsset": {
+        "symbol": "sWETH",
+        "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+        "chainId": 31337,
+        "decimals": 18
+      },
+      "enabled": true,
+      "metadata": {},
+      "createdAt": "2026-11-11T22:51:43.691Z",
+      "updatedAt": "2026-11-11T22:59:59.451Z"
+    },
+    "snapshot": {
+      "snapshotId": "0x2738055103ca9c1dc255b863221219fb9cfd1d3641db2cc23802069dc65ff846",
+      "positionId": "0x126dbb1e057f980a423c60074f2a7c7075c4e57347a99abc37799cf925e527de",
+      "chainId": "31337",
+      "blockNumber": "17",
+      "blockHash": "0x0b9fc1757d4f8122d5ff555a9389582eda18e674eb2510de8cc3eec7d945f2e0",
+      "debtUnits": "10000000000",
+      "collateralUnits": "10000000000000000000",
+      "healthFactorWad": "1500000000000000000",
+      "ltvBps": null,
+      "payload": {
+        "block": {
+          "hash": "0x0b9fc1757d4f8122d5ff555a9389582eda18e674eb2510de8cc3eec7d945f2e0",
+          "number": "17",
+          "observedAt": "2026-11-11T22:59:38.000Z"
+        },
+        "health": {
+          "kind": "AAVE_HEALTH_FACTOR",
+          "healthFactorWad": "1500000000000000000"
+        },
+        "position": {
+          "market": {
+            "chainId": 31337,
+            "marketId": "0x456866d088913085255907bec2d30e1262f40446d4927fbba78207114cfb29e0",
+            "protocol": "LOCAL_AAVE_MOCK",
+            "deployment": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+          },
+          "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+          "debtAsset": {
+            "symbol": "sUSDC",
+            "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "chainId": 31337,
+            "decimals": 6
+          },
+          "collateralAsset": {
+            "symbol": "sWETH",
+            "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+            "chainId": 31337,
+            "decimals": 18
+          }
+        },
+        "debtUnits": "10000000000",
+        "snapshotId": "0x2738055103ca9c1dc255b863221219fb9cfd1d3641db2cc23802069dc65ff846",
+        "borrowAprBps": 700,
+        "collateralUnits": "10000000000000000000"
+      },
+      "rawResponseHash": "0x7bca79e4c31e27d218a2f4959a09524ac246cdc0ba534da0b20388bd8d674b22",
+      "observedAt": "2026-11-11T22:59:38.000Z",
+      "createdAt": "2026-11-11T22:59:59.440Z"
+    }
+  }
+]
