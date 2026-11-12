@@ -30,10 +30,18 @@ import {
   PHASE_LABELS,
   VERIFICATION_STATE_LABELS,
 } from '../../lib/labels';
+import { flowStageForPhase } from '../../components/flow/flow-stage';
+import { MigrationFlow } from '../../components/flow/migration-flow';
 import { explorerTransactionUrl } from '../../lib/chains';
+import { isDemoActive } from '../../lib/demo';
 import { MIGRATION_STORAGE_KEY } from '../../lib/storage-keys';
 import { useEnvironment } from '../environment/environment-context';
-import { evidenceProvenanceLine, isSimulatedTransport, readRecoveryReason } from './evidence-line';
+import {
+  evidenceProvenanceLine,
+  isSimulatedTransport,
+  readFlowLabels,
+  readRecoveryReason,
+} from './evidence-line';
 import { buildTimeline, isOffTrack, phasePosition } from './phase-timeline';
 import { useMigrationPolling } from './use-migration';
 
@@ -132,6 +140,9 @@ export function MigrationView({ migrationId }: { readonly migrationId: string })
 
 function EnvironmentNote() {
   const { badge } = useEnvironment();
+  // Read from the demo flag, not the wallet context: the monitor has to work
+  // with no wallet at all, for instance from a shared link.
+  const label = isDemoActive() ? 'Recorded sandbox run' : badge.label;
   return (
     <div role="note" style={{ background: 'var(--accent-soft)', color: 'var(--ink)' }}>
       <div
@@ -146,7 +157,7 @@ function EnvironmentNote() {
           lineHeight: '20px',
         }}
       >
-        <strong>{badge.label}</strong>
+        <strong>{label}</strong>
         {/*
           The sandbox is contract-backed: the chain transactions below are
           real ones on their chains. Only the transport provider can be a
@@ -185,6 +196,7 @@ function MigrationHero({
   const label = PHASE_LABELS[phase];
   const timeline = useMemo(() => buildTimeline(phase, details.events), [phase, details.events]);
   const position = phasePosition(phase);
+  const flowLabels = useMemo(() => readFlowLabels(details.evidence), [details.evidence]);
 
   return (
     <section
@@ -204,18 +216,7 @@ function MigrationHero({
         <PollIndicator poll={poll} />
       </div>
 
-      <h1
-        className="hero__title"
-        style={{
-          margin: 0,
-          fontSize: 96,
-          lineHeight: '96px',
-          fontWeight: 700,
-          letterSpacing: '-0.035em',
-        }}
-      >
-        {label.label}.
-      </h1>
+      <h1 className="hero-title">{label.label}.</h1>
 
       {/*
         The phase caption is announced: a borrower watching this page should
@@ -226,14 +227,29 @@ function MigrationHero({
         className="hero__lede"
         style={{
           margin: 0,
-          fontSize: 24,
-          lineHeight: '34px',
+          fontSize: 20,
+          lineHeight: '30px',
           color: 'var(--ink-muted)',
           maxWidth: 820,
         }}
       >
         {label.caption}
       </p>
+
+      {/*
+        The same cross-chain picture as the landing page, but here it is not
+        an illustration: its stage is derived from the phase the API reported
+        and nothing else, so it can never run ahead of the backend.
+      */}
+      <div className="glass" style={{ padding: 'var(--space-5)', maxWidth: 860 }}>
+        <MigrationFlow
+          stage={flowStageForPhase(phase)}
+          transportLabel={flowLabels.transport}
+          source={{ protocol: 'Source market', chain: flowLabels.sourceChain }}
+          destination={{ protocol: 'Destination market', chain: flowLabels.destinationChain }}
+          compact
+        />
+      </div>
 
       {poll.status === 'retrying' ? (
         <Alert

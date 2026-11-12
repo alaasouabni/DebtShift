@@ -23,6 +23,7 @@ import type {
   PreparedMigration,
   RouteAnalysisResponse,
 } from './types';
+import { demoClient } from '../demo';
 
 /** Stable codes for UI routing. The HTTP status is preserved alongside. */
 export type ApiErrorCode =
@@ -287,5 +288,49 @@ export class DebtShiftApi {
   }
 }
 
-/** The shared browser client. */
-export const api = new DebtShiftApi();
+/** The calls every screen makes. The live client and the recorded demo both answer them. */
+export interface ApiSurface {
+  readonly baseUrl: string;
+  health(signal?: AbortSignal): Promise<HealthResponse>;
+  position(wallet: string, signal?: AbortSignal): Promise<PositionSnapshot | undefined>;
+  positionHistory(wallet: string, signal?: AbortSignal): Promise<PersistedPositionRow[]>;
+  markets(signal?: AbortSignal): Promise<MarketRow[]>;
+  analyzeRoutes(
+    wallet: string,
+    explanation?: ExplanationConfiguration,
+    signal?: AbortSignal,
+  ): Promise<RouteAnalysisResponse>;
+  prepare(borrower: string, signal?: AbortSignal): Promise<PreparedMigration>;
+  execute(request: ExecuteRequest, signal?: AbortSignal): Promise<ExecuteResponse>;
+  migration(migrationId: string, signal?: AbortSignal): Promise<MigrationDetails>;
+}
+
+const liveClient = new DebtShiftApi();
+
+/** The live client, or the recorded one while this tab is in the demo. */
+function current(): ApiSurface {
+  return demoClient() ?? liveClient;
+}
+
+/**
+ * The shared browser client.
+ *
+ * A thin facade: each call goes to the live API, or to the recorded demo when
+ * the demo is active. The choice is made per call, so a reload in the middle
+ * of the demo can never fall through to a real backend, and leaving the demo
+ * takes effect immediately.
+ */
+export const api: ApiSurface = {
+  get baseUrl() {
+    return current().baseUrl;
+  },
+  health: (signal) => current().health(signal),
+  position: (wallet, signal) => current().position(wallet, signal),
+  positionHistory: (wallet, signal) => current().positionHistory(wallet, signal),
+  markets: (signal) => current().markets(signal),
+  analyzeRoutes: (wallet, explanation, signal) =>
+    current().analyzeRoutes(wallet, explanation, signal),
+  prepare: (borrower, signal) => current().prepare(borrower, signal),
+  execute: (request, signal) => current().execute(request, signal),
+  migration: (migrationId, signal) => current().migration(migrationId, signal),
+};

@@ -14,8 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as ApiClient from '../../lib/api/client';
 import type { MarketRow, PersistedPositionRow } from '../../lib/api/types';
-import marketsFixture from './__fixtures__/markets.json' with { type: 'json' };
-import historyFixture from './__fixtures__/position-history.json' with { type: 'json' };
+import marketsFixture from '../../lib/demo/recordings/markets.json' with { type: 'json' };
+import historyFixture from '../../lib/demo/recordings/position-history.json' with { type: 'json' };
 
 const history = historyFixture as unknown as PersistedPositionRow[];
 const markets = marketsFixture as unknown as MarketRow[];

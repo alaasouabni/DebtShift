@@ -13,6 +13,7 @@
  */
 
 import type { Evidence } from '../../lib/api/types';
+import { chainName } from '../../lib/chains';
 import { formatInteger } from '../../lib/formatting';
 
 /** True when a value is neither null nor undefined. */
@@ -75,4 +76,34 @@ export function readRecoveryReason(
   if (typeof reason !== 'string' || reason.trim() === '') return undefined;
   const policy = opened?.normalizedPayload.policy;
   return typeof policy === 'string' && policy.trim() !== '' ? { reason, policy } : { reason };
+}
+
+/**
+ * The labels for the cross-chain picture on the monitor, read from evidence.
+ *
+ * The migration record itself does not name its markets, so the two chains are
+ * taken from where the evidence says things happened: the source chain is
+ * where the source position was observed, the destination chain is the first
+ * other chain any evidence was recorded on. When the evidence does not say,
+ * the label says "not yet recorded" — it is never guessed.
+ */
+export function readFlowLabels(evidence: readonly Evidence[]): {
+  readonly sourceChain: string;
+  readonly destinationChain: string;
+  readonly transport: string;
+} {
+  const sourceChainId =
+    evidence.find((item) => item.type === 'SOURCE_POSITION_SNAPSHOT' && present(item.chainId))
+      ?.chainId ?? evidence.find((item) => present(item.chainId))?.chainId;
+  const destinationChainId = evidence.find(
+    (item) => present(item.chainId) && item.chainId !== sourceChainId,
+  )?.chainId;
+
+  return {
+    sourceChain: present(sourceChainId) ? chainName(sourceChainId) : 'Chain not yet recorded',
+    destinationChain: present(destinationChainId)
+      ? chainName(destinationChainId)
+      : 'Chain not yet recorded',
+    transport: evidence.some(isSimulatedTransport) ? 'Simulated transport' : 'Transport',
+  };
 }

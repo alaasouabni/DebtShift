@@ -22,8 +22,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ApiClient from '../../lib/api/client';
 
 import type { MigrationDetails, MigrationPhase } from '../../lib/api/types';
-import recoveryFixture from './__fixtures__/migration-recovery.json' with { type: 'json' };
-import fixture from './__fixtures__/migration-settled.json' with { type: 'json' };
+import recoveryFixture from '../../lib/demo/recordings/migration-recovery.json' with { type: 'json' };
+import fixture from '../../lib/demo/recordings/migration-settled.json' with { type: 'json' };
 
 const settled = fixture as unknown as MigrationDetails;
 
@@ -265,7 +265,12 @@ describe('real receipts and simulated transport', () => {
     const simulated = settled.evidence.filter((item) => item.provider === 'DEBTSHIFT_SIMULATOR');
     expect(simulated.length).toBeGreaterThan(0);
     expect(simulated.length).toBeLessThan(settled.evidence.length);
-    expect(screen.getAllByText('Simulated transport')).toHaveLength(simulated.length);
+    // The phrase also labels the lane of the flow picture, so count the
+    // per-row badges specifically.
+    const badges = screen
+      .getAllByText('Simulated transport')
+      .filter((element) => element.classList.contains('dsh-badge'));
+    expect(badges).toHaveLength(simulated.length);
   });
 
   it('says chain transactions are real and a simulated observation is not 1Click', async () => {
@@ -336,5 +341,52 @@ describe('a real migration in recovery', () => {
   it('keeps polling, because recovery is not a final phase', async () => {
     await renderMigration(recovery);
     expect(screen.getByText(/Live · polling/)).toBeDefined();
+  });
+});
+
+/* ------------------------------------------------- the cross-chain picture */
+
+describe('the flow picture on the monitor', () => {
+  it('shows the stage that matches the authoritative phase', async () => {
+    const { container } = await renderMigration();
+    // SETTLED: the destination holds the loan.
+    expect(container.querySelector('.flow')?.getAttribute('data-stage')).toBe('settled');
+    expect(container.querySelector('.flow__node[data-role="to"]')?.className).toContain(
+      'is-active',
+    );
+  });
+
+  it('names the two chains from the evidence, not from a constant', async () => {
+    const { container } = await renderMigration();
+    const chains = [...container.querySelectorAll('.flow__chain')].map((node) => node.textContent);
+    expect(chains).toEqual(['Sandbox source chain · 31337', 'Sandbox destination chain · 31338']);
+  });
+
+  it('labels the lane as simulated when the transport evidence is simulated', async () => {
+    const { container } = await renderMigration();
+    expect(container.querySelector('.flow__lane-label')?.textContent).toBe('Simulated transport');
+  });
+
+  it('runs the lane backwards during recovery', async () => {
+    const { container } = await renderMigration(withPhase('RECOVERY'));
+    expect(container.querySelector('.flow')?.getAttribute('data-stage')).toBe('returning');
+    expect(container.querySelector('.flow__lane')?.getAttribute('data-direction')).toBe('backward');
+  });
+
+  it('shows nothing moving when a new plan is required', async () => {
+    const { container } = await renderMigration(withPhase('REQUOTE_REQUIRED'));
+    expect(container.querySelector('.flow')?.getAttribute('data-stage')).toBe('stopped');
+    expect(container.querySelector('.flow__lane')?.getAttribute('data-direction')).toBe('none');
+    // The source still holds the loan.
+    expect(container.querySelector('.flow__node[data-role="from"]')?.className).toContain(
+      'is-active',
+    );
+  });
+
+  it('always states the stage in words, not only by animation', async () => {
+    const { container } = await renderMigration();
+    const caption = container.querySelector('.flow__caption');
+    expect(caption?.textContent).toContain('Solver repaid');
+    expect(caption?.getAttribute('aria-live')).toBe('polite');
   });
 });

@@ -13,6 +13,8 @@
  * raw string is the authority.
  */
 
+import { now as currentTime } from '../clock';
+
 export interface BaseUnitFormatOptions {
   /**
    * Fraction digits to show, fixed. Extra digits are truncated, not rounded;
@@ -177,14 +179,14 @@ export function formatTimestamp(iso: string): string {
 }
 
 /** Whole seconds between two instants, negative when `iso` is in the future. */
-export function secondsSince(iso: string, now: Date = new Date()): number {
+export function secondsSince(iso: string, now: Date = currentTime()): number {
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) return 0;
   return Math.floor((now.getTime() - parsed) / 1000);
 }
 
 /** `'14 s ago'`, `'3 min ago'`, `'in 2 min'`. */
-export function formatRelativeAge(iso: string, now: Date = new Date()): string {
+export function formatRelativeAge(iso: string, now: Date = currentTime()): string {
   const seconds = secondsSince(iso, now);
   const future = seconds < 0;
   const magnitude = formatDuration(Math.abs(seconds));
@@ -216,7 +218,7 @@ export function formatDuration(totalSeconds: number): string {
  * integer string). Clamped at zero. Uses BigInt so a far-future deadline cannot
  * overflow.
  */
-export function secondsUntilUnix(unixSeconds: string, now: Date = new Date()): number {
+export function secondsUntilUnix(unixSeconds: string, now: Date = currentTime()): number {
   assertIntegerString(unixSeconds, 'A unix deadline');
   const nowSeconds = BigInt(Math.floor(now.getTime() / 1000));
   const remaining = BigInt(unixSeconds) - nowSeconds;
@@ -226,7 +228,7 @@ export function secondsUntilUnix(unixSeconds: string, now: Date = new Date()): n
 }
 
 /** Seconds remaining until an ISO timestamp. Clamped at zero. */
-export function secondsUntilIso(iso: string, now: Date = new Date()): number {
+export function secondsUntilIso(iso: string, now: Date = currentTime()): number {
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) return 0;
   return Math.max(0, Math.floor((parsed - now.getTime()) / 1000));
@@ -297,4 +299,19 @@ export function formatInteger(value: string): string {
   const negative = value.startsWith('-');
   const digits = negative ? value.slice(1) : value;
   return `${negative ? '-' : ''}${groupThousands(digits.replace(/^0+(?=\d)/u, ''))}`;
+}
+
+/**
+ * A backend identifier as readable words: `LOCAL_AAVE_MOCK` → `Local Aave Mock`,
+ * `local-morpho-balanced` → `Local Morpho Balanced`.
+ *
+ * Presentation only. The raw identifier is what the backend means, so wherever
+ * identity matters it is still shown, in monospace, beside this.
+ */
+export function humanizeIdentifier(identifier: string): string {
+  return identifier
+    .split(/[_\-\s]+/u)
+    .filter((word) => word !== '')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }

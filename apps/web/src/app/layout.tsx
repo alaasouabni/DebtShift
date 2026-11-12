@@ -7,6 +7,7 @@ import { WalletProvider } from '../features/wallet/wallet-context';
 import { THEME_BOOTSTRAP_SCRIPT } from '../lib/theme';
 
 import './globals.css';
+import './app-look.css';
 
 export const metadata: Metadata = {
   title: 'DebtShift | Safer cross-chain refinancing',

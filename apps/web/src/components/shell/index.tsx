@@ -18,6 +18,7 @@ import { chainLabel, isConnected, useWallet } from '../../features/wallet/wallet
 import { chainName } from '../../lib/chains';
 import { truncateHex } from '../../lib/formatting/index';
 import { useEnvironment } from '../../features/environment/environment-context';
+import { defaultEnvironmentMode } from '../../lib/environment';
 import { ThemeToggle } from '../../features/theme/theme-toggle';
 import { Badge, Button } from '../ui/index';
 
@@ -116,8 +117,30 @@ export function HashValue({
  * backend has not confirmed it yet. It is never a control: nothing here can
  * change what the backend allows.
  */
-export function EnvironmentBadge() {
+export function EnvironmentBadge({ quietUntilReported = false }: { quietUntilReported?: boolean }) {
   const { badge, confirmed } = useEnvironment();
+  const { isDemo } = useWallet();
+  /*
+   * On the landing page, before any backend response, there is nothing to
+   * report yet — and "not reported yet" reads like a fault to a first-time
+   * visitor. The badge stays out of the way there unless the deployment
+   * configured a label, and is always shown once the journey starts.
+   */
+  if (quietUntilReported && !confirmed && !isDemo && defaultEnvironmentMode() === undefined) {
+    return null;
+  }
+  if (isDemo) {
+    return (
+      <span data-environment-confirmed="demo">
+        <Badge
+          tone="warning"
+          title="Recorded responses from the contract-backed sandbox. No wallet, no backend, nothing executes."
+        >
+          Recorded sandbox run
+        </Badge>
+      </span>
+    );
+  }
   return (
     <span data-environment-confirmed={confirmed ? 'true' : 'false'}>
       <Badge tone={badge.tone} title={badge.title}>
@@ -134,6 +157,65 @@ export function SiteHeader() {
   const wallet = useWallet();
   const connected = isConnected(wallet);
 
+  return (
+    <div className="topbar">
+      {wallet.isDemo ? <DemoBanner onExit={wallet.exitDemo} /> : null}
+      <SiteHeaderBar pathname={pathname} wallet={wallet} connected={connected} />
+    </div>
+  );
+}
+
+/**
+ * The strip that stays on every screen of the recorded demo.
+ *
+ * It is what keeps the demo honest: a judge must never be able to mistake a
+ * replay for a live session, on any page, at any scroll position.
+ */
+function DemoBanner({ onExit }: { readonly onExit: () => void }) {
+  return (
+    <div
+      role="status"
+      style={{
+        background: 'var(--warning-soft)',
+        color: 'var(--ink)',
+        borderBottom: '1px solid var(--line)',
+      }}
+    >
+      <div
+        className="page"
+        style={{
+          padding: '10px var(--page-gutter)',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '4px 16px',
+          alignItems: 'center',
+          fontSize: 14,
+          lineHeight: '20px',
+        }}
+      >
+        <strong>Recorded demo.</strong>
+        <span>
+          Real responses captured on the contract-backed sandbox, replayed. No wallet is connected
+          and nothing is signed or executed.
+        </span>
+        <span style={{ flexGrow: 1 }} />
+        <Button variant="secondary" size="sm" onClick={onExit}>
+          Exit demo
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SiteHeaderBar({
+  pathname,
+  wallet,
+  connected,
+}: {
+  readonly pathname: string;
+  readonly wallet: ReturnType<typeof useWallet>;
+  readonly connected: boolean;
+}) {
   return (
     <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--line)' }}>
       <div
@@ -210,7 +292,7 @@ export function SiteHeader() {
           className="hdr__env"
           style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}
         >
-          <EnvironmentBadge />
+          <EnvironmentBadge quietUntilReported={pathname === '/'} />
           <ThemeToggle />
         </div>
 
@@ -221,20 +303,28 @@ export function SiteHeader() {
           {connected ? (
             <>
               <span style={{ display: 'flex', flexDirection: 'column', textAlign: 'right' }}>
-                <span className="mono">{truncateHex(wallet.account)}</span>
+                <span className="mono">{truncateHex(wallet.account ?? '')}</span>
                 <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-muted)' }}>
                   {chainLabel(wallet.chainId)}
                 </span>
               </span>
-              <Button variant="secondary" size="sm" onClick={wallet.disconnect}>
-                Disconnect
-              </Button>
+              {wallet.isDemo ? null : (
+                <Button variant="secondary" size="sm" onClick={wallet.disconnect}>
+                  Disconnect
+                </Button>
+              )}
             </>
+          ) : wallet.status === 'unavailable' ? (
+            // No wallet in this browser: a disabled "Connect" is a dead end,
+            // so the header offers the one thing that works here.
+            <Button size="sm" variant="secondary" onClick={wallet.enterDemo}>
+              Recorded demo
+            </Button>
           ) : (
             <Button
               size="sm"
               onClick={() => void wallet.connect()}
-              disabled={wallet.status === 'connecting' || wallet.status === 'unavailable'}
+              disabled={wallet.status === 'connecting'}
             >
               {wallet.status === 'connecting' ? 'Connecting…' : 'Connect wallet'}
             </Button>
@@ -248,11 +338,29 @@ export function SiteHeader() {
 /* ------------------------------------------------------------------- footer */
 
 export function SiteFooter() {
-  const [health, setHealth] = useState<{ ok: boolean; at?: string }>({ ok: false });
+  const wallet = useWallet();
+  // `checked` separates "not asked yet" from "asked and down": the footer used
+  // to flash "API unreachable" on every page load before the first answer.
+  const [health, setHealth] = useState<{ ok: boolean; at?: string; checked: boolean }>({
+    ok: false,
+    checked: false,
+  });
+  /*
+   * Set after mount, never during render. The API base differs between the
+   * server render and a browser tab that is in the recorded demo, and deriving
+   * the link while rendering made the two disagree (a hydration mismatch).
+   */
+  const [docsUrl, setDocsUrl] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    setDocsUrl(wallet.isDemo ? undefined : `${api.baseUrl.replace(/\/v1$/u, '')}/docs`);
+  }, [wallet.isDemo]);
   // Which chains this deployment works on comes from the backend's enabled
   // markets, not from a constant: the footer used to say 31337/31338 for
   // everyone, which is only true of the local sandbox.
   const [chainIds, setChainIds] = useState<readonly number[]>([]);
+  // Separate from the health check: the two answers arrive at different times.
+  const [chainsLoaded, setChainsLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -261,9 +369,13 @@ export function SiteFooter() {
         if (cancelled) return;
         const ids = [...new Set(markets.map((market) => market.chainId))].sort((a, b) => a - b);
         setChainIds(ids);
+        setChainsLoaded(true);
       },
       () => {
-        if (!cancelled) setChainIds([]);
+        if (!cancelled) {
+          setChainIds([]);
+          setChainsLoaded(true);
+        }
       },
     );
     return () => {
@@ -276,9 +388,11 @@ export function SiteFooter() {
     const check = async () => {
       try {
         const result = await api.health();
-        if (!cancelled) setHealth({ ok: result.status === 'ok', at: result.timestamp });
+        if (!cancelled) {
+          setHealth({ ok: result.status === 'ok', at: result.timestamp, checked: true });
+        }
       } catch {
-        if (!cancelled) setHealth({ ok: false });
+        if (!cancelled) setHealth({ ok: false, checked: true });
       }
     };
     void check();
@@ -307,7 +421,9 @@ export function SiteFooter() {
       >
         <span className="num">
           {chainIds.length === 0
-            ? 'Chains not reported'
+            ? chainsLoaded
+              ? 'Chains not reported'
+              : ''
             : chainIds.map((id) => chainName(id)).join(' → ')}
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -317,17 +433,29 @@ export function SiteFooter() {
               width: 8,
               height: 8,
               borderRadius: 4,
-              background: health.ok ? '#5CC98A' : '#F28B82',
+              background: wallet.isDemo
+                ? '#F2B45C'
+                : !health.checked
+                  ? '#9FB1C4'
+                  : health.ok
+                    ? '#5CC98A'
+                    : '#F28B82',
             }}
           />
-          {health.ok
-            ? `API healthy${checkedAt ? ` · checked ${checkedAt}` : ''}`
-            : 'API unreachable'}
+          {/* In the demo no API is contacted, and the footer must not claim one is healthy. */}
+          {wallet.isDemo
+            ? 'Recorded data · no API contacted'
+            : !health.checked
+              ? 'Checking the API…'
+              : health.ok
+                ? `API healthy${checkedAt ? ` · checked ${checkedAt}` : ''}`
+                : 'API unreachable'}
         </span>
-        {/* Derived from the configured API base, so it follows the deployment. */}
-        <a href={`${api.baseUrl.replace(/\/v1$/u, '')}/docs`} style={{ color: '#6BCAD6' }}>
-          API docs
-        </a>
+        {docsUrl ? (
+          <a href={docsUrl} style={{ color: '#6BCAD6' }}>
+            API docs
+          </a>
+        ) : null}
         <span className="hdr__grow" style={{ flexGrow: 1 }} />
         <span style={{ color: '#C7D3DF' }}>
           DebtShift never requests or stores a private key or seed phrase.

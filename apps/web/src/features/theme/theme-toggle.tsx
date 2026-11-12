@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   applyTheme,
+  DEFAULT_THEME_CHOICE,
   nextChoice,
   readStoredChoice,
   resolveTheme,
@@ -39,8 +40,8 @@ const ICONS: Record<ThemeChoice, React.ReactNode> = {
 };
 
 export function ThemeToggle() {
-  const [choice, setChoice] = useState<ThemeChoice>('system');
-  const [resolved, setResolved] = useState<ResolvedTheme>('light');
+  const [choice, setChoice] = useState<ThemeChoice>(DEFAULT_THEME_CHOICE);
+  const [resolved, setResolved] = useState<ResolvedTheme>('dark');
   // The server renders no theme, so the control is only drawn once the
   // client knows which one is active. Avoids a mismatched first paint.
   const [ready, setReady] = useState(false);

@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ApiClient from '../../lib/api/client';
 
 import type { PreparedMigration } from '../../lib/api/types';
-import fixture from './__fixtures__/prepared-migration.json' with { type: 'json' };
+import fixture from '../../lib/demo/recordings/prepare.json' with { type: 'json' };
 
 const prepared = fixture as unknown as PreparedMigration;
 const BORROWER = prepared.intent.borrower;
@@ -493,5 +493,49 @@ describe('when the backend does not allow execution', () => {
     const submit = await reachSubmitStep();
     expect(submit).toHaveProperty('disabled', false);
     expect(screen.getByRole('note').textContent).toContain('Mainnet · real funds');
+  });
+});
+
+/* --------------------------------------------------------- the recorded demo */
+
+describe('the submit step in the recorded demo', () => {
+  /** Puts the tab in the demo, as the landing page button does. */
+  function enterDemo() {
+    window.sessionStorage.setItem('debtshift:demo', '1');
+  }
+
+  afterEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  /** The same walk as `reachSubmitStep`, ending on the demo's own button. */
+  async function reachDemoSubmitStep() {
+    await reachPolicyStep();
+    fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+    await screen.findByText(/authorize this exact execution/i);
+    fireEvent.click(screen.getByRole('button', { name: /sign the execution plan/i }));
+    return screen.findByRole('button', { name: /replay the recorded migration/i });
+  }
+
+  it('never calls a placeholder a collected signature', async () => {
+    enterDemo();
+    await reachDemoSubmitStep();
+
+    expect(screen.getAllByText('Demo placeholder')).toHaveLength(2);
+    expect(screen.queryByText('Collected')).toBeNull();
+  });
+
+  it('says that nothing is submitted, and names the action as a replay', async () => {
+    enterDemo();
+    await reachDemoSubmitStep();
+
+    expect(screen.getByText(/Nothing is submitted in the demo/i)).toBeDefined();
+    expect(screen.queryByRole('button', { name: /submit both signatures/i })).toBeNull();
+  });
+
+  it('keeps the real wording outside the demo', async () => {
+    await reachSubmitStep();
+    expect(screen.getAllByText('Collected')).toHaveLength(2);
+    expect(screen.queryByText(/Nothing is submitted in the demo/i)).toBeNull();
   });
 });

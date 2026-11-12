@@ -16,6 +16,15 @@ export type ResolvedTheme = 'light' | 'dark';
 
 export const THEME_STORAGE_KEY = 'debtshift:theme';
 
+/**
+ * What a visitor gets before choosing anything.
+ *
+ * The redesign is dark-first: the app look was composed on the dark surface,
+ * so that is what a first visit shows. "System" and "light" stay one press
+ * away on the toggle, and a stored choice always wins.
+ */
+export const DEFAULT_THEME_CHOICE: ThemeChoice = 'dark';
+
 export function isThemeChoice(value: unknown): value is ThemeChoice {
   return value === 'system' || value === 'light' || value === 'dark';
 }
@@ -35,12 +44,12 @@ export function nextChoice(current: ThemeChoice): ThemeChoice {
 }
 
 export function readStoredChoice(): ThemeChoice {
-  if (typeof window === 'undefined') return 'system';
+  if (typeof window === 'undefined') return DEFAULT_THEME_CHOICE;
   try {
     const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return isThemeChoice(raw) ? raw : 'system';
+    return isThemeChoice(raw) ? raw : DEFAULT_THEME_CHOICE;
   } catch {
-    return 'system';
+    return DEFAULT_THEME_CHOICE;
   }
 }
 
@@ -85,4 +94,4 @@ export const THEME_LABELS: Record<ThemeChoice, string> = {
  * Keep it in sync with `resolveTheme` above — they are the same rule, one for
  * React and one for the moment before React exists.
  */
-export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var c=window.localStorage.getItem(k);var d=c==='dark'||((c===null||c==='system')&&window.matchMedia('(prefers-color-scheme: dark)').matches);var t=d?'dark':'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){}})();`;
+export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var c=window.localStorage.getItem(k);var d=c==='dark'||(c!=='light'&&c!=='system')||(c==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var t=d?'dark':'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){}})();`;

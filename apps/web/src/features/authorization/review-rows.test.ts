@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PreparedMigration } from '../../lib/api/types';
-import fixture from './__fixtures__/prepared-migration.json' with { type: 'json' };
+import fixture from '../../lib/demo/recordings/prepare.json' with { type: 'json' };
 import { allReviewRows, intentRows, planRows } from './review-rows';
 
 /*

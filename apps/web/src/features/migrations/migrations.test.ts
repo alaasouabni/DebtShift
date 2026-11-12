@@ -10,6 +10,7 @@ import {
   evidenceProvenanceLine,
   hasChainProvenance,
   isSimulatedTransport,
+  readFlowLabels,
   readRecoveryReason,
 } from './evidence-line';
 import { buildTimeline, isOffTrack, phaseEntryTimes, phasePosition } from './phase-timeline';
@@ -360,5 +361,46 @@ describe('readRecoveryReason', () => {
     expect(readRecoveryReason([{ ...opened, normalizedPayload: {} }])).toBeUndefined();
     expect(readRecoveryReason([{ ...opened, normalizedPayload: { reason: 42 } }])).toBeUndefined();
     expect(readRecoveryReason([{ ...opened, type: 'SOURCE_CLOSE' }])).toBeUndefined();
+  });
+});
+
+describe('readFlowLabels', () => {
+  const base: Evidence = {
+    evidenceId: '0x01',
+    migrationId: '0x02',
+    type: 'SOURCE_POSITION_SNAPSHOT',
+    schemaVersion: 1,
+    provider: 'DIRECT_RPC',
+    network: 'eip155:31337',
+    chainId: 31_337,
+    rawObservationHash: '0x03',
+    normalizedPayload: {},
+    observedAt: '2026-11-11T22:50:00.000Z',
+    verificationState: 'FINALIZED',
+    verificationMethod: 'state',
+    verifierVersion: '1',
+  };
+
+  it('takes the source chain from where the position was observed', () => {
+    const labels = readFlowLabels([{ ...base, type: 'TARGET_POSITION', chainId: 31_338 }, base]);
+    expect(labels.sourceChain).toBe('Sandbox source chain · 31337');
+    expect(labels.destinationChain).toBe('Sandbox destination chain · 31338');
+  });
+
+  it('says so instead of guessing while the destination has no evidence yet', () => {
+    const labels = readFlowLabels([base]);
+    expect(labels.destinationChain).toBe('Chain not yet recorded');
+  });
+
+  it('survives evidence whose chain column is null', () => {
+    const labels = readFlowLabels([{ ...base, chainId: null }]);
+    expect(labels.sourceChain).toBe('Chain not yet recorded');
+  });
+
+  it('labels the transport as simulated only when simulator evidence exists', () => {
+    expect(readFlowLabels([base]).transport).toBe('Transport');
+    expect(readFlowLabels([base, { ...base, provider: 'DEBTSHIFT_SIMULATOR' }]).transport).toBe(
+      'Simulated transport',
+    );
   });
 });

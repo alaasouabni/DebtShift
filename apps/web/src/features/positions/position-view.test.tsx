@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as ApiClient from '../../lib/api/client';
 import type { PreparedMigration } from '../../lib/api/types';
-import prepared from '../authorization/__fixtures__/prepared-migration.json' with { type: 'json' };
+import prepared from '../../lib/demo/recordings/prepare.json' with { type: 'json' };
 
 const snapshot = (prepared as unknown as PreparedMigration).sourceSnapshot;
 const BORROWER = snapshot.position.borrower;

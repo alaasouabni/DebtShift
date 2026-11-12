@@ -26,6 +26,10 @@ import {
 } from 'react';
 
 import { chainName } from '../../lib/chains';
+import { DEMO_ACCOUNT, DEMO_CHAIN_ID, isDemoActive, startDemo, stopDemo } from '../../lib/demo';
+
+/** What "signing" returns in the recorded demo. Deliberately not a signature. */
+export const DEMO_SIGNATURE = `0x${'de'.repeat(65)}`;
 
 export type WalletStatus =
   'initialising' | 'unavailable' | 'disconnected' | 'connecting' | 'connected' | 'rejected';
@@ -49,6 +53,15 @@ export interface WalletState {
   requestChain(chainId: number): Promise<void>;
   /** Sign EIP-712 typed data. Returns the signature; throws on rejection. */
   signTypedData(typedData: unknown): Promise<string>;
+  /**
+   * True while this tab is in the recorded demo: no wallet is involved, the
+   * account is the one the recording was made with, and nothing is signed.
+   */
+  readonly isDemo: boolean;
+  /** Enter the recorded demo. Only ever called from a user action. */
+  enterDemo(): void;
+  /** Leave the recorded demo and return to the real wallet state. */
+  exitDemo(): void;
 }
 
 const WalletContext = createContext<WalletState | undefined>(undefined);
@@ -84,10 +97,22 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
   const [accountEpoch, setAccountEpoch] = useState(0);
   const [error, setError] = useState<string | undefined>(undefined);
   const providerRef = useRef<Eip1193Provider | undefined>(undefined);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     const provider = readProvider();
     providerRef.current = provider;
+
+    // A reload inside the recorded demo stays in the demo. The real wallet is
+    // not consulted at all while it is active.
+    if (isDemoActive()) {
+      setIsDemo(true);
+      setAccount(DEMO_ACCOUNT);
+      setChainId(DEMO_CHAIN_ID);
+      setStatus('connected');
+      return;
+    }
+
     if (provider === undefined) {
       setStatus('unavailable');
       return;
@@ -181,14 +206,38 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
     }
   }, []);
 
+  const enterDemo = useCallback(() => {
+    startDemo();
+    setIsDemo(true);
+    setAccount(DEMO_ACCOUNT);
+    setChainId(DEMO_CHAIN_ID);
+    setStatus('connected');
+    setError(undefined);
+    setAccountEpoch((epoch) => epoch + 1);
+  }, []);
+
+  const exitDemo = useCallback(() => {
+    stopDemo();
+    setIsDemo(false);
+    setAccount(undefined);
+    setChainId(undefined);
+    setStatus(providerRef.current === undefined ? 'unavailable' : 'disconnected');
+    setError(undefined);
+    setAccountEpoch((epoch) => epoch + 1);
+  }, []);
+
   const disconnect = useCallback(() => {
+    if (isDemoActive()) {
+      exitDemo();
+      return;
+    }
     // An injected wallet cannot be force-disconnected from a page; this drops
     // the app's own session, which is what the user is asking for.
     setAccount(undefined);
     setStatus('disconnected');
     setError(undefined);
     setAccountEpoch((epoch) => epoch + 1);
-  }, []);
+  }, [exitDemo]);
 
   const requestChain = useCallback(async (target: number) => {
     const provider = providerRef.current;
@@ -218,6 +267,16 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
 
   const signTypedData = useCallback(
     async (typedData: unknown): Promise<string> => {
+      /*
+       * In the recorded demo there is no wallet and nothing is signed. The
+       * value returned is a visibly artificial placeholder — all `de` bytes —
+       * so it can never be mistaken for, or used as, a real signature. The
+       * demo's data source executes nothing with it.
+       */
+      if (isDemoActive()) {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        return DEMO_SIGNATURE;
+      }
       const provider = providerRef.current;
       if (provider === undefined) throw new Error('No wallet is available.');
       if (account === undefined) throw new Error('No account is connected.');
@@ -254,6 +313,9 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       disconnect,
       requestChain,
       signTypedData,
+      isDemo,
+      enterDemo,
+      exitDemo,
     }),
     [
       status,
@@ -265,6 +327,9 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       disconnect,
       requestChain,
       signTypedData,
+      isDemo,
+      enterDemo,
+      exitDemo,
     ],
   );
 

@@ -24,7 +24,14 @@ import {
   formatWad,
   secondsSince,
 } from '../../lib/formatting/index';
-import { Alert, Badge, Button, ButtonLink, SectionRule } from '../../components/ui/index';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  PageLoading,
+  SectionRule,
+} from '../../components/ui/index';
 import { HashValue } from '../../components/shell/index';
 import { isPrivateSandboxChain } from '../../lib/chains';
 import { isConnected, useWallet } from '../wallet/wallet-context';
@@ -118,6 +125,12 @@ export function PositionView() {
     const timer = setInterval(() => setTick((value) => value + 1), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Not known yet whether a wallet or the demo is present: say so, rather
+  // than flashing the connect prompt at someone who is already connected.
+  if (wallet.status === 'initialising') {
+    return <PageLoading label="Source position" />;
+  }
 
   if (!connected) {
     return (

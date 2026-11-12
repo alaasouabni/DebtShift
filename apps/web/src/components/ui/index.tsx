@@ -282,3 +282,21 @@ export function RawValue({ children }: { readonly children: ReactNode }) {
     </>
   );
 }
+
+/* ------------------------------------------------------------ page loading */
+
+/**
+ * Shown while the app does not yet know whether a wallet (or the recorded
+ * demo) is present. Without it every wallet-gated page flashed its "Connect a
+ * wallet" prompt on load, even for a visitor who was already connected.
+ */
+export function PageLoading({ label }: { readonly label: string }) {
+  return (
+    <section className="page" style={{ padding: '96px var(--page-gutter)' }} aria-busy="true">
+      <p className="eyebrow">{label}</p>
+      <div className="skeleton" style={{ marginTop: 24, width: 'min(520px, 80%)', height: 44 }} />
+      <div className="skeleton" style={{ marginTop: 16, width: 'min(380px, 60%)', height: 20 }} />
+      <span className="visually-hidden">Loading</span>
+    </section>
+  );
+}

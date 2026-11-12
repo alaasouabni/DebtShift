@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError, api } from '../../lib/api/client';
 import { isTerminalPhase, type MigrationDetails } from '../../lib/api/types';
+import { now } from '../../lib/clock';
 
 export const BASE_POLL_MS = 1_800;
 export const MAX_POLL_MS = 30_000;
@@ -103,7 +104,7 @@ export function useMigrationPolling(migrationId: string): MigrationPollState {
         if (cancelled) return;
 
         setDetails(result);
-        setUpdatedAt(new Date());
+        setUpdatedAt(now());
         setFailures(0);
         failuresRef.current = 0;
         setError(undefined);

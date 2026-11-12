@@ -15,6 +15,7 @@ import {
   formatUnixTimestamp,
   formatUsdMicro,
   formatWad,
+  humanizeIdentifier,
   isTruncatedAtDisplay,
   isZeroAmount,
   ratioPercent,
@@ -329,5 +330,22 @@ describe('formatInteger', () => {
   it('groups a block number', () => {
     expect(formatInteger('1284')).toBe('1,284');
     expect(formatInteger('17')).toBe('17');
+  });
+});
+
+describe('humanizeIdentifier', () => {
+  it('turns backend identifiers into readable names', () => {
+    // The two real identifiers on the recorded sandbox run.
+    expect(humanizeIdentifier('LOCAL_AAVE_MOCK')).toBe('Local Aave Mock');
+    expect(humanizeIdentifier('local-morpho-balanced')).toBe('Local Morpho Balanced');
+  });
+
+  it('handles mixed separators and stray ones', () => {
+    expect(humanizeIdentifier('morpho_blue-v1')).toBe('Morpho Blue V1');
+    expect(humanizeIdentifier('__aave__')).toBe('Aave');
+  });
+
+  it('returns an empty string for an empty identifier', () => {
+    expect(humanizeIdentifier('')).toBe('');
   });
 });

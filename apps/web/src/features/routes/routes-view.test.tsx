@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ApiClient from '../../lib/api/client';
 
 import type { RouteAnalysisResponse } from '../../lib/api/types';
-import fixture from './__fixtures__/route-analysis.json' with { type: 'json' };
+import fixture from '../../lib/demo/recordings/route-analysis.json' with { type: 'json' };
 
 const analysis = fixture as unknown as RouteAnalysisResponse;
 const BORROWER = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';

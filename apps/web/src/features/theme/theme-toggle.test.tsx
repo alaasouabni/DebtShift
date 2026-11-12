@@ -6,12 +6,15 @@
  * What matters here is not that a class flips — it is that the user can always
  * get back to following their operating system, and that the control says
  * which of the three states it is in rather than only how the page looks.
+ *
+ * The app is dark-first: a visitor who has chosen nothing gets dark. "System"
+ * and "light" are one and two presses away.
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { THEME_STORAGE_KEY } from '../../lib/theme';
+import { DEFAULT_THEME_CHOICE, THEME_STORAGE_KEY } from '../../lib/theme';
 import { ThemeToggle } from './theme-toggle';
 
 function setSystemPrefersDark(prefersDark: boolean) {
@@ -36,6 +39,11 @@ async function findToggle() {
   return waitFor(() => screen.getByRole('button', { name: /^Theme:/i }));
 }
 
+/** A visitor who previously chose to follow their operating system. */
+function chooseSystem() {
+  window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
@@ -46,17 +54,26 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the initial state', () => {
-  it('starts on system when nothing was chosen', async () => {
+  it('starts dark when nothing was chosen', async () => {
     render(<ThemeToggle />);
     const button = await findToggle();
-    expect(button.getAttribute('data-theme-choice')).toBe('system');
+    expect(DEFAULT_THEME_CHOICE).toBe('dark');
+    expect(button.getAttribute('data-theme-choice')).toBe('dark');
+  });
+
+  it('starts dark even on a machine that prefers light', async () => {
+    // Dark-first is the default look, not a reading of the machine. Following
+    // the machine is a choice the visitor makes with the toggle.
+    setSystemPrefersDark(false);
+    render(<ThemeToggle />);
+    expect((await findToggle()).getAttribute('data-theme-choice')).toBe('dark');
   });
 
   it('restores a stored choice', async () => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'light');
     render(<ThemeToggle />);
     const button = await findToggle();
-    expect(button.getAttribute('data-theme-choice')).toBe('dark');
+    expect(button.getAttribute('data-theme-choice')).toBe('light');
   });
 
   it('reports light and system differently even though they look the same', async () => {
@@ -67,55 +84,64 @@ describe('the initial state', () => {
     expect((await findToggle()).getAttribute('aria-label')).toMatch(/Theme: light/);
 
     cleanup();
-    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
+    chooseSystem();
     render(<ThemeToggle />);
     expect((await findToggle()).getAttribute('aria-label')).toMatch(/Theme: system/);
   });
 });
 
 describe('pressing it', () => {
-  it('cycles system → dark → light → system', async () => {
+  it('cycles dark → light → system and back to dark', async () => {
     render(<ThemeToggle />);
     const button = await findToggle();
 
     fireEvent.click(button);
-    expect(button.getAttribute('data-theme-choice')).toBe('dark');
-    fireEvent.click(button);
     expect(button.getAttribute('data-theme-choice')).toBe('light');
     fireEvent.click(button);
     expect(button.getAttribute('data-theme-choice')).toBe('system');
+    fireEvent.click(button);
+    expect(button.getAttribute('data-theme-choice')).toBe('dark');
   });
 
   it('applies the theme to the document', async () => {
     render(<ThemeToggle />);
     fireEvent.click(await findToggle());
 
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    expect(document.documentElement.style.colorScheme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(document.documentElement.style.colorScheme).toBe('light');
   });
 
   it('persists the choice', async () => {
     render(<ThemeToggle />);
     fireEvent.click(await findToggle());
-    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
   });
 
-  it('resolves system against the machine, not against a default', async () => {
-    setSystemPrefersDark(true);
+  it('resolves system against the machine, not against the default', async () => {
+    // dark → light → system. On a light machine "system" must be light, even
+    // though the app's own default is dark.
+    setSystemPrefersDark(false);
     render(<ThemeToggle />);
     const button = await findToggle();
-
-    // system → dark → light → system, and system on a dark machine is dark.
     fireEvent.click(button);
     fireEvent.click(button);
+    expect(button.getAttribute('data-theme-choice')).toBe('system');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    fireEvent.click(button);
+
+    cleanup();
+    window.localStorage.clear();
+    setSystemPrefersDark(true);
+    render(<ThemeToggle />);
+    const again = await findToggle();
+    fireEvent.click(again);
+    fireEvent.click(again);
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 });
 
 describe('following the machine', () => {
   it('reacts to the system switching while the choice is system', async () => {
+    chooseSystem();
     const media = setSystemPrefersDark(false);
     render(<ThemeToggle />);
     await findToggle();
@@ -129,13 +155,23 @@ describe('following the machine', () => {
     render(<ThemeToggle />);
     const button = await findToggle();
 
-    fireEvent.click(button);
     fireEvent.click(button); // explicit light
     expect(button.getAttribute('data-theme-choice')).toBe('light');
 
     media.change(true);
     // The explicit choice wins: no change.
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('ignores the system on the default too, which is dark by decision', async () => {
+    const media = setSystemPrefersDark(true);
+    render(<ThemeToggle />);
+    const button = await findToggle();
+    expect(button.getAttribute('data-theme-choice')).toBe('dark');
+
+    // No listener is attached unless the choice is "system".
+    media.change(false);
+    expect(document.documentElement.getAttribute('data-theme')).not.toBe('light');
   });
 });
 
@@ -162,16 +198,14 @@ describe('accessibility', () => {
 
 describe('when storage is denied', () => {
   it('still toggles', async () => {
-    const original = window.localStorage.setItem.bind(window.localStorage);
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('denied');
     });
 
     render(<ThemeToggle />);
     fireEvent.click(await findToggle());
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
 
     vi.restoreAllMocks();
-    expect(typeof original).toBe('function');
   });
 });

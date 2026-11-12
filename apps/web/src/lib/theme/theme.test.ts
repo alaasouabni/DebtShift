@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   applyTheme,
+  DEFAULT_THEME_CHOICE,
   isThemeChoice,
   nextChoice,
   readStoredChoice,
@@ -33,6 +34,17 @@ describe('resolveTheme', () => {
   it('follows the machine while the choice is system', () => {
     expect(resolveTheme('system', true)).toBe('dark');
     expect(resolveTheme('system', false)).toBe('light');
+  });
+});
+
+describe('the default', () => {
+  it('is dark, because the app look was composed on the dark surface', () => {
+    expect(DEFAULT_THEME_CHOICE).toBe('dark');
+  });
+
+  it('still leaves system and light reachable from it', () => {
+    expect(nextChoice(DEFAULT_THEME_CHOICE)).toBe('light');
+    expect(nextChoice(nextChoice(DEFAULT_THEME_CHOICE))).toBe('system');
   });
 });
 
@@ -72,14 +84,14 @@ describe('storage', () => {
     expect(store.get(THEME_STORAGE_KEY)).toBe('system');
   });
 
-  it('falls back to system when nothing is stored', () => {
+  it('falls back to the dark-first default when nothing is stored', () => {
     installStorage();
-    expect(readStoredChoice()).toBe('system');
+    expect(readStoredChoice()).toBe(DEFAULT_THEME_CHOICE);
   });
 
   it('ignores a value it does not recognise', () => {
     installStorage({ [THEME_STORAGE_KEY]: 'neon' });
-    expect(readStoredChoice()).toBe('system');
+    expect(readStoredChoice()).toBe(DEFAULT_THEME_CHOICE);
   });
 
   it('survives storage being unavailable', () => {
@@ -93,13 +105,13 @@ describe('storage', () => {
         },
       },
     });
-    expect(readStoredChoice()).toBe('system');
+    expect(readStoredChoice()).toBe(DEFAULT_THEME_CHOICE);
     expect(() => storeChoice('dark')).not.toThrow();
   });
 
   it('is safe on the server, where there is no window', () => {
     vi.stubGlobal('window', undefined);
-    expect(readStoredChoice()).toBe('system');
+    expect(readStoredChoice()).toBe(DEFAULT_THEME_CHOICE);
     expect(() => storeChoice('dark')).not.toThrow();
     expect(systemPrefersDark()).toBe(false);
     expect(() => applyTheme('dark')).not.toThrow();
@@ -153,10 +165,13 @@ describe('the bootstrap script', () => {
       ['system', true],
       [null, false],
       [null, true],
+      // A value from an older version or a tampered store falls to the default.
+      ['neon', false],
+      ['neon', true],
     ];
     for (const [stored, prefersDark] of cases) {
       const element = runBootstrap(stored, prefersDark);
-      const choice = isThemeChoice(stored) ? stored : 'system';
+      const choice = isThemeChoice(stored) ? stored : DEFAULT_THEME_CHOICE;
       expect(element.attributes['data-theme'], `${String(stored)}/${String(prefersDark)}`).toBe(
         resolveTheme(choice, prefersDark),
       );

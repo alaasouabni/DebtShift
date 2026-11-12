@@ -21,7 +21,15 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { HashValue } from '../../components/shell';
-import { Alert, Badge, Button, ButtonLink, SectionRule, Section } from '../../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  PageLoading,
+  Section,
+  SectionRule,
+} from '../../components/ui';
 import { ApiError, api } from '../../lib/api/client';
 import type { PreparedMigration } from '../../lib/api/types';
 import {
@@ -261,6 +269,12 @@ export function AuthorizeView() {
 
   /* ------------------------------------------------------------- the gates */
 
+  // Not known yet whether a wallet or the demo is present: say so, rather
+  // than flashing the connect prompt at someone who is already connected.
+  if (wallet.status === 'initialising') {
+    return <PageLoading label="Authorization" />;
+  }
+
   if (!connected) {
     return (
       <section className="page" style={{ padding: '96px var(--page-gutter)' }}>
@@ -475,12 +489,30 @@ export function AuthorizeView() {
               <dl className="grid-facts" style={{ margin: 0 }}>
                 <dt>Policy signature</dt>
                 <dd className="is-control">
-                  <Badge tone="success">Collected</Badge>
+                  {wallet.isDemo ? (
+                    <Badge
+                      tone="warning"
+                      title="The recorded demo signs nothing. This is a placeholder, not a signature."
+                    >
+                      Demo placeholder
+                    </Badge>
+                  ) : (
+                    <Badge tone="success">Collected</Badge>
+                  )}
                   <span className="mono">{truncateHex(state.intentSignature ?? '', 10, 8)}</span>
                 </dd>
                 <dt>Execution signature</dt>
                 <dd className="is-control">
-                  <Badge tone="success">Collected</Badge>
+                  {wallet.isDemo ? (
+                    <Badge
+                      tone="warning"
+                      title="The recorded demo signs nothing. This is a placeholder, not a signature."
+                    >
+                      Demo placeholder
+                    </Badge>
+                  ) : (
+                    <Badge tone="success">Collected</Badge>
+                  )}
                   <span className="mono">{truncateHex(state.planSignature ?? '', 10, 8)}</span>
                 </dd>
                 <dt>Migration</dt>
@@ -488,6 +520,13 @@ export function AuthorizeView() {
                   <HashValue value={prepared.plan.migrationId} label="migration ID" />
                 </dd>
               </dl>
+
+              {wallet.isDemo ? (
+                <Alert tone="warning" title="Nothing is submitted in the demo">
+                  No wallet signed anything and no backend is contacted. The next screen replays a
+                  migration that was recorded on the contract-backed sandbox.
+                </Alert>
+              ) : null}
 
               <Alert tone="info" title="Submitting is not completion">
                 Starting a migration begins a workflow with phases. Only the phase{' '}
@@ -506,7 +545,13 @@ export function AuthorizeView() {
                   onClick={() => void submit()}
                   disabled={state.busy === true || !submitAllowed}
                 >
-                  {state.busy === true ? 'Submitting…' : 'Submit both signatures'}
+                  {state.busy === true
+                    ? wallet.isDemo
+                      ? 'Opening the recording…'
+                      : 'Submitting…'
+                    : wallet.isDemo
+                      ? 'Replay the recorded migration'
+                      : 'Submit both signatures'}
                 </Button>
                 <Button variant="secondary" onClick={() => setState(INITIAL)}>
                   Discard and start over

@@ -12,7 +12,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { Alert, Badge, Button, ButtonLink, SectionRule, Section } from '../../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  PageLoading,
+  Section,
+  SectionRule,
+} from '../../components/ui';
 import { HashValue } from '../../components/shell';
 import { ApiError, api } from '../../lib/api/client';
 import type { MarketRow, PersistedPositionRow } from '../../lib/api/types';
@@ -73,6 +81,12 @@ export function HistoryView() {
     }
     void load(wallet.account);
   }, [connected, wallet.account, wallet.accountEpoch, load]);
+
+  // Not known yet whether a wallet or the demo is present: say so, rather
+  // than flashing the connect prompt at someone who is already connected.
+  if (wallet.status === 'initialising') {
+    return <PageLoading label="Diagnostics" />;
+  }
 
   if (!connected) {
     return (

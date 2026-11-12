@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import prepared from '../../features/authorization/__fixtures__/prepared-migration.json' with { type: 'json' };
+import prepared from '../../lib/demo/recordings/prepare.json' with { type: 'json' };
 import {
   canSubmit,
   defaultBadge,
