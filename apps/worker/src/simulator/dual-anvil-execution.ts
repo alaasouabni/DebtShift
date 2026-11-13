@@ -930,10 +930,11 @@ export class DualAnvilSandboxExecutionPort implements MigrationExecutionPort {
     if (plan.financing.fundingShortfallUnits !== '0') {
       throw new Error('The authorized financing structure has a non-zero funding shortfall.');
     }
-    if (BigInt(plan.financing.capitalizedCostUnits) !== 0n) {
-      throw new Error(
-        'The local destination contract requires signed capitalized-cost recipients; none are present in this plan.',
-      );
+    if (
+      BigInt(plan.financing.solverAdvancedCostUnits) !== 0n ||
+      BigInt(plan.financing.capitalizedCostUnits) !== 0n
+    ) {
+      throw new Error('The local P0 route requires zero solver-advanced and capitalized costs.');
     }
     if (BigInt(plan.financing.validUntil) < BigInt(plan.deadline)) {
       throw new Error('Financing evidence expires before the execution plan.');

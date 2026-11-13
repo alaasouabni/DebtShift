@@ -4,29 +4,29 @@ DebtShift’s first implementation is complete only when every mandatory item be
 
 ## Repository and reproducibility
 
-- [ ] A clean checkout can install pinned dependencies.
-- [ ] One documented command starts required local infrastructure.
-- [ ] One documented command deploys and seeds the local contracts.
-- [ ] One documented command runs the happy-path demo.
-- [ ] One documented command runs the refund/recovery demo.
-- [ ] CI runs the same build and verification commands used locally.
+- [x] A clean checkout can install pinned dependencies.
+- [x] One documented command starts required local infrastructure.
+- [x] One documented command deploys and seeds the local contracts.
+- [x] One documented command runs the happy-path demo.
+- [x] One documented command runs the refund/recovery demo.
+- [x] CI runs the same build and verification commands used locally.
 - [ ] No secret, private key, or machine-specific path is committed.
 
 ## Product behavior
 
-- [ ] Borrower connects a wallet and sees a source position with block provenance.
-- [ ] At least two route outcomes display costs, savings, safety, and rejection explanations.
-- [ ] Every route displays reconciled obligations, financing classifications, maximum safe capacity,
+- [x] Borrower connects a wallet and sees a source position with block provenance.
+- [x] At least two route outcomes display costs, savings, safety, and rejection explanations.
+- [x] Every route displays reconciled obligations, financing classifications, maximum safe capacity,
       required destination borrow, confirmed external funding, and exact shortfall.
-- [ ] No route can become `RESERVED` unless its current feasibility evidence proves zero shortfall.
+- [x] No route can become `RESERVED` unless its current feasibility evidence proves zero shortfall.
 - [ ] Borrower-funded fees or other supplementary funds are finalized in migration-specific escrow
       before temporary liquidity is committed.
-- [ ] Borrower reviews and signs bounded intent and execution-plan data.
-- [ ] Source debt closes and collateral release is independently verified.
-- [ ] Transport origin and destination receipts are distinct and visible.
-- [ ] Destination collateral is supplied and replacement debt is verified.
-- [ ] Test funding principal and fee reconcile.
-- [ ] Residual assets return to the authorized borrower receiver.
+- [x] Borrower reviews and signs bounded intent and execution-plan data.
+- [x] Source debt closes and collateral release is independently verified.
+- [x] Transport origin and destination receipts are distinct and visible.
+- [x] Destination collateral is supplied and replacement debt is verified.
+- [x] Test funding principal and fee reconcile.
+- [x] Residual assets return to the authorized borrower receiver.
 - [ ] Final evidence hash is registered on NEAR testnet and matches the application.
 - [ ] Timeline, evidence, ledger, and recovery information survive reload and worker restart.
 
@@ -73,59 +73,59 @@ DebtShift’s first implementation is complete only when every mandatory item be
 
 ## Data and orchestration
 
-- [ ] PostgreSQL contains signed terms, commands, raw observations, normalized evidence, ledger entries, and audit history.
+- [x] PostgreSQL contains signed terms, commands, raw observations, normalized evidence, ledger entries, and audit history.
 - [ ] Every phase has an executable entry predicate.
 - [ ] Every permitted transition has a test.
-- [ ] Every irreversible command has a deterministic idempotency key.
-- [ ] Transactional outbox interruption tests pass.
-- [ ] Terminal settlement has zero unexplained ledger imbalance.
-- [ ] Financing components have unique identities and exclusive classifications; solver principal,
+- [x] Every irreversible command has a deterministic idempotency key.
+- [x] Transactional outbox interruption tests pass.
+- [x] Terminal settlement has zero unexplained ledger imbalance.
+- [x] Financing components have unique identities and exclusive classifications; solver principal,
       solver fee, capitalized costs, separate costs, debt prepayment, and external funding reconcile.
-- [ ] Feasibility is revalidated before reservation, source closure, target borrowing, and settlement;
+- [x] Feasibility is revalidated before reservation, source closure, target borrowing, and settlement;
       a newer failure supersedes an older passing quote.
 - [ ] `COMPLETED` requires verified NEAR receipt registration.
 
 ## NEAR registry
 
-- [ ] Agreement and execution-plan hashes can be registered.
-- [ ] Only authorized verifiers can append attestations.
-- [ ] Conflicting or duplicate finalization is rejected.
-- [ ] Verification schemes and actor identities are visible.
+- [x] Agreement and execution-plan hashes can be registered.
+- [x] Only authorized verifiers can append attestations.
+- [x] Conflicting or duplicate finalization is rejected.
+- [x] Verification schemes and actor identities are visible.
 - [ ] Contract unit, sandbox, and testnet smoke tests pass.
 
 ## Quality and operations
 
-- [ ] Formatting, lint, type checks, builds, and all test layers pass.
+- [x] Formatting, lint, type checks, builds, and all implemented test layers pass.
 - [ ] Dependency, secret, and container scans pass within documented policy.
 - [ ] Metrics and structured logs cover all migration phases.
 - [ ] Critical alerts are exercised.
 - [ ] Recovery and key-rotation runbooks are documented.
-- [ ] Deployment manifests identify every contract artifact and configuration.
-- [ ] Known limitations and deferred production requirements are documented.
+- [x] Deployment manifests identify every contract artifact and configuration.
+- [x] Known limitations and deferred production requirements are documented.
 
 ## Agent and data sources
 
-- [ ] Route eligibility, ranking, costs, safety, and authorization caps are deterministic without an LLM.
-- [ ] The default agent mode is deterministic and requires no API key or local model.
-- [ ] The Route/Risk Agent exposes only the approved read and preparation tools.
-- [ ] The user can optionally select local Ollama or a supported user-supplied AI API.
-- [ ] Local and remote AI explanations are schema-validated and replaceable by deterministic templates.
+- [x] Route eligibility, ranking, costs, safety, and authorization caps are deterministic without an LLM.
+- [x] The default agent mode is deterministic and requires no API key or local model.
+- [x] The Route/Risk Agent exposes only the approved read and preparation tools.
+- [x] The user can optionally select local Ollama or a supported user-supplied AI API.
+- [x] Local and remote AI explanations are schema-validated and replaceable by deterministic templates.
 - [ ] User API credentials are absent from PostgreSQL, browser persistence, logs, traces, error reports, and analytics.
 - [ ] Remote provider requests contain only allowlisted structured explanation data.
-- [ ] Custom endpoint validation and SSRF protections pass security tests.
-- [ ] Disabling or changing the explanation model cannot change the selected route or signed values.
+- [x] Custom endpoint validation and SSRF protections pass security tests.
+- [x] Disabling or changing the explanation model cannot change the selected route or signed values.
 - [ ] Public API cache, retry, rate-limit, and circuit-breaker behavior is tested.
-- [ ] Stale or conflicting indexed data cannot advance an irreversible phase.
-- [ ] Execution-critical Aave and Morpho state is read directly from contracts at a recorded block.
-- [ ] The Route/Risk Agent computes protocol capacity, DebtShift policy capacity, safe liquidity,
+- [x] Stale or conflicting indexed data cannot advance an irreversible phase.
+- [x] Execution-critical Aave and Morpho state is read directly from contracts at a recorded block.
+- [x] The Route/Risk Agent computes protocol capacity, DebtShift policy capacity, safe liquidity,
       required borrowing, shortfall, and supported secured resolution alternatives deterministically.
-- [ ] The project runs without a paid API subscription.
+- [x] The project runs without a paid API subscription.
 
 ## Release boundary
 
-- [ ] `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet` select complete validated adapter sets;
+- [x] `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet` select complete validated adapter sets;
       production modes never fall back to simulation.
-- [ ] The core workflow contains no simulator dependency and runs unchanged with sandbox/testnet or
+- [x] The core workflow contains no simulator dependency and runs unchanged with sandbox/testnet or
       production adapters.
 - [ ] The hosted sandbox executes real local-chain contracts, signatures, transfers, receipts,
       lending state changes, settlement, and recovery; only the unavailable transport-provider
@@ -134,18 +134,18 @@ DebtShift’s first implementation is complete only when every mandatory item be
       evidence simulated rather than claiming 1Click testnet.
 - [ ] `mainnet-readonly` uses the official production service for live catalogs and dry quotes and
       cannot instantiate write-capable handlers.
-- [ ] `MAINNET_EXECUTION_ENABLED` is required, defaults to `false`, is rejected as `true` outside
+- [x] `MAINNET_EXECUTION_ENABLED` is required, defaults to `false`, is rejected as `true` outside
       `mainnet`, and blocks every irreversible command while false.
-- [ ] `mainnet` implements the complete source repayment, 1Click collateral transfer, destination
+- [x] `mainnet` implements the complete source repayment, 1Click collateral transfer, destination
       borrow, solver repayment, residual return, and registry path.
-- [ ] The first production route enforces exact base-unit principal, collateral, fee, slippage, gas,
+- [x] The first production route enforces exact base-unit principal, collateral, fee, slippage, gas,
       receiver, deadline, and recovery-exposure limits.
 - [ ] Mainnet deployment occurs with writes disabled; code hashes, roles, balances, route identities,
       live funding, and non-broadcast simulations are verified first.
 - [ ] A real attempt, if authorized, occurs only after every prior gate and explicit owner approval;
       the switch is disabled immediately afterward and complete or recovery evidence is retained.
-- [ ] No documentation claims that the test release is audited, trustless, or production ready.
-- [ ] No documentation or UI claims that per-chain smart contracts make the cross-chain refinance
+- [x] No documentation claims that the test release is audited, trustless, or production ready.
+- [x] No documentation or UI claims that per-chain smart contracts make the cross-chain refinance
       atomic or guarantee solver repayment.
 
 When all mandatory items are checked, DebtShift may be labeled **hackathon-complete**. A small

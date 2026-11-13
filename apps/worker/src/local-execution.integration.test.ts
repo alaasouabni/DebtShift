@@ -325,14 +325,29 @@ async function buildContext(
       capacityEvidenceHash: `0x${'cd'.repeat(32)}`,
       liquidityBufferBps: 1000,
       stressCollateralDropBps: 1000,
+      settlementAsset: { address: deployment.destination.debtToken, decimals: 6 },
+      sourceDebtPayoffAssetUnits: BORROW_UNITS.toString(),
+      sourceDebtPayoffUnits: BORROW_UNITS.toString(),
+      borrowerDebtPrepaymentAssetUnits: '0',
+      borrowerDebtPrepaymentUnits: '0',
+      costs: [],
+      solverAdvancedCostUnits: '0',
       fundingShortfallUnits: '0',
       confirmedExternalFundingUnits: externalFunding === undefined ? '0' : FEE_UNITS.toString(),
       externalFunding: externalFunding === undefined ? [] : [externalFunding],
       solverPrincipalUnits: BORROW_UNITS.toString(),
       solverFeeUnits: FEE_UNITS.toString(),
       capitalizedCostUnits: '0',
+      separatelyPaidCostUnits: '0',
       totalRequiredRepaymentAndFinancedCostUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      protocolBorrowCapacityUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      policyBorrowCapacityUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      liquidityBorrowCapacityUnits: (BORROW_UNITS + FEE_UNITS).toString(),
       signedBorrowCapacityUnits:
+        externalFunding === undefined
+          ? (BORROW_UNITS + FEE_UNITS).toString()
+          : BORROW_UNITS.toString(),
+      maximumSafeBorrowingCapacityUnits:
         externalFunding === undefined
           ? (BORROW_UNITS + FEE_UNITS).toString()
           : BORROW_UNITS.toString(),

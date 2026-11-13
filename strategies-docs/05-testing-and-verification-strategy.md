@@ -21,7 +21,8 @@
 - Route eligibility and rejection reasons.
 - Phase-entry predicates and illegal transitions.
 - Transport-status normalization, including unknown values.
-- Ledger balancing.
+- Ledger balancing, contiguous component identity, same-migration finalized-evidence links, exact
+  recovery-reserve consumption/refund, and explicit movement-versus-cost-classification basis.
 - Idempotency-key stability.
 
 ## Database tests

@@ -1015,13 +1015,14 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       throw new Error('The production plan has no valid native Morpho module authorization.');
     }
     if (
+      BigInt(plan.financing.solverAdvancedCostUnits) !== 0n ||
       BigInt(plan.financing.capitalizedCostUnits) !== 0n ||
       BigInt(plan.financing.confirmedExternalFundingUnits) !== 0n ||
       plan.financing.externalFunding.length !== 0 ||
       plan.financing.fundingShortfallUnits !== '0'
     ) {
       throw new Error(
-        'The initial production route accepts only zero-shortfall vault financing without supplementary funding.',
+        'The initial production route accepts only zero-shortfall vault financing without solver-advanced, capitalized, or supplementary funding.',
       );
     }
     if (BigInt(plan.financing.validUntil) < BigInt(plan.deadline)) {

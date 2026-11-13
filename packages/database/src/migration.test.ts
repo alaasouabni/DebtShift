@@ -108,6 +108,8 @@ describe('initial PostgreSQL migration', () => {
       'execution_plans_intent_nonce_unique',
       'intents_wallet_nonce_unique',
       'ledger_entries_distinct_parties',
+      'ledger_entries_evidence_id_evidence_evidence_id_fk',
+      'ledger_entries_migration_component_unique',
       'ledger_entries_migration_sequence_unique',
       'migrations_version_nonnegative',
       'outbox_command_unique',

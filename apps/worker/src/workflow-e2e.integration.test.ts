@@ -21,6 +21,7 @@ import {
   hashExecutionPlan,
   hashRefinanceIntent,
   hashSourcePosition,
+  ledgerReconciliationSchema,
   parseDebtShiftEnvironment,
   positionSnapshotSchema,
   refinanceIntentSchema,
@@ -119,6 +120,44 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
           .select({ status: debtShiftSchema.liquidityReservations.status })
           .from(debtShiftSchema.liquidityReservations);
         expect(reservations[0]?.status).toBe('SETTLED');
+
+        const ledgerEvidence = details?.evidence.find(
+          (record) => record.type === 'LEDGER_RECONCILIATION',
+        );
+        const reconciliation = ledgerReconciliationSchema.parse(
+          ledgerEvidence?.normalizedPayload.ledger,
+        );
+        expect(reconciliation).toMatchObject({
+          solverPrincipalUnits: '10000000000',
+          solverFeeUnits: '50000000',
+          requiredDestinationBorrowUnits: '10050000000',
+          recoveryReserveLockedUnits: '10050000000',
+          recoveryReserveConsumedUnits: '10050000000',
+          recoveryReserveRefundedUnits: '0',
+          residualReturnUnits: '0',
+          unexplainedImbalanceUnits: '0',
+        });
+        expect(details?.ledger.map((entry) => entry.componentCode)).toEqual([
+          'SOURCE_DEBT_PAYOFF',
+          'RECOVERY_RESERVE_LOCKED',
+          'TRANSPORT_ORIGIN_COLLATERAL',
+          'TRANSPORT_DESTINATION_COLLATERAL',
+          'TARGET_COLLATERAL_SUPPLY',
+          'DESTINATION_LOAN_PROCEEDS',
+          'SOLVER_PRINCIPAL_PAYOUT',
+          'SOLVER_FEE_PAYOUT',
+          'RECOVERY_RESERVE_PRINCIPAL_CONSUMED',
+          'RECOVERY_RESERVE_FEE_CONSUMED',
+        ]);
+        expect(details?.ledger).toHaveLength(reconciliation.entries.length);
+        const finalizedEvidenceIds = new Set(
+          details?.evidence
+            .filter((record) => record.verificationState === 'FINALIZED')
+            .map((record) => record.evidenceId),
+        );
+        expect(details?.ledger.every((entry) => finalizedEvidenceIds.has(entry.evidenceId))).toBe(
+          true,
+        );
 
         const targetArtifact = await import('@debtshift/protocols').then(
           ({ loadFoundryArtifact }) => loadFoundryArtifact('MockTargetLending'),

@@ -1,4 +1,8 @@
-import { getExecutionPlanTypedData, getRefinanceIntentTypedData } from '@debtshift/domain';
+import {
+  getExecutionPlanTypedData,
+  getRefinanceIntentTypedData,
+  ledgerReconciliationSchema,
+} from '@debtshift/domain';
 import { DEFAULT_ANVIL_BORROWER_KEY } from '@debtshift/protocols';
 import { privateKeyToAccount } from 'viem/accounts';
 
@@ -72,6 +76,39 @@ for (const type of [
 if (details.migration.phase === 'COMPLETED' && !evidenceTypes.has('NEAR_RECEIPT')) {
   throw new Error('Completed migration is missing finalized NEAR receipt evidence.');
 }
+const ledgerEvidence = details.evidence.find(
+  (record) => record.type === 'LEDGER_RECONCILIATION' && record.verificationState === 'FINALIZED',
+);
+const reconciliation = ledgerReconciliationSchema.parse(ledgerEvidence?.normalizedPayload?.ledger);
+if (!Array.isArray(details.ledger) || details.ledger.length !== reconciliation.entries.length) {
+  throw new Error('Durable ledger rows do not match the finalized reconciliation evidence.');
+}
+const requiredLedgerComponents = [
+  'SOURCE_DEBT_PAYOFF',
+  'RECOVERY_RESERVE_LOCKED',
+  'TRANSPORT_ORIGIN_COLLATERAL',
+  'TRANSPORT_DESTINATION_COLLATERAL',
+  'TARGET_COLLATERAL_SUPPLY',
+  'DESTINATION_LOAN_PROCEEDS',
+  'SOLVER_PRINCIPAL_PAYOUT',
+  'SOLVER_FEE_PAYOUT',
+  'RECOVERY_RESERVE_PRINCIPAL_CONSUMED',
+  'RECOVERY_RESERVE_FEE_CONSUMED',
+];
+const durableComponents = new Set(details.ledger.map((entry) => entry.componentCode));
+for (const component of requiredLedgerComponents) {
+  if (!durableComponents.has(component)) {
+    throw new Error(`Durable settlement ledger is missing ${component}.`);
+  }
+}
+const finalizedEvidenceIds = new Set(
+  details.evidence
+    .filter((record) => record.verificationState === 'FINALIZED')
+    .map((record) => record.evidenceId),
+);
+if (!details.ledger.every((entry) => finalizedEvidenceIds.has(entry.evidenceId))) {
+  throw new Error('A durable ledger row is not linked to finalized migration evidence.');
+}
 
 process.stdout.write(
   `${JSON.stringify({
@@ -79,6 +116,8 @@ process.stdout.write(
     migrationId: execution.migrationId,
     phase: details.migration.phase,
     evidenceCount: details.evidence.length,
+    ledgerEntryCount: details.ledger.length,
+    unexplainedImbalanceUnits: reconciliation.unexplainedImbalanceUnits,
   })}\n`,
 );
 

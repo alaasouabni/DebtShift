@@ -12,12 +12,12 @@ This file is updated throughout implementation. It is the first place to inspect
 | M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                     |
 | M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                 |
 | M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                  |
-| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, and source/destination reorg guards pass; remaining recovery, alerting, and ledger branches remain.                                                                  |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, reorg guards, and the exact happy-path settlement ledger pass; remaining recovery-ledger branches and alerting remain.                                               |
 | M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                    |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and a compiling sandbox test exist; the supported Linux sandbox run and CI remain.                                                                 |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                             |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains. |
 | M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                    |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, CI deployment tests, and a full readiness-gated Docker sandbox stack pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                           |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                  |
 
 ## Submission-critical mode
 
@@ -35,12 +35,13 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Current active task
 
-- **Task:** P0.6/P0.7 - finish credentialed provider/NEAR validation and deploy the already verified
-  full sandbox image, registry, and public testnet evidence for the single allowlisted route.
+- **Task:** P0.7/P0.8 - deploy the verified full sandbox image and registry, collect public testnet
+  evidence for the single allowlisted route, and run the complete acceptance gate.
 - **Status:** IN_PROGRESS
-- **Next verification:** Run the NEAR sandbox gate in the supported Linux CI environment, rerun the
-  pinned protocol fork with `BASE_FORK_RPC_URL`, perform an official 1Click dry quote when a token is
-  available, supply hosting/NEAR credentials to the verified stack, and execute acceptance.
+- **Next verification:** Supply hosting and NEAR credentials to the verified stack, deploy the
+  hosted sandbox and NEAR testnet registry, run the public testnet workflow, perform an authenticated
+  official 1Click dry quote when a token is available, then execute acceptance. The Linux NEAR CI,
+  pinned Base fork, live route, official schema, security audit, and clean Docker gates already pass.
 
 ## Decision log
 
@@ -304,6 +305,31 @@ This file is updated throughout implementation. It is the first place to inspect
   behavior.
 - **Supersedes/amends:** Supersedes ADR-001 and ADR-009; amends ADR-008 and ADR-017.
 
+### ADR-023 - Receipt-linked durable ledger with explicit accounting basis
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Decision:** A finalized settlement writes its validated reconciliation and every component row
+  atomically in PostgreSQL. Each row has a stable component identity, contiguous sequence, exact
+  chain/token identity, same-migration finalized evidence link, and an explicit accounting basis.
+- **Movement basis:** `FINALIZED_MOVEMENT` is reserved for receipt-verified value movement. The
+  source payoff, isolated recovery-reserve lock/consumption/refund, collateral custody legs,
+  destination loan proceeds, supplementary funding, solver principal/fee payout, capitalized-cost
+  payout, and residual return reconcile independently without cross-chain or cross-token netting.
+- **Classification basis:** `SIGNED_COST_CLASSIFICATION` records a signed `SEPARATELY_PAID` cost
+  exactly once and links it to finalized financing evidence. It is deliberately not represented as
+  a paid transaction and cannot increase destination borrowing or satisfy the solver obligation.
+- **P0 boundary:** Solver-advanced and capitalized costs remain fail-closed before reservation for
+  the initial route because its signed plan has no receipt-verifiable cost recipient. Supporting
+  those classes later requires an explicit signed recipient and execution evidence, not a ledger-only
+  assertion.
+- **Required equations:** Destination loan proceeds plus finalized supplementary funding equal
+  principal, fee, capitalized payout, and residual; locked recovery reserve equals consumed
+  principal/fee plus refund; unexplained imbalance is exactly zero.
+- **Reason:** The terminal evidence bundle previously contained a reconciliation marker but no
+  durable ledger rows. A settlement claim must be independently queryable and must distinguish
+  observed transfers from signed economic classifications.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                              |
@@ -318,6 +344,36 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Durable settlement ledger implemented and clean-stack verified
+
+- Found that the contract-backed smoke migration reached `SETTLED` with finalized reconciliation
+  evidence while `ledger_entries` remained empty. Added a strict reconciliation schema, migration
+  `0008`, evidence-linked component identities, and transactional persistence with conflict checks.
+- Encoded exact source payoff, recovery-reserve lock/consumption/refund, source and destination
+  collateral custody, destination loan proceeds, supplementary funding, solver principal/fee
+  payout, capitalized payout, and residual rules. PostgreSQL rejects missing or cross-migration
+  evidence links, duplicate components/sequences, partial persistence, or conflicting replays.
+- The first clean smoke correctly failed at `TARGET_OPEN` because the local plan's five legitimate
+  `SEPARATELY_PAID` cost estimates had no ledger representation. ADR-023 resolves them as explicit
+  signed classifications rather than fabricated payments; solver-advanced and capitalized costs
+  remain unsupported by the P0 recipient contract and fail before reservation.
+- Final clean-volume Compose smoke migration
+  `0xd1a0a73968d4c086654a28e5d3ac79b6458917bca1094ed85f601de92b6ed9a7` reached `SETTLED` with
+  17 evidence records, 16 durable ledger rows, exact principal/fee and reserve refund, and zero
+  unexplained imbalance. Five rows are visibly marked `SIGNED_COST_CLASSIFICATION`; the remaining
+  11 are `FINALIZED_MOVEMENT` rows.
+- Focused validation passed 40 domain tests, 15 database tests, and 20 worker handler/E2E tests.
+  The complete repository format/lint/type/test/build gate and both EVM gates pass; production npm
+  audit reports zero vulnerabilities.
+- GitHub Actions run `43340230804` is fully green: TypeScript, all EVM gates/demos, and the Linux
+  NEAR format/unit/Clippy/WASM/sandbox gate. The official Base RPC also passed the pinned fork at
+  block `55,600,000`; the live route and official 1Click catalog/schema gates pass without writes.
+- Docker Desktop produced one diagnosed BuildKit `missing parent snapshot` export error after the
+  deliberate volume reset. The unchanged cached build succeeded on retry; this was an image-store
+  cache fault, not an application retry or a suppressed test failure.
+- No external deployment, committed 1Click request, NEAR registry write, public-chain transaction,
+  mainnet write, or real-fund movement occurred. `MAINNET_EXECUTION_ENABLED` remains false.
 
 ### 2026-11-13 - Full hosted-sandbox image and signed HTTP-to-chain workflow verified
 
