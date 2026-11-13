@@ -20,6 +20,8 @@ The default URLs are web `http://localhost:3000`, API documentation
 
 The default Anvil keys and addresses are disposable public test fixtures. Never fund or reuse them
 outside this private sandbox. `MAINNET_EXECUTION_ENABLED` is hard-set to `false` in this stack.
+PostgreSQL, Redis, and the unlocked private-chain RPCs bind only to host loopback; do not publish
+them through a public load balancer or reverse proxy.
 
 ## Hosted sandbox registry gate
 
@@ -28,13 +30,18 @@ Local development intentionally remains at financially `SETTLED` with a retryabl
 terminal NEAR receipt or advances to `COMPLETED`. A hosted sandbox must set all of:
 
 - `DEBTSHIFT_NODE_ENV=production`
+- `NEAR_NETWORK=testnet`
+- `NEAR_RPC_URL` set to the selected NEAR testnet RPC endpoint
 - `NEAR_REGISTRY_ACCOUNT`
 - `NEAR_SIGNER_ACCOUNT_ID`
 - `NEAR_SIGNER_PRIVATE_KEY`
 
 Production startup then fails closed if any registry credential is missing. The signer must be a
-dedicated funded verifier account with only the required registry permissions.
+dedicated funded testnet verifier account with only the required registry permissions. A private
+NEAR sandbox remains valid for developer-operated deployments, but its evidence must retain the
+`sandbox` network label.
 
 `NEXT_PUBLIC_API_URL` is a build argument. Set it to the public API `/v1` URL before building a
 hosted image. Set `WEB_PUBLIC_URL` and `API_PUBLIC_URL` to the matching public origins. Do not put
-mainnet keys, 1Click credentials, or real funds in this sandbox compose file.
+mainnet keys, 1Click credentials, or real funds in this sandbox compose file. Supply unique hosted
+PostgreSQL credentials through the deployment secret store, and expose the web/API only behind TLS.

@@ -42,7 +42,7 @@ x-sandbox-environment: &sandbox-environment
   INTENTS_AUTH_TOKEN: ''
   SIMULATOR_TERMINAL_OUTCOME: ${SIMULATOR_TERMINAL_OUTCOME:-SUCCESS}
   SIMULATOR_PROCESSING_POLLS: ${SIMULATOR_PROCESSING_POLLS:-1}
-  NEAR_NETWORK: sandbox
+  NEAR_NETWORK: ${NEAR_NETWORK:-sandbox}
   NEAR_RPC_URL: ${NEAR_RPC_URL:-https://test.rpc.fastnear.com}
   NEAR_REGISTRY_ACCOUNT: ${NEAR_REGISTRY_ACCOUNT:-}
   NEAR_SIGNER_ACCOUNT_ID: ${NEAR_SIGNER_ACCOUNT_ID:-}
@@ -61,7 +61,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-debtshift}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-debtshift_local}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - debtshift_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -75,7 +75,7 @@ services:
     image: redis:8.2.2-alpine
     command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - debtshift_redis:/data
     healthcheck:
@@ -103,8 +103,8 @@ services:
       DESTINATION_CHAIN_ID: 31338
       DESTINATION_RPC_URL: http://127.0.0.1:8546
     ports:
-      - '${SOURCE_RPC_PORT:-8545}:8545'
-      - '${DESTINATION_RPC_PORT:-8546}:8546'
+      - '127.0.0.1:${SOURCE_RPC_PORT:-8545}:8545'
+      - '127.0.0.1:${DESTINATION_RPC_PORT:-8546}:8546'
     healthcheck:
       test: ['CMD', 'node', 'scripts/health-local-chains.mjs']
       interval: 5s

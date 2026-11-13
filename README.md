@@ -39,15 +39,28 @@ documented in `docs/local-setup.md`.
 
 ## Start
 
+Run the complete contract-backed sandbox with one command:
+
 ```sh
 cp .env.example .env
 npm ci
 npm run infra:up
+npm run smoke:local
+```
+
+This builds and starts PostgreSQL, Redis, both private chains, migrations, the API, worker, and web
+application. Open `http://localhost:3000`; API documentation is at
+`http://localhost:3001/docs`. Stop the stack with `npm run infra:down`.
+
+For application hot reload instead, start only the service dependencies:
+
+```sh
+npm run infra:dependencies
 npm run db:migrate --workspace @debtshift/database
 npm run local:chains # keep this terminal open
 ```
 
-Then, in another terminal:
+Then start the applications in another terminal:
 
 ```sh
 npm run dev
@@ -73,8 +86,10 @@ npm run demo:recovery
 ```
 
 Each command starts and stops two private Anvil chains and uses disposable test assets only.
-For an automated real-service check after starting the local chains, API, and worker, run
-`npm run smoke:local`.
+`npm run smoke:local` targets the running full sandbox and submits a signed HTTP-to-chain migration.
+Without NEAR registry credentials the local development stack reaches financially final `SETTLED`
+and keeps receipt registration retryable; a credentialed hosted stack reaches `COMPLETED` only
+after the registry receipt is verified.
 
 ## Safety boundary
 

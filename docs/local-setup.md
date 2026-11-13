@@ -5,30 +5,41 @@
 Install Node.js 22.16.0 and npm 10.9.2, then run `npm ci`. Versions are pinned by `.nvmrc`,
 `.node-version`, `package.json`, and `package-lock.json`.
 
-## Infrastructure
+## Full sandbox
 
-Docker Compose v2 is required. Copy `.env.example` to `.env`, then run `npm run infra:up`. Local
-credentials in the example file are for disposable development services only.
+Docker Compose v2 is required. Copy `.env.example` to `.env`, then run:
 
-Apply the checked-in schema with `npm run db:migrate --workspace @debtshift/database` before starting
-the API or worker. The worker consumes the PostgreSQL transactional outbox through Redis/BullMQ and
-rehydrates simulator poll state and mined contract events after restart. `SANDBOX_EXECUTOR_PRIVATE_KEY`
-in `.env.example` is Anvil's public disposable deployer key; never replace it with a funded key.
+```sh
+npm run infra:up
+npm run smoke:local
+```
+
+`infra:up` builds and starts the complete stack: PostgreSQL, Redis, two seeded private chains, the
+schema migration, API, durable worker, and web application. Do not also run `local:chains` or
+`npm run dev` against the same ports. Local credentials and `SANDBOX_EXECUTOR_PRIVATE_KEY` are
+public disposable Anvil fixtures; never replace them with funded keys.
+
+## Hot-reload development
+
+Use this topology when changing application code:
 
 For the interactive application:
 
-1. Run `npm run local:chains` in its own terminal. It keeps the seeded source and destination Anvil
+1. Run `npm run infra:dependencies` to start only PostgreSQL and Redis.
+2. Apply the schema with `npm run db:migrate --workspace @debtshift/database`.
+3. Run `npm run local:chains` in its own terminal. It keeps the seeded source and destination Anvil
    chains alive and prints the deployed fixture addresses.
-2. Run `npm run infra:up`, then apply the database migration command above.
-3. Start `npm run dev` in another terminal.
-4. Add `http://127.0.0.1:8545` (chain ID `31337`) to an EIP-1193 browser wallet and import Anvil's
+4. Start `npm run dev` in another terminal.
+5. Add `http://127.0.0.1:8545` (chain ID `31337`) to an EIP-1193 browser wallet and import Anvil's
    disposable account #1, whose address is printed as `borrower` by the launcher. Use this account
    only with local test assets.
-5. Connect the wallet, review the position and route, sign the policy intent and exact plan, and
+6. Connect the wallet, review the position and route, sign the policy intent and exact plan, and
    follow the evidence timeline. The UI labels every transport observation as a DebtShift simulation.
 
 The API re-reads the signed source snapshot at its historical block and at the current head before
-accepting execution. The sandbox worker cannot be composed into testnet or mainnet modes.
+accepting execution. The worker consumes the PostgreSQL transactional outbox through Redis/BullMQ
+and rehydrates simulator poll state and mined contract events after restart. Production modes cannot
+fall back to the sandbox adapters.
 
 ## EVM contracts
 
