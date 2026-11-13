@@ -170,8 +170,11 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Implement command handlers for reserve, source close, route, destination verification, target open, settlement, and final receipt.
 - [x] Add feasibility evidence and revalidation checkpoints before reservation, source close, target
       borrow, and settlement.
-- [ ] Implement provisional, confirmed, finalized, and retracted evidence states.
-- [ ] Persist financing analyses, exclusive component classifications, funding contributions,
+- [x] Implement provisional, confirmed, finalized, and retracted evidence states.
+  - [x] Provisional and confirmed observations persist without advancing financial state; finalized
+        evidence alone satisfies entry predicates, and append-only retractions supersede orphaned
+        evidence before recovery/requote handling.
+- [x] Persist financing analyses, exclusive component classifications, funding contributions,
       checkpoint feasibility evidence, and settlement obligations.
 - [x] Add chain-specific finality configuration.
 - [x] Add canonical-block and transaction-receipt rechecks before each subsequent financial side

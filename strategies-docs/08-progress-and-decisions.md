@@ -1197,6 +1197,21 @@ operative source of truth.
   lint, type checks, all tests, and production builds. Independent repeated regeneration produced
   byte-for-byte identical specification and SDK artifacts.
 
+### 2026-11-13 - Evidence lifecycle and financing persistence audited
+
+- Added a PostgreSQL-compatible integration proof that `PROVISIONAL` and `CONFIRMED` observations
+  are append-only durable evidence but cannot activate a liquidity reservation, increment the
+  migration version, or advance the `AUTHORIZED` phase.
+- Retained the existing finalized-evidence gate for phase entry and reservation activation, plus
+  the canonicality tests in which append-only `RETRACTED` evidence supersedes finalized orphaned
+  observations before recovery or requote handling.
+- Audited the durable financing path: initial feasibility analysis and exclusive classifications,
+  finalized migration-specific supplementary funding, checkpoint revalidation evidence, signed
+  settlement obligations, and exact receipt-linked ledger reconciliation are all persisted and
+  exercised by the repository/worker integration suites.
+- Focused database verification passed with seven files and 19 tests, followed by database lint and
+  type checks.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

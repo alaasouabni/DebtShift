@@ -21,6 +21,7 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((file) => file.endsWith('.sql'))
   .sort();
 const hash = (digit: string) => `0x${digit.repeat(64)}`;
+const pairHash = (pair: string) => `0x${pair.repeat(32)}`;
 const sourceAuthorizationEvidenceId = `0x${'16'.repeat(32)}`;
 
 describe('durable workflow and transactional outbox', () => {
@@ -139,6 +140,60 @@ describe('durable workflow and transactional outbox', () => {
       'SELECT status FROM outbox_messages',
     );
     expect(published.rows[0]?.status).toBe('PUBLISHED');
+  });
+
+  it('persists provisional and confirmed evidence without advancing financial state', async () => {
+    const baseEvidence = {
+      migrationId: hash('5'),
+      type: 'LIQUIDITY_RESERVATION' as const,
+      schemaVersion: 1,
+      provider: 'LOCAL_TEST_VAULT',
+      network: 'anvil:31337',
+      normalizedPayload: { principalUnits: '100' },
+      verificationMethod: 'CONTRACT_STATE',
+      verifierVersion: '1',
+    };
+    const provisional = evidenceSchema.parse({
+      ...baseEvidence,
+      evidenceId: pairHash('ab'),
+      rawObservationHash: pairHash('ba'),
+      observedAt: '2026-11-09T01:00:00.000Z',
+      verificationState: 'PROVISIONAL',
+    });
+    const confirmed = evidenceSchema.parse({
+      ...baseEvidence,
+      evidenceId: pairHash('ac'),
+      rawObservationHash: pairHash('ca'),
+      observedAt: '2026-11-09T01:00:30.000Z',
+      verificationState: 'CONFIRMED',
+    });
+
+    await expect(advanceMigrationWithEvidence(database, provisional, 'observer')).resolves.toBe(
+      'AUTHORIZED',
+    );
+    await expect(advanceMigrationWithEvidence(database, confirmed, 'observer')).resolves.toBe(
+      'AUTHORIZED',
+    );
+
+    const [migration, reservation, observations] = await Promise.all([
+      postgres.query<{ phase: string; version: number }>(
+        `SELECT phase, version FROM migrations WHERE migration_id = '${hash('5')}'`,
+      ),
+      postgres.query<{ status: string }>(
+        `SELECT status FROM liquidity_reservations WHERE migration_id = '${hash('5')}'`,
+      ),
+      postgres.query<{ verification_state: string }>(`
+        SELECT verification_state FROM evidence
+        WHERE evidence_id IN ('${provisional.evidenceId}', '${confirmed.evidenceId}')
+        ORDER BY observed_at
+      `),
+    ]);
+    expect(migration.rows[0]).toEqual({ phase: 'AUTHORIZED', version: 0 });
+    expect(reservation.rows[0]?.status).toBe('PENDING');
+    expect(observations.rows).toEqual([
+      { verification_state: 'PROVISIONAL' },
+      { verification_state: 'CONFIRMED' },
+    ]);
   });
 
   it('advances from finalized evidence and enqueues the next command exactly once', async () => {
