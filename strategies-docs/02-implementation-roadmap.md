@@ -177,7 +177,7 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Add canonical-block and transaction-receipt rechecks before each subsequent financial side
       effect, append-only retractions, and manual incident handling for deep reorgs.
 - [ ] Add transport polling with strict unknown-status behavior.
-- [ ] Add destination balance and receipt reconciliation.
+- [x] Add destination balance and receipt reconciliation.
 - [ ] Add retry budgets and deadline-aware scheduling.
 - [ ] Add each recovery policy and operator escalation state.
 - [x] Persist recovery cases atomically with opening evidence, exact residual custody/receivable
@@ -196,7 +196,8 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
         recovery, returns destination collateral, and never opens the unsafe target position.
   - [x] Mutable price, rate, and protocol-risk-parameter fixtures prove that refreshed state and the
         signed minimum-APR-reduction policy supersede the earlier passing plan.
-- [ ] Add balanced ledger checks before settlement.
+- [x] Add exact receipt-linked balanced ledger reconciliation as a mandatory `SETTLED` predicate,
+      including recovery-reserve, destination escrow, principal, fee, residual, and signed-cost basis.
 - [ ] Add stale migration and deadline alerts.
 
 ### Exit criteria
@@ -238,13 +239,13 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 ### Tasks
 
-- [ ] Implement contract initialization and administrative roles.
-- [ ] Register intent hash, execution-plan hash, actors, and supported networks.
-- [ ] Append verifier attestations with evidence identifiers and schemes.
-- [ ] Enforce verifier authorization and duplicate protection.
-- [ ] Register one immutable final receipt hash and terminal status.
-- [ ] Add read views for agreement, attestations, and receipt lookup.
-- [ ] Add Rust unit tests and NEAR sandbox integration tests.
+- [x] Implement contract initialization and administrative roles.
+- [x] Register intent hash, execution-plan hash, actors, and supported networks.
+- [x] Append verifier attestations with evidence identifiers and schemes.
+- [x] Enforce verifier authorization and duplicate protection.
+- [x] Register one immutable final receipt hash and terminal status.
+- [x] Add read views for agreement, attestations, and receipt lookup.
+- [x] Add Rust unit tests and NEAR sandbox integration tests.
 - [ ] Deploy to NEAR testnet using a documented deployment manifest.
 - [ ] Verify application and registry receipt hashes match.
 
@@ -262,28 +263,28 @@ workflow.
 
 ### Tasks
 
-- [ ] Replace simulator-specific worker construction with provider-neutral source, liquidity,
+- [x] Replace simulator-specific worker construction with provider-neutral source, liquidity,
       transport, destination, settlement, canonicality, and registry ports.
-- [ ] Add validated `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet` composition roots with no
+- [x] Add validated `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet` composition roots with no
       production fallback to simulation.
-- [ ] Add fail-closed `MAINNET_EXECUTION_ENABLED`, defaulting to `false`, and enforce it at the API
+- [x] Add fail-closed `MAINNET_EXECUTION_ENABLED`, defaulting to `false`, and enforce it at the API
       and every irreversible worker command boundary.
-- [ ] Validate the 1Click client against the current official OpenAPI/API reference.
-- [ ] Encode the absence of public 1Click testnet as an environment rule without making simulation
+- [x] Validate the 1Click client against the current official OpenAPI/API reference.
+- [x] Encode the absence of public 1Click testnet as an environment rule without making simulation
       the primary workflow.
 - [ ] Fetch/version the live token catalog and map asset IDs by chain and contract address.
-- [ ] Retain `dry: true` quotes in `mainnet-readonly` and implement committed quotes only in `mainnet`.
-- [ ] Implement committed quote validation, deposit-address binding, origin transaction submission,
+- [x] Retain `dry: true` quotes in `mainnet-readonly` and implement committed quotes only in `mainnet`.
+- [x] Implement committed quote validation, deposit-address binding, origin transaction submission,
       strict status normalization, refund handling, and raw-payload persistence.
-- [ ] Independently verify origin receipt, destination receipt, delivered asset, amount, receiver,
+- [x] Independently verify origin receipt, destination receipt, delivered asset, amount, receiver,
       confirmations, and canonical block before target open.
-- [ ] Connect production source close, vault/escrow, official transport, Morpho target open, atomic
+- [x] Connect production source close, vault/escrow, official transport, Morpho target open, atomic
       settlement, residual return, and NEAR receipt registration.
 - [ ] Add bounded retry, timeout, rate limit, circuit breaker, and fail-closed unknown-status behavior.
-- [ ] Restrict the first deployment to one versioned route and explicit principal, collateral, fee,
+- [x] Restrict the first deployment to one versioned route and explicit principal, collateral, fee,
       slippage, gas, receiver, deadline, and recovery-exposure limits.
-- [ ] Require a separately isolated recovery reserve before source close.
-- [ ] Keep all mainnet writes disabled through development, sandbox, testnet, fork, and acceptance
+- [x] Require a separately isolated recovery reserve before source close.
+- [x] Keep all mainnet writes disabled through development, sandbox, testnet, fork, and acceptance
       verification.
 - [ ] Deploy production with writes disabled and simulate every intended transaction against current
       state before requesting final execution approval.

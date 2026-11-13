@@ -16,7 +16,11 @@
  *   - the connected account must equal `intent.borrower` and `plan.borrower`.
  */
 
-import { getExecutionPlanTypedData, getRefinanceIntentTypedData } from '@debtshift/domain';
+import {
+  getExecutionPlanTypedData,
+  getMorphoAuthorizationTypedData,
+  getRefinanceIntentTypedData,
+} from '@debtshift/domain';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -52,22 +56,83 @@ import { useEnvironment } from '../environment/environment-context';
 import { isConnected, useWallet } from '../wallet/wallet-context';
 import { glanceRows, groupReviewRows, type ReviewKind } from './review-groups';
 import { intentRows, planRows, type ReviewRow } from './review-rows';
-import { stepNote, stepStatus } from './step-notes';
+import {
+  approvalProblem,
+  buildSourceAuthorization,
+  buildTargetAuthorization,
+  lendingIsComplete,
+  lendingPromptCount,
+  morphoPairProblem,
+  needsLendingStep,
+  sourceAuthorizationOf,
+  targetAuthorizationOf,
+  type LendingProgress,
+} from './lending-authorization';
+import { MorphoPermissionCard, TokenApprovalCard } from './lending-step';
+import { stepNote, stepStatus, type StepId } from './step-notes';
 
-type Step = 'prepare' | 'policy' | 'execution' | 'submit';
+type Step = StepId;
 
-const STEP_LABELS: { readonly id: Step; readonly label: string }[] = [
+const BASE_STEPS: { readonly id: Step; readonly label: string }[] = [
   { id: 'prepare', label: 'Prepare' },
   { id: 'policy', label: 'The policy' },
   { id: 'execution', label: 'The execution' },
   { id: 'submit', label: 'Submit' },
 ];
 
+const LENDING_STEP = { id: 'lending', label: 'Lending permissions' } as const;
+
+/**
+ * The steps of this authorization. The lending step exists only when the
+ * backend prepared a permission for it; it is never shown as an empty step.
+ */
+function stepsFor(withLending: boolean): { readonly id: Step; readonly label: string }[] {
+  if (!withLending) return BASE_STEPS;
+  return [...BASE_STEPS.slice(0, 3), LENDING_STEP, ...BASE_STEPS.slice(3)];
+}
+
+const HERO_COPY: Record<
+  Exclude<Step, 'prepare'>,
+  {
+    readonly eyebrow: string;
+    readonly title: string;
+    readonly aside: string;
+    readonly lede: string;
+  }
+> = {
+  policy: {
+    eyebrow: 'Signature 1 of 2',
+    title: 'Authorize the policy.',
+    aside: 'The limits, not the route.',
+    lede: 'This signature sets the bounds any route must stay within. The exact route comes next, as a second, separate signature.',
+  },
+  execution: {
+    eyebrow: 'Signature 2 of 2',
+    title: 'Authorize this exact execution.',
+    aside: 'One route, fixed.',
+    lede: 'This signature fixes the route, the amounts, the receivers, the quote and the deadline. Nothing outside it can execute.',
+  },
+  lending: {
+    eyebrow: 'Lending permissions',
+    title: 'Let the lending markets take part.',
+    aside: 'Only what this migration needs.',
+    lede: 'Your two signatures are collected. A market on this route needs a permission of its own before a contract can act for you there. Each one is below with its exact terms.',
+  },
+  submit: {
+    eyebrow: 'Ready to submit',
+    title: 'Both signatures collected.',
+    aside: 'Nothing has moved yet.',
+    lede: 'Submitting hands both signatures to the backend, which verifies them before anything starts.',
+  },
+};
+
 interface FlowState {
   readonly step: Step;
   readonly prepared?: PreparedMigration | undefined;
   readonly intentSignature?: string | undefined;
   readonly planSignature?: string | undefined;
+  /** What has been given so far in the lending-permissions step. */
+  readonly lending?: LendingProgress | undefined;
   readonly busy?: boolean;
   readonly error?: string | undefined;
   readonly errorStatus?: number | undefined;
@@ -215,7 +280,7 @@ export function AuthorizeView() {
       setState((current) => ({
         ...current,
         busy: false,
-        step: 'submit',
+        step: needsLendingStep(prepared) ? 'lending' : 'submit',
         planSignature: signature,
       }));
     } catch (caught) {
@@ -226,6 +291,84 @@ export function AuthorizeView() {
           caught instanceof Error
             ? `The execution signature was not completed. ${caught.message}`
             : 'The execution signature was not completed.',
+      }));
+    }
+  }, [prepared, wallet]);
+
+  /* ------------------------------------------------- lending permissions */
+
+  const signMorpho = useCallback(
+    async (side: 'enable' | 'disable') => {
+      if (prepared === undefined) return;
+      const target = targetAuthorizationOf(prepared);
+      if (target.kind !== 'MORPHO_BLUE') return;
+      // Refused here as well as on the card: the wallet is never asked to sign
+      // a pair that is not what the screen describes.
+      if (morphoPairProblem(target, prepared.plan.borrower) !== undefined) return;
+      setState((current) => ({ ...current, busy: true, error: undefined }));
+      try {
+        const signature = await wallet.signTypedData(getMorphoAuthorizationTypedData(target, side));
+        setState((current) => ({
+          ...current,
+          busy: false,
+          lending: {
+            ...current.lending,
+            ...(side === 'enable'
+              ? { enableSignature: signature }
+              : { disableSignature: signature }),
+          },
+        }));
+      } catch (caught) {
+        setState((current) => ({
+          ...current,
+          busy: false,
+          error:
+            caught instanceof Error
+              ? `The Morpho permission was not signed. ${caught.message}`
+              : 'The Morpho permission was not signed.',
+        }));
+      }
+    },
+    [prepared, wallet],
+  );
+
+  const sendApproval = useCallback(async () => {
+    if (prepared === undefined) return;
+    const source = sourceAuthorizationOf(prepared);
+    if (source.kind !== 'ERC20_APPROVAL') return;
+    // A transaction is only ever requested where the backend allows funded
+    // execution, and only when it is exactly the approval shown.
+    if (!canSubmit(readEnvironment(prepared))) return;
+    if (approvalProblem(source) !== undefined) return;
+    setState((current) => ({ ...current, busy: true, error: undefined }));
+    try {
+      const hash = await wallet.sendTransaction({
+        to: source.transaction.to,
+        data: source.transaction.data,
+      });
+      setState((current) => ({
+        ...current,
+        lending: { ...current.lending, approvalHash: hash },
+      }));
+      const receipt = await wallet.waitForTransaction(hash);
+      if (!receipt.succeeded) {
+        throw new Error('The approval transaction was mined but reverted.');
+      }
+      setState((current) => ({
+        ...current,
+        busy: false,
+        lending: { ...current.lending, approvalBlock: receipt.blockNumber },
+      }));
+    } catch (caught) {
+      setState((current) => ({
+        ...current,
+        busy: false,
+        // A failed or reverted approval is forgotten, so it can be sent again.
+        lending: { ...current.lending, approvalHash: undefined, approvalBlock: undefined },
+        error:
+          caught instanceof Error
+            ? `The approval was not completed. ${caught.message}`
+            : 'The approval was not completed.',
       }));
     }
   }, [prepared, wallet]);
@@ -242,6 +385,8 @@ export function AuthorizeView() {
     // it cannot be bypassed by re-enabling a control in devtools. The backend
     // enforces it again on its side.
     if (!canSubmit(readEnvironment(prepared))) return;
+    const lending = state.lending ?? {};
+    if (!lendingIsComplete(prepared, lending)) return;
     setState((current) => ({ ...current, busy: true, error: undefined }));
     try {
       /*
@@ -262,6 +407,10 @@ export function AuthorizeView() {
         },
         quote: prepared.quote,
         sourceSnapshot: prepared.sourceSnapshot,
+        // `{ kind: 'NONE' }` when the market needs nothing, otherwise the
+        // prepared permission with what the borrower provided for it.
+        sourceAuthorization: buildSourceAuthorization(sourceAuthorizationOf(prepared), lending),
+        targetAuthorization: buildTargetAuthorization(targetAuthorizationOf(prepared), lending),
       });
 
       // Only the id is persisted — never a signature or a prepared payload.
@@ -281,7 +430,7 @@ export function AuthorizeView() {
         errorStatus: error?.status,
       }));
     }
-  }, [prepared, state.intentSignature, state.planSignature, router]);
+  }, [prepared, state.intentSignature, state.planSignature, state.lending, router]);
 
   /* ------------------------------------------------------------- the gates */
 
@@ -332,7 +481,11 @@ export function AuthorizeView() {
           gap: 28,
         }}
       >
-        <StepIndicator current={state.step} isDemo={wallet.isDemo} />
+        <StepIndicator
+          steps={stepsFor(prepared !== undefined && needsLendingStep(prepared))}
+          current={state.step}
+          isDemo={wallet.isDemo}
+        />
 
         {state.step === 'prepare' ? (
           <PrepareStep
@@ -347,7 +500,7 @@ export function AuthorizeView() {
         {prepared && state.step !== 'prepare' ? (
           <>
             <p className="eyebrow" style={{ marginTop: 32 }}>
-              Signature {state.step === 'policy' ? '1' : '2'} of 2
+              {HERO_COPY[state.step].eyebrow}
             </p>
             <h1
               ref={headingRef}
@@ -362,22 +515,8 @@ export function AuthorizeView() {
                 maxWidth: 1080,
               }}
             >
-              {state.step === 'policy' ? (
-                <>
-                  Authorize the policy.{' '}
-                  <span style={{ color: 'var(--ink-muted)' }}>The limits, not the route.</span>
-                </>
-              ) : state.step === 'execution' ? (
-                <>
-                  Authorize this exact execution.{' '}
-                  <span style={{ color: 'var(--ink-muted)' }}>One route, fixed.</span>
-                </>
-              ) : (
-                <>
-                  Both signatures collected.{' '}
-                  <span style={{ color: 'var(--ink-muted)' }}>Nothing has moved yet.</span>
-                </>
-              )}
+              {HERO_COPY[state.step].title}{' '}
+              <span style={{ color: 'var(--ink-muted)' }}>{HERO_COPY[state.step].aside}</span>
             </h1>
             <p
               className="hero__lede"
@@ -389,11 +528,7 @@ export function AuthorizeView() {
                 maxWidth: 760,
               }}
             >
-              {state.step === 'policy'
-                ? 'This signature sets the bounds any route must stay within. The exact route comes next, as a second, separate signature.'
-                : state.step === 'execution'
-                  ? 'This signature fixes the route, the amounts, the receivers, the quote and the deadline. Nothing outside it can execute.'
-                  : 'Submitting hands both signatures to the backend, which verifies them before anything starts.'}
+              {HERO_COPY[state.step].lede}
             </p>
 
             {windows ? <WindowStrip prepared={prepared} windows={windows} /> : null}
@@ -420,7 +555,7 @@ export function AuthorizeView() {
               </Alert>
             )}
 
-            {!chainMatches ? (
+            {!chainMatches && (state.step === 'policy' || state.step === 'execution') ? (
               <Alert
                 tone="warning"
                 title={`Your wallet is not on chain ${String(requiredChain)}`}
@@ -498,6 +633,72 @@ export function AuthorizeView() {
         </>
       ) : null}
 
+      {prepared && state.step === 'lending' ? (
+        <>
+          <SectionRule />
+          <Section
+            id="lending-permissions"
+            number="03"
+            title="What the markets ask of you"
+            note="These are the lending protocols' own permissions, separate from your two signatures. Each is limited to this migration."
+          >
+            <div className="lending-stack">
+              {(() => {
+                const target = targetAuthorizationOf(prepared);
+                return target.kind === 'MORPHO_BLUE' ? (
+                  <MorphoPermissionCard
+                    authorization={target}
+                    borrower={prepared.plan.borrower}
+                    progress={state.lending ?? {}}
+                    walletChainId={wallet.chainId}
+                    busy={state.busy === true}
+                    disabled={!borrowerMatches}
+                    onSwitch={() => void wallet.requestChain(target.chainId)}
+                    onSign={(side) => void signMorpho(side)}
+                  />
+                ) : null;
+              })()}
+
+              {(() => {
+                const source = sourceAuthorizationOf(prepared);
+                return source.kind === 'ERC20_APPROVAL' ? (
+                  <TokenApprovalCard
+                    authorization={source}
+                    plan={prepared.plan}
+                    progress={state.lending ?? {}}
+                    walletChainId={wallet.chainId}
+                    busy={state.busy === true}
+                    disabled={!borrowerMatches || !submitAllowed}
+                    onSwitch={() => void wallet.requestChain(source.chainId)}
+                    onSend={() => void sendApproval()}
+                  />
+                ) : null;
+              })()}
+
+              {blockedReason ? (
+                <Alert tone="warning" title="Submission is not available here">
+                  {blockedReason}
+                </Alert>
+              ) : null}
+
+              <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                <Button
+                  onClick={() => setState((current) => ({ ...current, step: 'submit' }))}
+                  disabled={
+                    state.busy === true || !lendingIsComplete(prepared, state.lending ?? {})
+                  }
+                >
+                  Continue to submit
+                </Button>
+                <Button variant="secondary" onClick={() => setState(INITIAL)}>
+                  Discard and start over
+                </Button>
+              </div>
+            </div>
+          </Section>
+        </>
+      ) : null}
+
       {prepared && state.step === 'submit' ? (
         <>
           <SectionRule />
@@ -537,6 +738,27 @@ export function AuthorizeView() {
                   )}
                   <span className="mono">{truncateHex(state.planSignature ?? '', 10, 8)}</span>
                 </dd>
+                {needsLendingStep(prepared) ? (
+                  <>
+                    <dt>Lending permissions</dt>
+                    <dd className="is-control">
+                      <Badge tone="success">Given</Badge>
+                      <span>
+                        {(() => {
+                          const count = lendingPromptCount(prepared);
+                          const parts: string[] = [];
+                          if (count.signatures > 0) parts.push('Morpho pair signed');
+                          if (count.transactions > 0) {
+                            parts.push(
+                              `approval mined in block ${state.lending?.approvalBlock ?? '?'}`,
+                            );
+                          }
+                          return parts.join(' · ');
+                        })()}
+                      </span>
+                    </dd>
+                  </>
+                ) : null}
                 <dt>Migration</dt>
                 <dd className="is-control">
                   <HashValue value={prepared.plan.migrationId} label="migration ID" />
@@ -635,11 +857,19 @@ function EnvironmentBanner({
 
 /* ---------------------------------------------------------------- indicator */
 
-function StepIndicator({ current, isDemo }: { readonly current: Step; readonly isDemo: boolean }) {
-  const currentIndex = STEP_LABELS.findIndex((step) => step.id === current);
+function StepIndicator({
+  steps,
+  current,
+  isDemo,
+}: {
+  readonly steps: readonly { readonly id: Step; readonly label: string }[];
+  readonly current: Step;
+  readonly isDemo: boolean;
+}) {
+  const currentIndex = steps.findIndex((step) => step.id === current);
   return (
     <ol className="stepper" aria-label="Authorization steps">
-      {STEP_LABELS.map((step, index) => {
+      {steps.map((step, index) => {
         const status = stepStatus(index, currentIndex);
         return (
           <li

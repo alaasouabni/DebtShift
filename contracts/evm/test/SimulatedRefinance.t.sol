@@ -5,7 +5,7 @@ import { DebtShiftHashing } from "../src/DebtShiftHashing.sol";
 import { DestinationAdapter } from "../src/DestinationAdapter.sol";
 import { MigrationEscrow } from "../src/MigrationEscrow.sol";
 import { SourceAdapter } from "../src/SourceAdapter.sol";
-import { TestLiquidityVault } from "../src/TestLiquidityVault.sol";
+import { LiquidityVault } from "../src/LiquidityVault.sol";
 import { IERC20 } from "../src/interfaces/IERC20.sol";
 import { MockEip1271Wallet } from "../src/mocks/MockEip1271Wallet.sol";
 import { MockSourceLending } from "../src/mocks/MockSourceLending.sol";
@@ -56,7 +56,7 @@ contract SimulatedRefinanceTest {
     TestToken internal sourceDebtToken;
     TestToken internal sourceCollateralToken;
     MockSourceLending internal sourceLending;
-    TestLiquidityVault internal vault;
+    LiquidityVault internal vault;
     MigrationEscrow internal sourceEscrow;
     SourceAdapter internal sourceAdapter;
 
@@ -73,7 +73,7 @@ contract SimulatedRefinanceTest {
         sourceLending = new MockSourceLending(
             IERC20(address(sourceCollateralToken)), IERC20(address(sourceDebtToken))
         );
-        vault = new TestLiquidityVault(address(this));
+        vault = new LiquidityVault(address(this));
         sourceEscrow = new MigrationEscrow(address(this));
         sourceAdapter = new SourceAdapter(address(this), vault, sourceLending, sourceEscrow);
 
@@ -91,6 +91,8 @@ contract SimulatedRefinanceTest {
         sourceDebtToken.mint(address(this), 30_000_000_000);
         sourceDebtToken.approve(address(vault), 30_000_000_000);
         vault.deposit(IERC20(address(sourceDebtToken)), 30_000_000_000);
+        sourceDebtToken.mint(address(this), 100_000_000_000);
+        sourceDebtToken.approve(address(vault), type(uint256).max);
 
         destinationDebtToken = new TestToken("Destination USD", "dUSDC", 6, address(this));
         destinationCollateralToken = new TestToken("Destination Ether", "dWETH", 18, address(this));
@@ -183,6 +185,33 @@ contract SimulatedRefinanceTest {
             sourceDebtToken.balanceOf(address(vault)) == 30_000_000_000 + SOLVER_FEE,
             "vault settlement mismatch"
         );
+        require(
+            vault.lockedRecoveryReserves(address(sourceDebtToken)) == 0,
+            "recovery reserve remained locked"
+        );
+    }
+
+    function testRecoveryReserveIsIsolatedAndCanSettleFailedForwardExecution() public {
+        require(
+            vault.freeLiquidity(IERC20(address(sourceDebtToken))) == 20_000_000_000,
+            "locked recovery reserve counted as lendable liquidity"
+        );
+        (,,,,,,,,, address reserveProvider, uint256 reserveUnits) = vault.reservations(migrationId);
+        require(reserveProvider == address(this), "recovery reserve provider mismatch");
+        require(reserveUnits == SOURCE_DEBT + SOLVER_FEE, "recovery reserve amount mismatch");
+
+        sourceAdapter.closeSource(plan, _sign(planHash));
+        vault.settleFromRecoveryReserve(migrationId);
+
+        require(vault.principalReceivable(address(sourceDebtToken)) == 0, "receivable remains");
+        require(
+            vault.lockedRecoveryReserves(address(sourceDebtToken)) == 0,
+            "recovery reserve remains locked"
+        );
+        require(
+            sourceDebtToken.balanceOf(address(vault)) == 30_000_000_000 + SOLVER_FEE,
+            "recovery reserve did not repay the vault"
+        );
     }
 
     function testCanonicalContractEventsCarryExactIdentityAndAmounts() public {
@@ -198,7 +227,7 @@ contract SimulatedRefinanceTest {
         bytes32 fundedPlanHash = _planHash(fundedPlan);
         bytes32 fundingEvidenceHash = _secureSupplementaryFee(fundedPlan);
 
-        TestLiquidityVault.FeasibilityEvidence memory sourceEvidence =
+        LiquidityVault.FeasibilityEvidence memory sourceEvidence =
             _feasibility(fundedPlanHash, uint64(block.timestamp), 1);
         sourceEvidence.externalFundingEvidenceHash = fundingEvidenceHash;
         sourceEvidence.confirmedExternalFundingUnits = SOLVER_FEE;
@@ -384,7 +413,7 @@ contract SimulatedRefinanceTest {
             .call(abi.encodeCall(SourceAdapter.closeSource, (plan, signature)));
         require(!success, "mutated plan was accepted");
         require(
-            _reservationStatus(migrationId) == TestLiquidityVault.ReservationStatus.ACTIVE,
+            _reservationStatus(migrationId) == LiquidityVault.ReservationStatus.ACTIVE,
             "failed authorization consumed reservation"
         );
     }
@@ -392,7 +421,7 @@ contract SimulatedRefinanceTest {
     function testReservationRejectsLatestProofWithUnresolvedShortfall() public {
         DebtShiftHashing.ExecutionPlanHashInput memory otherPlan = _plan(borrower, 2);
         bytes32 otherPlanHash = _planHash(otherPlan);
-        TestLiquidityVault.FeasibilityEvidence memory evidence =
+        LiquidityVault.FeasibilityEvidence memory evidence =
             _feasibility(otherPlanHash, uint64(block.timestamp), 1);
         evidence.maximumSafeBorrowingCapacityUnits = SOURCE_DEBT;
         evidence.fundingShortfallUnits = SOLVER_FEE;
@@ -401,7 +430,7 @@ contract SimulatedRefinanceTest {
         (bool success,) = address(vault)
             .call(
                 abi.encodeCall(
-                    TestLiquidityVault.reserve,
+                    LiquidityVault.reserve,
                     (
                         otherPlan.migrationId,
                         IERC20(address(sourceDebtToken)),
@@ -419,7 +448,7 @@ contract SimulatedRefinanceTest {
 
     function testNewerFailingProofSupersedesPassingReservation() public {
         vm.warp(block.timestamp + 1);
-        TestLiquidityVault.FeasibilityEvidence memory failed =
+        LiquidityVault.FeasibilityEvidence memory failed =
             _feasibility(planHash, uint64(block.timestamp), 2);
         failed.maximumSafeBorrowingCapacityUnits = SOURCE_DEBT;
         failed.fundingShortfallUnits = SOLVER_FEE;
@@ -429,14 +458,14 @@ contract SimulatedRefinanceTest {
             .call(abi.encodeCall(SourceAdapter.closeSource, (plan, _sign(planHash))));
         require(!success, "stale passing proof remained executable");
         require(
-            _reservationStatus(migrationId) == TestLiquidityVault.ReservationStatus.ACTIVE,
+            _reservationStatus(migrationId) == LiquidityVault.ReservationStatus.ACTIVE,
             "failed revalidation consumed reservation"
         );
     }
 
     function testAtomicReleaseForFeasibilityFailureBeforeSourceClose() public {
         vm.warp(block.timestamp + 1);
-        TestLiquidityVault.FeasibilityEvidence memory failed =
+        LiquidityVault.FeasibilityEvidence memory failed =
             _feasibility(planHash, uint64(block.timestamp), 2);
         failed.maximumSafeBorrowingCapacityUnits = SOURCE_DEBT;
         failed.fundingShortfallUnits = SOLVER_FEE;
@@ -445,13 +474,17 @@ contract SimulatedRefinanceTest {
 
         require(failedHash == vault.latestFeasibilityHash(migrationId), "failure not recorded");
         require(
-            _reservationStatus(migrationId) == TestLiquidityVault.ReservationStatus.RELEASED,
+            _reservationStatus(migrationId) == LiquidityVault.ReservationStatus.RELEASED,
             "reservation not released"
         );
         require(vault.reservedUndrawn(address(sourceDebtToken)) == 0, "liquidity still reserved");
         require(
             vault.principalReceivable(address(sourceDebtToken)) == 0,
             "released reservation created receivable"
+        );
+        require(
+            vault.lockedRecoveryReserves(address(sourceDebtToken)) == 0,
+            "released reservation retained the recovery reserve"
         );
         (uint256 collateralUnits, uint256 debtUnits) = sourceLending.positions(borrower);
         require(collateralUnits == SOURCE_COLLATERAL, "source collateral moved");
@@ -475,7 +508,7 @@ contract SimulatedRefinanceTest {
         DebtShiftHashing.ExecutionPlanHashInput memory bufferedPlan = _plan(borrower, 6);
         bufferedPlan.principalMax = authorizedPrincipal;
         bytes32 bufferedPlanHash = _planHash(bufferedPlan);
-        TestLiquidityVault.FeasibilityEvidence memory evidence =
+        LiquidityVault.FeasibilityEvidence memory evidence =
             _feasibility(bufferedPlanHash, uint64(block.timestamp), 1);
         evidence.solverPrincipalUnits = authorizedPrincipal;
         evidence.totalRequiredUnits = authorizedPrincipal + SOLVER_FEE;
@@ -494,7 +527,7 @@ contract SimulatedRefinanceTest {
         );
 
         sourceAdapter.closeSource(bufferedPlan, _sign(bufferedPlanHash));
-        (,,,,,,,, uint256 receivableUnits) = vault.reservations(bufferedPlan.migrationId);
+        (,,,,,,,, uint256 receivableUnits,,) = vault.reservations(bufferedPlan.migrationId);
         require(receivableUnits == SOURCE_DEBT, "unused principal remained receivable");
         require(
             vault.principalReceivable(address(sourceDebtToken)) == SOURCE_DEBT,
@@ -503,6 +536,19 @@ contract SimulatedRefinanceTest {
 
         sourceDebtToken.mint(address(this), SOURCE_DEBT + SOLVER_FEE);
         sourceDebtToken.approve(address(vault), SOURCE_DEBT + SOLVER_FEE);
+        (bool staleSuccess,) = address(vault)
+            .call(
+                abi.encodeCall(
+                    LiquidityVault.settle, (bufferedPlan.migrationId, address(this), SOLVER_FEE)
+                )
+            );
+        require(!staleSuccess, "buffered feasibility ignored the returned principal");
+
+        evidence.sequence = 2;
+        evidence.solverPrincipalUnits = SOURCE_DEBT;
+        evidence.totalRequiredUnits = SOURCE_DEBT + SOLVER_FEE;
+        evidence.requiredDestinationBorrowUnits = SOURCE_DEBT + SOLVER_FEE;
+        vault.recordFeasibility(bufferedPlan.migrationId, evidence);
         vault.settle(bufferedPlan.migrationId, address(this), SOLVER_FEE);
         require(
             vault.principalReceivable(address(sourceDebtToken)) == 0,
@@ -517,13 +563,11 @@ contract SimulatedRefinanceTest {
 
         (bool success,) = address(vault)
             .call(
-                abi.encodeCall(
-                    TestLiquidityVault.settle, (migrationId, address(this), SOLVER_FEE - 1)
-                )
+                abi.encodeCall(LiquidityVault.settle, (migrationId, address(this), SOLVER_FEE - 1))
             );
         require(!success, "settlement accepted a fee below the attested amount");
         require(
-            _reservationStatus(migrationId) == TestLiquidityVault.ReservationStatus.DRAWN,
+            _reservationStatus(migrationId) == LiquidityVault.ReservationStatus.DRAWN,
             "failed settlement changed reservation status"
         );
     }
@@ -605,6 +649,7 @@ contract SimulatedRefinanceTest {
             destinationReceiver: address(destinationEscrow) == address(0)
                 ? address(0xD357)
                 : address(destinationEscrow),
+            transportRefundReceiver: address(sourceEscrow),
             refundReceiver: planBorrower,
             payoutReceiver: planBorrower,
             deadline: uint64(block.timestamp + 30 minutes),
@@ -638,9 +683,9 @@ contract SimulatedRefinanceTest {
     function _feasibility(bytes32 inputPlanHash, uint64 evaluatedAt, uint64 sequence)
         private
         view
-        returns (TestLiquidityVault.FeasibilityEvidence memory)
+        returns (LiquidityVault.FeasibilityEvidence memory)
     {
-        return TestLiquidityVault.FeasibilityEvidence({
+        return LiquidityVault.FeasibilityEvidence({
             planHash: inputPlanHash,
             analysisHash: keccak256(abi.encode("analysis", inputPlanHash, evaluatedAt)),
             externalFundingEvidenceHash: bytes32(0),
@@ -905,8 +950,8 @@ contract SimulatedRefinanceTest {
     function _reservationStatus(bytes32 id)
         private
         view
-        returns (TestLiquidityVault.ReservationStatus status)
+        returns (LiquidityVault.ReservationStatus status)
     {
-        (,,,,,, status,,) = vault.reservations(id);
+        (,,,,,, status,,,,) = vault.reservations(id);
     }
 }

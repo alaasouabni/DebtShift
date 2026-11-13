@@ -8,10 +8,15 @@ describe('LiveProtocolService registry binding', () => {
     const configuration = liveConfiguration();
     const service = new LiveProtocolService(
       new ConfigService({
+        DEBTSHIFT_MODE: 'mainnet-readonly',
         MARKET_DATA_PROVIDER: 'LIVE_READ_ONLY',
         SOURCE_CHAIN_ID: 8453,
         SOURCE_RPC_URL: 'https://base.example',
+        SOURCE_FINALITY_CONFIRMATIONS: 1,
+        SOURCE_LENDING_ADDRESS: '0x4000000000000000000000000000000000000006',
         DESTINATION_CHAIN_ID: 42161,
+        DESTINATION_RPC_URL: 'https://arbitrum.example',
+        DESTINATION_LENDING_ADDRESS: '0x4000000000000000000000000000000000000005',
         LIVE_MARKET_CONFIG_JSON: JSON.stringify(configuration),
       }),
     );
@@ -30,6 +35,37 @@ describe('LiveProtocolService registry binding', () => {
         marketId: configuration.destination.marketId,
       },
       execution: { kind: 'READ_ONLY' },
+    });
+  });
+
+  it('binds explicit DebtShift deployments for the executable mainnet route', () => {
+    const configuration = liveConfiguration();
+    const service = new LiveProtocolService(
+      new ConfigService({
+        DEBTSHIFT_MODE: 'mainnet',
+        MARKET_DATA_PROVIDER: 'LIVE_READ_ONLY',
+        SOURCE_CHAIN_ID: 8453,
+        SOURCE_RPC_URL: 'https://base.example',
+        SOURCE_FINALITY_CONFIRMATIONS: 1,
+        SOURCE_LENDING_ADDRESS: '0x4000000000000000000000000000000000000006',
+        DESTINATION_CHAIN_ID: 42161,
+        DESTINATION_RPC_URL: 'https://arbitrum.example',
+        LIVE_MARKET_CONFIG_JSON: JSON.stringify(configuration),
+        DESTINATION_LENDING_ADDRESS: '0x4000000000000000000000000000000000000005',
+        DESTINATION_ESCROW_ADDRESS: '0x4000000000000000000000000000000000000001',
+        SOURCE_ESCROW_ADDRESS: '0x4000000000000000000000000000000000000004',
+        SOURCE_VAULT_ADDRESS: '0x4000000000000000000000000000000000000002',
+        EXECUTOR_ADDRESS: '0x4000000000000000000000000000000000000003',
+      }),
+    );
+
+    expect(service.route.execution).toEqual({
+      kind: 'EXECUTABLE',
+      mode: 'mainnet',
+      destinationEscrow: '0x4000000000000000000000000000000000000001',
+      sourceEscrow: '0x4000000000000000000000000000000000000004',
+      sourceVault: '0x4000000000000000000000000000000000000002',
+      executor: '0x4000000000000000000000000000000000000003',
     });
   });
 });

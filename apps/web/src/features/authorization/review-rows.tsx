@@ -443,6 +443,17 @@ export function planRows(plan: ExecutionPlan, quote: ProviderQuote, planHash: st
       value: plan.transportDepositAddress,
       raw: `transportDepositAddress ${plan.transportDepositAddress}`,
     },
+    // Present only when the transport provider requires one for the deposit.
+    ...(quote.depositMemo === undefined
+      ? []
+      : [
+          {
+            key: 'quote.depositMemo',
+            label: 'Transport deposit memo',
+            value: quote.depositMemo,
+            raw: `depositMemo ${quote.depositMemo}`,
+          },
+        ]),
     {
       key: 'quote.amountInUnits',
       label: 'Sent through transport',
@@ -499,9 +510,24 @@ export function planRows(plan: ExecutionPlan, quote: ProviderQuote, planHash: st
       value: plan.destinationReceiver,
       raw: `destinationReceiver ${plan.destinationReceiver}`,
     },
+    /*
+     * Signed since plan version 2. A payload recorded before it does not
+     * carry the field, and a row is never invented for a value that was
+     * not signed.
+     */
+    ...(plan.transportRefundReceiver === undefined
+      ? []
+      : [
+          {
+            key: 'plan.transportRefundReceiver',
+            label: 'Refund receiver, if transport fails',
+            value: plan.transportRefundReceiver,
+            raw: `transportRefundReceiver ${plan.transportRefundReceiver}`,
+          },
+        ]),
     {
       key: 'plan.refundReceiver',
-      label: 'Refund receiver, if transport fails',
+      label: 'Final refund receiver',
       value: plan.refundReceiver,
       raw: `refundReceiver ${plan.refundReceiver}`,
     },

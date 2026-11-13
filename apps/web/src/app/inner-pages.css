@@ -439,7 +439,9 @@ footer a {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Four steps, or five when a lending market asks for a permission. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 0;
 }
 
@@ -659,6 +661,52 @@ footer a {
   white-space: pre-line;
 }
 
+/* ------------------------------------- authorization: lending permissions */
+
+.lending-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.lending-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+}
+
+.lending-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.lending-card__title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+}
+
+.lending-card__lede {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink-muted);
+}
+
+.lending-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
 /* ------------------------------------------------- authorization: sign bar */
 
 .signbar {
@@ -716,6 +764,7 @@ footer a {
 
 @container (max-width: 720px) {
   .stepper {
+    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: var(--space-4);
   }

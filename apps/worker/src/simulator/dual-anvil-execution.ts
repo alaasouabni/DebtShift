@@ -74,6 +74,10 @@ interface FinancingRevalidation extends Readonly<Record<string, unknown>> {
   readonly signedBorrowCapacityUnits: string;
   readonly maximumSafeBorrowingCapacityUnits: string;
   readonly confirmedExternalFundingUnits: string;
+  readonly solverPrincipalUnits: string;
+  readonly solverFeeUnits: string;
+  readonly capitalizedCostUnits: string;
+  readonly totalRequiredUnits: string;
   readonly requiredDestinationBorrowUnits: string;
   readonly fundingShortfallUnits: string;
 }
@@ -95,6 +99,8 @@ interface SolverExposure {
   readonly feeClaimUnits: bigint;
   readonly totalClaimUnits: bigint;
   readonly reservationStatus: number;
+  readonly recoveryReserveProvider: Address;
+  readonly recoveryReserveUnits: bigint;
 }
 
 interface SourceFeasibilityEvidenceInput {
@@ -141,7 +147,7 @@ const eventTopics = {
  * Executes only the disposable dual-Anvil workflow. This port is deliberately
  * unavailable in any funded mainnet mode; production adapters use separate ports.
  */
-export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort {
+export class DualAnvilSandboxExecutionPort implements MigrationExecutionPort {
   readonly #environment: DebtShiftEnvironment;
   readonly #account: PrivateKeyAccount;
   readonly #sourceChain: Chain;
@@ -153,9 +159,9 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
   readonly #artifacts: Promise<LocalArtifacts>;
 
   constructor(environment: DebtShiftEnvironment) {
-    if (!['local', 'ci', 'testnet'].includes(environment.DEBTSHIFT_ENV)) {
+    if (environment.DEBTSHIFT_MODE !== 'sandbox') {
       throw new Error(
-        'The dual-Anvil simulation execution port is disabled outside local, CI, and testnet.',
+        'The dual-Anvil contract sandbox execution port is available only in sandbox mode.',
       );
     }
     if (
@@ -163,15 +169,15 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       environment.INTENTS_MODE !== 'simulated'
     ) {
       throw new Error(
-        'The dual-Anvil simulation execution port requires the explicitly simulated transport.',
+        'The dual-Anvil contract sandbox requires the explicitly simulated external transport adapter.',
       );
     }
-    if (environment.LOCAL_EXECUTOR_PRIVATE_KEY.length === 0) {
-      throw new Error('LOCAL_EXECUTOR_PRIVATE_KEY is required by the local execution worker.');
+    if (environment.SANDBOX_EXECUTOR_PRIVATE_KEY.length === 0) {
+      throw new Error('SANDBOX_EXECUTOR_PRIVATE_KEY is required by the contract sandbox worker.');
     }
 
     this.#environment = environment;
-    this.#account = privateKeyToAccount(environment.LOCAL_EXECUTOR_PRIVATE_KEY as Hex);
+    this.#account = privateKeyToAccount(environment.SANDBOX_EXECUTOR_PRIVATE_KEY as Hex);
     this.#sourceChain = localChain(
       environment.SOURCE_CHAIN_ID,
       'DebtShift source',
@@ -318,6 +324,11 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       { action: 'reserve', reconciled: true },
     );
     if (existing !== undefined) {
+      this.#assertRecoveryReserve(
+        await this.#readSolverExposure(artifacts.vault, migrationId),
+        context,
+        1,
+      );
       return withFinancingRevalidation(
         existing,
         await this.#revalidateFinancing(context, artifacts, 'AFTER_RESERVATION'),
@@ -331,7 +342,25 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       'BEFORE_RESERVATION',
     );
     const proof = await this.#recordFeasibility(context, artifacts, financingRevalidation);
-    return this.#writeAction(
+    const recoveryReserveUnits = BigInt(plan.principalMaxUnits) + BigInt(plan.feeMaxUnits);
+    const auxiliaryTransactions = await this.#ensureTokenBalance(
+      this.#sourceWallet,
+      this.#sourcePublic,
+      artifacts.token,
+      this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+      recoveryReserveUnits,
+    );
+    auxiliaryTransactions.push(
+      await this.#writeHash(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        artifacts.token,
+        this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+        'approve',
+        [this.#environment.SOURCE_VAULT_ADDRESS, recoveryReserveUnits],
+      ),
+    );
+    const action = await this.#writeAction(
       this.#sourceWallet,
       this.#sourcePublic,
       this.#environment.SOURCE_CHAIN_ID,
@@ -352,12 +381,21 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         action: 'reserve',
         principalUnits: plan.principalMaxUnits,
         feeCapUnits: plan.feeMaxUnits,
+        recoveryReserveProvider: this.#account.address,
+        recoveryReserveUnits: recoveryReserveUnits.toString(),
+        auxiliaryTransactions,
         planHash: context.signedPlan.planHash,
         feasibilityHash: proof.feasibilityHash,
         feasibilityTransactionHash: proof.transactionHash,
         financingRevalidation,
       },
     );
+    this.#assertRecoveryReserve(
+      await this.#readSolverExposure(artifacts.vault, migrationId),
+      context,
+      1,
+    );
+    return action;
   }
 
   async closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
@@ -561,7 +599,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       artifacts,
       financingRevalidation,
     );
-    const borrowUnits = BigInt(plan.financing.requiredDestinationBorrowUnits);
+    const borrowUnits = BigInt(financingRevalidation.requiredDestinationBorrowUnits);
     const authorization = getExecutionPlanTypedData(
       plan,
       this.#environment.EIP712_VERIFYING_CONTRACT,
@@ -584,11 +622,11 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
           borrowUnits,
           feasibilityHash: proof.feasibilityHash,
           fundingEvidenceHash,
-          solverPrincipalUnits: BigInt(plan.financing.solverPrincipalUnits),
-          solverFeeUnits: BigInt(plan.financing.solverFeeUnits),
-          capitalizedCostUnits: BigInt(plan.financing.capitalizedCostUnits),
+          solverPrincipalUnits: BigInt(financingRevalidation.solverPrincipalUnits),
+          solverFeeUnits: BigInt(financingRevalidation.solverFeeUnits),
+          capitalizedCostUnits: BigInt(financingRevalidation.capitalizedCostUnits),
           capitalizedCostReceiver: '0x0000000000000000000000000000000000000000',
-          lendingAuthorization: '0x',
+          lendingAuthorization: context.targetLendingAuthorization.encodedAuthorization,
         },
       ],
       {
@@ -631,24 +669,9 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     );
     const proof = await this.#recordFeasibility(context, artifacts, financingRevalidation);
 
-    const repayment = BigInt(plan.principalMaxUnits) + BigInt(plan.feeMaxUnits);
-    const auxiliaryTransactions = await this.#ensureTokenBalance(
-      this.#sourceWallet,
-      this.#sourcePublic,
-      artifacts.token,
-      this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
-      repayment,
-    );
-    auxiliaryTransactions.push(
-      await this.#writeHash(
-        this.#sourceWallet,
-        this.#sourcePublic,
-        artifacts.token,
-        this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
-        'approve',
-        [this.#environment.SOURCE_VAULT_ADDRESS, repayment],
-      ),
-    );
+    const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+    this.#assertRecoveryReserve(exposure, context, 2);
+    const repayment = exposure.principalReceivableUnits + exposure.feeClaimUnits;
     return this.#writeAction(
       this.#sourceWallet,
       this.#sourcePublic,
@@ -661,9 +684,10 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         action: 'settleLiquidity',
         repaymentUnits: repayment.toString(),
         feeUnits: plan.feeMaxUnits,
+        recoveryReserveProvider: exposure.recoveryReserveProvider,
+        recoveryReserveMaximumUnits: exposure.recoveryReserveUnits.toString(),
         feasibilityHash: proof.feasibilityHash,
         feasibilityTransactionHash: proof.transactionHash,
-        auxiliaryTransactions,
         financingRevalidation,
       },
     );
@@ -694,8 +718,6 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         reconciled: true,
       },
     );
-    if (existingDestinationRelease !== undefined) return existingDestinationRelease;
-
     const existingSourceRelease = await this.#eventAction(
       this.#sourcePublic,
       this.#environment.SOURCE_CHAIN_ID,
@@ -713,7 +735,12 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         reconciled: true,
       },
     );
-    if (existingSourceRelease !== undefined) return existingSourceRelease;
+    if (existingDestinationRelease !== undefined) {
+      return this.#withRecoveryReserveSettlement(existingDestinationRelease, context, artifacts);
+    }
+    if (existingSourceRelease !== undefined) {
+      return this.#withRecoveryReserveSettlement(existingSourceRelease, context, artifacts);
+    }
 
     const destinationCollateral = await this.#readBigInt(
       this.#destinationPublic,
@@ -724,7 +751,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     );
     if (destinationCollateral > 0n) {
       const solverExposure = await this.#readSolverExposure(artifacts.vault, migrationId);
-      return this.#writeAction(
+      const recoveryAction = await this.#writeAction(
         this.#destinationWallet,
         this.#destinationPublic,
         this.#environment.DESTINATION_CHAIN_ID,
@@ -752,6 +779,41 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
             totalClaimUnits: solverExposure.totalClaimUnits.toString(),
             disposition: 'UNSETTLED_EXPLICIT_CLAIM',
           },
+        },
+      );
+      return this.#withRecoveryReserveSettlement(recoveryAction, context, artifacts);
+    }
+
+    const [sourceExposure, sourcePosition] = await Promise.all([
+      this.#readSolverExposure(artifacts.vault, migrationId),
+      this.#readPosition(
+        this.#sourcePublic,
+        artifacts.sourceLending,
+        this.#environment.SOURCE_LENDING_ADDRESS,
+        plan.borrower,
+      ),
+    ]);
+    if (
+      sourceExposure.reservationStatus === 1 &&
+      sourcePosition[0] >= BigInt(plan.sourceCollateralMinUnits) &&
+      sourcePosition[1] > 0n
+    ) {
+      return this.#writeAction(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        artifacts.vault,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'release',
+        [migrationId],
+        {
+          action: 'executeRecovery',
+          reason,
+          policy: 'RELEASE_UNDRAWN_RESERVATION_SOURCE_UNCHANGED',
+          borrower: plan.borrower,
+          sourceCollateralUnits: sourcePosition[0].toString(),
+          sourceDebtUnits: sourcePosition[1].toString(),
+          recoveryReserveDisposition: 'REFUNDED_TO_PROVIDER',
         },
       );
     }
@@ -813,7 +875,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     if (refundable < expectedRefund) {
       throw new Error('Recovery custody does not contain the full authorized collateral refund.');
     }
-    return this.#writeAction(
+    const recoveryAction = await this.#writeAction(
       this.#sourceWallet,
       this.#sourcePublic,
       this.#environment.SOURCE_CHAIN_ID,
@@ -834,6 +896,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         auxiliaryTransactions,
       },
     );
+    return this.#withRecoveryReserveSettlement(recoveryAction, context, artifacts);
   }
 
   #assertContext(context: MigrationExecutionContext): void {
@@ -867,10 +930,11 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     if (plan.financing.fundingShortfallUnits !== '0') {
       throw new Error('The authorized financing structure has a non-zero funding shortfall.');
     }
-    if (BigInt(plan.financing.capitalizedCostUnits) !== 0n) {
-      throw new Error(
-        'The local destination contract requires signed capitalized-cost recipients; none are present in this plan.',
-      );
+    if (
+      BigInt(plan.financing.solverAdvancedCostUnits) !== 0n ||
+      BigInt(plan.financing.capitalizedCostUnits) !== 0n
+    ) {
+      throw new Error('The local P0 route requires zero solver-advanced and capitalized costs.');
     }
     if (BigInt(plan.financing.validUntil) < BigInt(plan.deadline)) {
       throw new Error('Financing evidence expires before the execution plan.');
@@ -910,7 +974,8 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       }
     } else if (
       sourcePosition[0] < BigInt(plan.sourceCollateralMinUnits) ||
-      sourcePosition[1] !== BigInt(plan.sourceRepaymentMaxUnits)
+      sourcePosition[1] === 0n ||
+      sourcePosition[1] > BigInt(plan.sourceRepaymentMaxUnits)
     ) {
       throw new Error(`Source position changed before checkpoint ${checkpoint}.`);
     }
@@ -966,13 +1031,34 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       }
       escrowFunding = expectedExternalFunding;
     }
+    let solverPrincipal = BigInt(financing.solverPrincipalUnits);
+    let solverFee = BigInt(financing.solverFeeUnits);
+    if (afterSourceClose) {
+      const exposure = await this.#readSolverExposure(
+        artifacts.vault,
+        context.migration.migrationId as Hex,
+      );
+      const expectedStatus = checkpoint === 'AFTER_SETTLEMENT' ? 3 : 2;
+      if (
+        exposure.reservationStatus !== expectedStatus ||
+        exposure.principalReceivableUnits === 0n ||
+        exposure.principalReceivableUnits > BigInt(plan.principalMaxUnits) ||
+        exposure.feeClaimUnits !== BigInt(plan.feeMaxUnits)
+      ) {
+        throw new Error(`Source vault exposure is invalid at ${checkpoint}.`);
+      }
+      solverPrincipal = exposure.principalReceivableUnits;
+      solverFee = exposure.feeClaimUnits;
+    }
+    const capitalizedCost = BigInt(financing.capitalizedCostUnits);
+    const totalRequired = solverPrincipal + solverFee + capitalizedCost;
+    const requiredBorrow = totalRequired > escrowFunding ? totalRequired - escrowFunding : 0n;
     const targetPosition = await this.#readPosition(
       this.#destinationPublic,
       artifacts.targetLending,
       this.#environment.DESTINATION_LENDING_ADDRESS,
       plan.borrower,
     );
-    const requiredBorrow = BigInt(financing.requiredDestinationBorrowUnits);
     if (targetAlreadyOpen) {
       if (
         targetPosition[0] < BigInt(plan.minDestinationCollateralUnits) ||
@@ -1064,7 +1150,6 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       liquidityCapacity,
       signedCapacity,
     );
-    const totalRequired = BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits);
     const availableFunding = maximumSafeCapacity + escrowFunding;
     const shortfall = totalRequired > availableFunding ? totalRequired - availableFunding : 0n;
     const revalidation: FinancingRevalidation = {
@@ -1085,6 +1170,10 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       signedBorrowCapacityUnits: signedCapacity.toString(),
       maximumSafeBorrowingCapacityUnits: maximumSafeCapacity.toString(),
       confirmedExternalFundingUnits: escrowFunding.toString(),
+      solverPrincipalUnits: solverPrincipal.toString(),
+      solverFeeUnits: solverFee.toString(),
+      capitalizedCostUnits: capitalizedCost.toString(),
+      totalRequiredUnits: totalRequired.toString(),
       requiredDestinationBorrowUnits: requiredBorrow.toString(),
       fundingShortfallUnits: shortfall.toString(),
     };
@@ -1100,7 +1189,7 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
         'balanceOf',
         [plan.payoutReceiver],
       );
-      if (payoutBalance < totalRequired) {
+      if (payoutBalance < solverPrincipal + solverFee) {
         throw new Error('Settlement payout does not cover the signed total repayment obligation.');
       }
     }
@@ -1206,10 +1295,14 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
     const feeClaimUnits = values?.[4];
     const reservationStatus = values?.[6];
     const principalReceivableUnits = values?.[8];
+    const recoveryReserveProvider = values?.[9];
+    const recoveryReserveUnits = values?.[10];
     if (
       typeof feeClaimUnits !== 'bigint' ||
       (typeof reservationStatus !== 'number' && typeof reservationStatus !== 'bigint') ||
-      typeof principalReceivableUnits !== 'bigint'
+      typeof principalReceivableUnits !== 'bigint' ||
+      typeof recoveryReserveProvider !== 'string' ||
+      typeof recoveryReserveUnits !== 'bigint'
     ) {
       throw new Error('Unexpected source liquidity reservation response.');
     }
@@ -1218,6 +1311,75 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       feeClaimUnits,
       totalClaimUnits: principalReceivableUnits + feeClaimUnits,
       reservationStatus: Number(reservationStatus),
+      recoveryReserveProvider: recoveryReserveProvider as Address,
+      recoveryReserveUnits,
+    };
+  }
+
+  #assertRecoveryReserve(
+    exposure: SolverExposure,
+    context: MigrationExecutionContext,
+    expectedStatus: number,
+  ): void {
+    const plan = context.signedPlan.plan;
+    const expectedUnits = BigInt(plan.principalMaxUnits) + BigInt(plan.feeMaxUnits);
+    if (
+      exposure.reservationStatus !== expectedStatus ||
+      (expectedStatus === 1
+        ? exposure.principalReceivableUnits !== 0n
+        : exposure.principalReceivableUnits === 0n) ||
+      !sameAddress(exposure.recoveryReserveProvider, this.#account.address) ||
+      exposure.recoveryReserveUnits !== expectedUnits
+    ) {
+      throw new Error('The sandbox migration-specific recovery reserve is not fully locked.');
+    }
+  }
+
+  async #withRecoveryReserveSettlement(
+    action: FinalizedChainAction,
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+  ): Promise<FinalizedChainAction> {
+    const migrationId = context.migration.migrationId as Hex;
+    const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+    if (exposure.reservationStatus === 3) {
+      return {
+        ...action,
+        payload: {
+          ...action.payload,
+          recoveryReserveSettlement: { status: 'ALREADY_SETTLED' },
+        },
+      };
+    }
+    this.#assertRecoveryReserve(exposure, context, 2);
+    const settlement = await this.#writeAction(
+      this.#sourceWallet,
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      artifacts.vault,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      'settleFromRecoveryReserve',
+      [migrationId],
+      {
+        action: 'settleRecoveryReserve',
+        provider: exposure.recoveryReserveProvider,
+        principalUnits: exposure.principalReceivableUnits.toString(),
+        feeUnits: exposure.feeClaimUnits.toString(),
+      },
+    );
+    return {
+      ...action,
+      payload: {
+        ...action.payload,
+        recoveryReserveSettlement: {
+          status: 'SETTLED_FROM_ISOLATED_RESERVE',
+          transactionHash: settlement.transactionHash,
+          blockNumber: settlement.blockNumber,
+          blockHash: settlement.blockHash,
+          principalUnits: exposure.principalReceivableUnits.toString(),
+          feeUnits: exposure.feeClaimUnits.toString(),
+        },
+      },
     };
   }
 
@@ -1357,10 +1519,10 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
       externalFundingEvidenceHash,
       liquidityAsset: this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
-      solverPrincipalUnits: BigInt(financing.solverPrincipalUnits),
-      solverFeeUnits: BigInt(financing.solverFeeUnits),
-      capitalizedCostUnits: BigInt(financing.capitalizedCostUnits),
-      totalRequiredUnits: BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
+      solverPrincipalUnits: BigInt(revalidation.solverPrincipalUnits),
+      solverFeeUnits: BigInt(revalidation.solverFeeUnits),
+      capitalizedCostUnits: BigInt(revalidation.capitalizedCostUnits),
+      totalRequiredUnits: BigInt(revalidation.totalRequiredUnits),
       confirmedExternalFundingUnits: BigInt(revalidation.confirmedExternalFundingUnits),
       maximumSafeBorrowingCapacityUnits: BigInt(revalidation.maximumSafeBorrowingCapacityUnits),
       requiredDestinationBorrowUnits: BigInt(revalidation.requiredDestinationBorrowUnits),
@@ -1391,10 +1553,10 @@ export class DualAnvilSimulationExecutionPort implements MigrationExecutionPort 
       analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
       externalFundingEvidenceHash: this.#fundingEvidenceHash(context),
       settlementAsset: this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS,
-      solverPrincipalUnits: BigInt(financing.solverPrincipalUnits),
-      solverFeeUnits: BigInt(financing.solverFeeUnits),
-      capitalizedCostUnits: BigInt(financing.capitalizedCostUnits),
-      totalRequiredUnits: BigInt(financing.totalRequiredRepaymentAndFinancedCostUnits),
+      solverPrincipalUnits: BigInt(revalidation.solverPrincipalUnits),
+      solverFeeUnits: BigInt(revalidation.solverFeeUnits),
+      capitalizedCostUnits: BigInt(revalidation.capitalizedCostUnits),
+      totalRequiredUnits: BigInt(revalidation.totalRequiredUnits),
       confirmedExternalFundingUnits: BigInt(revalidation.confirmedExternalFundingUnits),
       maximumSafeBorrowingCapacityUnits: BigInt(revalidation.maximumSafeBorrowingCapacityUnits),
       requiredDestinationBorrowUnits: BigInt(revalidation.requiredDestinationBorrowUnits),
@@ -1750,7 +1912,7 @@ async function loadArtifacts(): Promise<LocalArtifacts> {
   const [token, vault, escrow, sourceLending, targetLending, sourceAdapter, destinationAdapter] =
     await Promise.all([
       loadFoundryArtifact('TestToken'),
-      loadFoundryArtifact('TestLiquidityVault'),
+      loadFoundryArtifact('LiquidityVault'),
       loadFoundryArtifact('MigrationEscrow'),
       loadFoundryArtifact('MockSourceLending'),
       loadFoundryArtifact('MockTargetLending'),

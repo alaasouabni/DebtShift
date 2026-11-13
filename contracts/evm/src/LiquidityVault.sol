@@ -5,7 +5,7 @@ import { IERC20 } from "./interfaces/IERC20.sol";
 import { SafeToken } from "./libraries/SafeToken.sol";
 import { ReentrancyGuard } from "./security/ReentrancyGuard.sol";
 
-contract TestLiquidityVault is ReentrancyGuard {
+contract LiquidityVault is ReentrancyGuard {
     using SafeToken for IERC20;
 
     error Unauthorized();
@@ -17,6 +17,7 @@ contract TestLiquidityVault is ReentrancyGuard {
     error InvalidFeasibility();
     error StaleFeasibility();
     error FeasibilityMismatch();
+    error RecoveryReserveMismatch();
 
     enum ReservationStatus {
         NONE,
@@ -36,6 +37,8 @@ contract TestLiquidityVault is ReentrancyGuard {
         ReservationStatus status;
         address adapter;
         uint256 receivableUnits;
+        address recoveryReserveProvider;
+        uint256 recoveryReserveUnits;
     }
 
     struct FeasibilityEvidence {
@@ -67,6 +70,7 @@ contract TestLiquidityVault is ReentrancyGuard {
     mapping(bytes32 migrationId => uint64 sequence) public latestFeasibilitySequence;
     mapping(address asset => uint256 units) public reservedUndrawn;
     mapping(address asset => uint256 units) public principalReceivable;
+    mapping(address asset => uint256 units) public lockedRecoveryReserves;
 
     event LiquidityReserved(
         bytes32 indexed migrationId,
@@ -93,6 +97,21 @@ contract TestLiquidityVault is ReentrancyGuard {
     event UnusedLiquidityReturned(bytes32 indexed migrationId, uint256 amountUnits);
     event LiquiditySettled(bytes32 indexed migrationId, uint256 principalUnits, uint256 feeUnits);
     event ReservationReleased(bytes32 indexed migrationId);
+    event RecoveryReserveLocked(
+        bytes32 indexed migrationId,
+        address indexed provider,
+        address indexed asset,
+        uint256 amountUnits
+    );
+    event RecoveryReserveConsumed(
+        bytes32 indexed migrationId,
+        address indexed provider,
+        uint256 settlementUnits,
+        uint256 refundedUnits
+    );
+    event RecoveryReserveReleased(
+        bytes32 indexed migrationId, address indexed provider, uint256 amountUnits
+    );
 
     constructor(address owner_) {
         if (owner_ == address(0)) revert Unauthorized();
@@ -133,7 +152,8 @@ contract TestLiquidityVault is ReentrancyGuard {
     }
 
     function freeLiquidity(IERC20 asset) public view returns (uint256) {
-        return asset.balanceOf(address(this)) - reservedUndrawn[address(asset)];
+        return asset.balanceOf(address(this)) - reservedUndrawn[address(asset)]
+            - lockedRecoveryReserves[address(asset)];
     }
 
     function latestFeasibility(bytes32 migrationId)
@@ -155,7 +175,7 @@ contract TestLiquidityVault is ReentrancyGuard {
     function recordFailedFeasibilityAndRelease(
         bytes32 migrationId,
         FeasibilityEvidence calldata evidence
-    ) external onlyOperator returns (bytes32 feasibilityHash) {
+    ) external onlyOperator nonReentrant returns (bytes32 feasibilityHash) {
         if (!verifiers[msg.sender]) revert Unauthorized();
         Reservation storage reservation = reservations[migrationId];
         if (
@@ -220,7 +240,7 @@ contract TestLiquidityVault is ReentrancyGuard {
         uint256 principalUnits,
         uint256 feeCapUnits,
         uint64 expiresAt
-    ) external onlyOperator {
+    ) external onlyOperator nonReentrant {
         if (
             migrationId == bytes32(0) || !assets[address(asset)] || !adapters[adapter]
                 || principalUnits == 0 || expiresAt <= block.timestamp
@@ -233,6 +253,9 @@ contract TestLiquidityVault is ReentrancyGuard {
         );
         if (freeLiquidity(asset) < principalUnits) revert InsufficientFreeLiquidity();
 
+        uint256 recoveryReserveUnits = principalUnits + feeCapUnits;
+        asset.transferFromWithExactDelta(msg.sender, address(this), recoveryReserveUnits);
+        lockedRecoveryReserves[address(asset)] += recoveryReserveUnits;
         reservedUndrawn[address(asset)] += principalUnits;
         reservations[migrationId] = Reservation({
             asset: asset,
@@ -243,12 +266,15 @@ contract TestLiquidityVault is ReentrancyGuard {
             expiresAt: expiresAt,
             status: ReservationStatus.ACTIVE,
             adapter: adapter,
-            receivableUnits: 0
+            receivableUnits: 0,
+            recoveryReserveProvider: msg.sender,
+            recoveryReserveUnits: recoveryReserveUnits
         });
         emit LiquidityReserved(
             migrationId, address(asset), adapter, principalUnits, feeCapUnits, expiresAt
         );
         emit ReservationFeasibilityBound(migrationId, planHash, feasibilityHash);
+        emit RecoveryReserveLocked(migrationId, msg.sender, address(asset), recoveryReserveUnits);
     }
 
     function assertExecutable(bytes32 migrationId, bytes32 planHash) external view {
@@ -256,6 +282,9 @@ contract TestLiquidityVault is ReentrancyGuard {
         if (
             reservation.status != ReservationStatus.ACTIVE || reservation.planHash != planHash
                 || block.timestamp > reservation.expiresAt
+                || reservation.recoveryReserveProvider == address(0)
+                || reservation.recoveryReserveUnits
+                    != reservation.principalUnits + reservation.feeCapUnits
         ) revert FeasibilityMismatch();
         _assertLatestPassingFeasibility(migrationId, reservation);
     }
@@ -297,17 +326,31 @@ contract TestLiquidityVault is ReentrancyGuard {
         Reservation storage reservation = reservations[migrationId];
         if (reservation.status != ReservationStatus.DRAWN) revert InvalidReservation();
         if (feeUnits != reservation.feeCapUnits) revert FeeMismatch();
+        if (payer != reservation.recoveryReserveProvider) revert RecoveryReserveMismatch();
         _assertLatestPassingFeasibility(migrationId, reservation);
 
         uint256 principalUnits = reservation.receivableUnits;
-        reservation.asset
-            .transferFromWithExactDelta(payer, address(this), principalUnits + feeUnits);
+        _consumeRecoveryReserve(migrationId, reservation, principalUnits + feeUnits);
         principalReceivable[address(reservation.asset)] -= principalUnits;
         reservation.status = ReservationStatus.SETTLED;
         emit LiquiditySettled(migrationId, principalUnits, feeUnits);
     }
 
-    function release(bytes32 migrationId) external onlyOperator {
+    /// @notice Repays the liquidity provider from the isolated solver reserve when forward
+    ///         execution cannot complete after source debt has already closed.
+    function settleFromRecoveryReserve(bytes32 migrationId) external onlyOperator nonReentrant {
+        Reservation storage reservation = reservations[migrationId];
+        if (reservation.status != ReservationStatus.DRAWN) revert InvalidReservation();
+
+        uint256 principalUnits = reservation.receivableUnits;
+        uint256 feeUnits = reservation.feeCapUnits;
+        _consumeRecoveryReserve(migrationId, reservation, principalUnits + feeUnits);
+        principalReceivable[address(reservation.asset)] -= principalUnits;
+        reservation.status = ReservationStatus.SETTLED;
+        emit LiquiditySettled(migrationId, principalUnits, feeUnits);
+    }
+
+    function release(bytes32 migrationId) external onlyOperator nonReentrant {
         Reservation storage reservation = reservations[migrationId];
         if (reservation.status != ReservationStatus.ACTIVE) revert InvalidReservation();
         _releaseReservation(migrationId, reservation);
@@ -315,8 +358,31 @@ contract TestLiquidityVault is ReentrancyGuard {
 
     function _releaseReservation(bytes32 migrationId, Reservation storage reservation) private {
         reservedUndrawn[address(reservation.asset)] -= reservation.principalUnits;
+        uint256 recoveryReserveUnits = reservation.recoveryReserveUnits;
+        lockedRecoveryReserves[address(reservation.asset)] -= recoveryReserveUnits;
         reservation.status = ReservationStatus.RELEASED;
+        reservation.asset.safeTransfer(reservation.recoveryReserveProvider, recoveryReserveUnits);
         emit ReservationReleased(migrationId);
+        emit RecoveryReserveReleased(
+            migrationId, reservation.recoveryReserveProvider, recoveryReserveUnits
+        );
+    }
+
+    function _consumeRecoveryReserve(
+        bytes32 migrationId,
+        Reservation storage reservation,
+        uint256 settlementUnits
+    ) private {
+        uint256 recoveryReserveUnits = reservation.recoveryReserveUnits;
+        if (settlementUnits > recoveryReserveUnits) revert RecoveryReserveMismatch();
+        lockedRecoveryReserves[address(reservation.asset)] -= recoveryReserveUnits;
+        uint256 refundedUnits = recoveryReserveUnits - settlementUnits;
+        if (refundedUnits != 0) {
+            reservation.asset.safeTransfer(reservation.recoveryReserveProvider, refundedUnits);
+        }
+        emit RecoveryReserveConsumed(
+            migrationId, reservation.recoveryReserveProvider, settlementUnits, refundedUnits
+        );
     }
 
     function _validateFeasibilityShape(bytes32 migrationId, FeasibilityEvidence calldata evidence)
@@ -376,10 +442,13 @@ contract TestLiquidityVault is ReentrancyGuard {
         view
     {
         FeasibilityEvidence storage evidence = _latestFeasibility[migrationId];
+        uint256 currentPrincipalUnits = reservation.status == ReservationStatus.ACTIVE
+            ? reservation.principalUnits
+            : reservation.receivableUnits;
         if (
             evidence.planHash != reservation.planHash
                 || evidence.liquidityAsset != address(reservation.asset)
-                || evidence.solverPrincipalUnits != reservation.principalUnits
+                || evidence.solverPrincipalUnits != currentPrincipalUnits
                 || evidence.solverFeeUnits != reservation.feeCapUnits
                 || evidence.fundingShortfallUnits != 0
                 || evidence.requiredDestinationBorrowUnits

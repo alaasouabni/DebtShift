@@ -135,13 +135,41 @@ describe('evidence', () => {
 
 describe('the ledger', () => {
   it('does not imply a balanced ledger when the backend recorded none', async () => {
-    // The real SETTLED migration has zero ledger entries, which the
-    // specification does not expect. The page says so rather than rendering an
-    // empty table that reads as "nothing owed".
-    expect(settled.ledger).toHaveLength(0);
-    await renderMigration();
+    // A settled migration with no ledger is something the specification does
+    // not expect. The page says so rather than rendering an empty table that
+    // reads as "nothing owed".
+    await renderMigration({ ...settled, ledger: [] });
     expect(screen.getByText(/No ledger entries recorded/i)).toBeDefined();
     expect(screen.getByText(/worth raising rather than assuming it balanced/i)).toBeDefined();
+  });
+});
+
+describe('the recorded ledger', () => {
+  it('lists every entry the backend recorded', async () => {
+    expect(settled.ledger.length).toBeGreaterThan(0);
+    await renderMigration();
+    const table = [...document.querySelectorAll('table')].find((candidate) =>
+      [...candidate.querySelectorAll('th')].some((heading) => heading.textContent === 'What'),
+    );
+    expect(table?.querySelectorAll('tbody tr')).toHaveLength(settled.ledger.length);
+    expect(screen.queryByText(/No ledger entries recorded/i)).toBeNull();
+  });
+
+  it('says in words what each entry is', async () => {
+    await renderMigration();
+    expect(screen.getAllByText('Old debt paid off').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Solver principal repaid').length).toBeGreaterThan(0);
+  });
+
+  it('marks a signed classification as not being a movement of funds', async () => {
+    const classified = settled.ledger.filter(
+      (entry) => entry.basis === 'SIGNED_COST_CLASSIFICATION',
+    );
+    expect(classified.length).toBeGreaterThan(0);
+    await renderMigration();
+    expect(screen.getAllByText(/signed classification, not a movement/i)).toHaveLength(
+      classified.length,
+    );
   });
 });
 

@@ -76,12 +76,13 @@ export const PHASE_LABELS: Record<MigrationPhase, PhaseLabel> = {
   },
   SETTLED: {
     label: 'Solver repaid',
-    caption: 'The solver is repaid. Reconciliation is still pending — this is not the end.',
+    caption:
+      'The solver is repaid and the money side is final. The record on NEAR is still pending — this is not the end.',
     tone: 'warning',
   },
   COMPLETED: {
     label: 'Complete',
-    caption: 'The refinance is finished and reconciled.',
+    caption: 'The refinance is finished, reconciled and recorded on NEAR.',
     tone: 'success',
   },
   RECOVERY: {
@@ -149,6 +150,7 @@ export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
   ROUTE_QUOTE: 'Transport quote bound',
   INTENT_AUTHORIZATION: 'Policy signature verified',
   EXECUTION_PLAN_AUTHORIZATION: 'Execution signature verified',
+  SOURCE_LENDING_AUTHORIZATION: 'Source lending permission verified',
   FINANCING_FEASIBILITY: 'Financing feasibility proven',
   FINANCING_REVALIDATION: 'Financing revalidated before reservation',
   SUPPLEMENTARY_FUNDING: 'Supplementary funding confirmed',
@@ -181,11 +183,42 @@ export const VERIFICATION_STATE_LABELS: Record<EvidenceVerificationState, Status
 export const LEDGER_CATEGORY_LABELS: Record<LedgerCategory, string> = {
   PRINCIPAL: 'Principal',
   FEE: 'Fee',
+  COST: 'Cost',
   COLLATERAL: 'Collateral',
+  RESERVE: 'Reserve',
   REFUND: 'Refund',
   RESIDUAL: 'Residual',
   SHORTFALL: 'Shortfall',
 };
+
+/*
+ * What a ledger entry is, in words. An unknown code is shown as the backend
+ * sent it rather than dropped: a ledger line with no description would hide
+ * where value went.
+ */
+export const LEDGER_COMPONENT_LABELS: Record<string, string> = {
+  SOURCE_DEBT_PAYOFF: 'Old debt paid off',
+  BORROWER_DEBT_PREPAYMENT: 'Your own prepayment',
+  SEPARATELY_PAID_COST_CLASSIFICATION: 'Cost paid separately',
+  RECOVERY_RESERVE_LOCKED: 'Recovery reserve locked',
+  TRANSPORT_ORIGIN_COLLATERAL: 'Collateral sent into transport',
+  TRANSPORT_DESTINATION_COLLATERAL: 'Collateral delivered by transport',
+  TARGET_COLLATERAL_SUPPLY: 'Collateral supplied to the new market',
+  DESTINATION_LOAN_PROCEEDS: 'New loan proceeds',
+  SUPPLEMENTARY_SETTLEMENT_FUNDING: 'Supplementary funding',
+  SOLVER_PRINCIPAL_PAYOUT: 'Solver principal repaid',
+  SOLVER_FEE_PAYOUT: 'Solver fee paid',
+  CAPITALIZED_COST_PAYOUT: 'Cost added to the new loan, paid out',
+  RESIDUAL_RETURN: 'Residual returned',
+  RECOVERY_RESERVE_PRINCIPAL_CONSUMED: 'Recovery reserve used for principal',
+  RECOVERY_RESERVE_FEE_CONSUMED: 'Recovery reserve used for fee',
+  RECOVERY_RESERVE_REFUND: 'Recovery reserve refunded',
+};
+
+export function ledgerComponentLabel(code: string | null | undefined): string | undefined {
+  if (code === null || code === undefined || code === '') return undefined;
+  return LEDGER_COMPONENT_LABELS[code] ?? code;
+}
 
 export const FINANCING_CLASS_LABELS: Record<FinancingClass, { label: string; caption: string }> = {
   SOLVER_ADVANCED: {

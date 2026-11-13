@@ -1,3 +1,4 @@
+import type { PersistedTargetLendingAuthorization } from '@debtshift/domain';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -256,6 +257,10 @@ export const executionPlans = pgTable(
     routeHash: bytes32('route_hash').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     signature: text('signature').notNull(),
+    targetLendingAuthorization: jsonb('target_lending_authorization')
+      .$type<PersistedTargetLendingAuthorization>()
+      .notNull()
+      .default({ authorization: { kind: 'NONE' }, encodedAuthorization: '0x' }),
     createdAt: createdAt(),
   },
   (table) => [
@@ -576,6 +581,12 @@ export const ledgerEntries = pgTable(
       .notNull()
       .references(() => migrations.migrationId),
     sequence: integer('sequence').notNull(),
+    componentCode: varchar('component_code', { length: 64 }).notNull(),
+    componentId: varchar('component_id', { length: 256 }).notNull(),
+    evidenceId: bytes32('evidence_id')
+      .notNull()
+      .references(() => evidence.evidenceId),
+    basis: varchar('basis', { length: 32 }).notNull(),
     chainId: uint('chain_id').notNull(),
     token: evmAddress('token').notNull(),
     amountUnits: uint('amount_units').notNull(),
@@ -587,10 +598,12 @@ export const ledgerEntries = pgTable(
   },
   (table) => [
     unique('ledger_entries_migration_sequence_unique').on(table.migrationId, table.sequence),
+    unique('ledger_entries_migration_component_unique').on(table.migrationId, table.componentId),
     check('ledger_entries_sequence_positive', sql`${table.sequence} > 0`),
     check('ledger_entries_amount_positive', sql`${table.amountUnits} > 0`),
     check('ledger_entries_distinct_parties', sql`${table.debitParty} <> ${table.creditParty}`),
     index('ledger_entries_balance_idx').on(table.migrationId, table.chainId, table.token),
+    index('ledger_entries_evidence_idx').on(table.evidenceId),
   ],
 );
 

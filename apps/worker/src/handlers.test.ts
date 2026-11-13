@@ -3,12 +3,17 @@ import type {
   MigrationExecutionContext,
   TransportLegStateUpdate,
 } from '@debtshift/database';
-import { evidenceSchema, type Evidence } from '@debtshift/domain';
+import {
+  evidenceSchema,
+  ledgerReconciliationSchema,
+  type Evidence,
+  type EvidenceType,
+} from '@debtshift/domain';
 import { DeterministicTransportSimulator, transportQuoteRequestSchema } from '@debtshift/intents';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  createSimulatedWorkflowHandlers,
+  createWorkflowHandlers,
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
   type FinalizedChainAction,
@@ -16,6 +21,11 @@ import {
   type WorkflowContextStore,
 } from './handlers.js';
 import { RetryableCommandError, type CommandHandler } from './processor.js';
+import {
+  PendingSandboxRegistryPort,
+  sandboxEvidenceProviders,
+  SimulatedTransportExecutionPort,
+} from './sandbox/simulated-transport.js';
 
 const MIGRATION_ID = `0x${'11'.repeat(32)}` as const;
 const ORIGIN_TRANSACTION = `0x${'22'.repeat(32)}` as const;
@@ -53,7 +63,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(simulator, false);
     const store = new MemoryContextStore(context);
     const execution = fakeExecution();
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'DISPATCH_TRANSPORT').execute(
       command('DISPATCH_TRANSPORT'),
@@ -78,7 +88,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(firstSimulator, true);
     const store = new MemoryContextStore(context);
     const firstExecution = fakeExecution();
-    const firstHandlers = createSimulatedWorkflowHandlers(store, firstExecution, firstSimulator);
+    const firstHandlers = createSandboxWorkflowHandlers(store, firstExecution, firstSimulator);
 
     await expect(
       getHandler(firstHandlers, 'VERIFY_DESTINATION').execute(command('VERIFY_DESTINATION')),
@@ -90,7 +100,7 @@ describe('simulated workflow handlers', () => {
       outcome: 'SUCCESS',
     });
     const restartedExecution = fakeExecution();
-    const restartedHandlers = createSimulatedWorkflowHandlers(
+    const restartedHandlers = createSandboxWorkflowHandlers(
       store,
       restartedExecution,
       restartedSimulator,
@@ -112,7 +122,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(simulator, true);
     const store = new MemoryContextStore(context);
     const execution = fakeExecution();
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
       command('VERIFY_DESTINATION'),
@@ -136,7 +146,7 @@ describe('simulated workflow handlers', () => {
     const context = await buildContext(simulator, true, '1900000000');
     const store = new MemoryContextStore(context);
     const execution = fakeExecution();
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
       command('VERIFY_DESTINATION'),
@@ -148,8 +158,12 @@ describe('simulated workflow handlers', () => {
 
   it('emits both settlement and reconciliation evidence from one finalized action', async () => {
     const simulator = new DeterministicTransportSimulator();
-    const store = new MemoryContextStore(await buildContext(simulator, true));
-    const handlers = createSimulatedWorkflowHandlers(store, fakeExecution(), simulator);
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution = {
+      ...fakeExecution(),
+      settleLiquidity: vi.fn(async () => settlementAction()),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'SETTLE_LIQUIDITY').execute(
       command('SETTLE_LIQUIDITY'),
@@ -160,6 +174,16 @@ describe('simulated workflow handlers', () => {
       'LIQUIDITY_SETTLEMENT',
       'LEDGER_RECONCILIATION',
     ]);
+    const ledger = ledgerReconciliationSchema.parse(records[2]?.normalizedPayload.ledger);
+    expect(ledger).toMatchObject({
+      solverPrincipalUnits: '10000000000',
+      solverFeeUnits: '50000000',
+      recoveryReserveLockedUnits: '10100000000',
+      recoveryReserveConsumedUnits: '10050000000',
+      recoveryReserveRefundedUnits: '50000000',
+      unexplainedImbalanceUnits: '0',
+    });
+    expect(ledger.entries.map((entry) => entry.componentCode)).toContain('RECOVERY_RESERVE_REFUND');
   });
 
   it('halts the next side effect and emits append-only retractions for orphaned evidence', async () => {
@@ -195,7 +219,7 @@ describe('simulated workflow handlers', () => {
         observedBlockHash: `0x${'92'.repeat(32)}`,
       },
     ]);
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
       command('VERIFY_DESTINATION'),
@@ -244,7 +268,7 @@ describe('simulated workflow handlers', () => {
         throw new PostSourceCapacityDeteriorationError(failedAction);
       }),
     };
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'OPEN_TARGET').execute(command('OPEN_TARGET'));
 
@@ -283,7 +307,7 @@ describe('simulated workflow handlers', () => {
         throw new PreSourceCapacityDeteriorationError(releasedAction);
       }),
     };
-    const handlers = createSimulatedWorkflowHandlers(store, execution, simulator);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
     const records = await getHandler(handlers, 'CLOSE_SOURCE').execute(command('CLOSE_SOURCE'));
 
@@ -358,6 +382,10 @@ async function buildContext(
         deadline,
       },
     } as unknown as MigrationExecutionContext['signedPlan'],
+    targetLendingAuthorization: {
+      authorization: { kind: 'NONE' },
+      encodedAuthorization: '0x',
+    },
     sourceSnapshot: {
       collateralUnits: '10000000000000000000',
     } as MigrationExecutionContext['sourceSnapshot'],
@@ -385,6 +413,128 @@ async function buildContext(
   };
 }
 
+function settlementStore(context: MigrationExecutionContext): MemoryContextStore {
+  const sourceDebtAsset = {
+    chainId: 31_337,
+    address: '0x1000000000000000000000000000000000000001',
+    decimals: 6,
+    symbol: 'sUSDC',
+  } as const;
+  const destinationDebtAsset = {
+    chainId: 31_338,
+    address: '0x2000000000000000000000000000000000000002',
+    decimals: 6,
+    symbol: 'dUSDC',
+  } as const;
+  const fundingProvider = '0x3000000000000000000000000000000000000003';
+  const recoveryProvider = '0x4000000000000000000000000000000000000004';
+  const sourceEscrow = '0x5000000000000000000000000000000000000005';
+  const targetMarket = '0x6000000000000000000000000000000000000006';
+  const sourceMarket = '0x7000000000000000000000000000000000000007';
+  const settlementContext = {
+    ...context,
+    signedPlan: {
+      ...context.signedPlan,
+      plan: {
+        ...context.signedPlan.plan,
+        sourceMarket: { chainId: 31_337, deployment: sourceMarket },
+        targetMarket: { chainId: 31_338, deployment: targetMarket },
+        sourceDebtAsset,
+        sourceCollateralAsset: context.quote.inputAsset,
+        destinationDebtAsset,
+        destinationCollateralAsset: context.quote.outputAsset,
+        payoutAsset: destinationDebtAsset,
+        transportProvider: 'DEBTSHIFT_SIMULATOR',
+        transportDepositAddress: context.quote.depositAddress ?? recoveryProvider,
+        destinationReceiver: DESTINATION_ESCROW,
+        transportRefundReceiver: sourceEscrow,
+        refundReceiver: BORROWER,
+        fundingProvider,
+        payoutReceiver: recoveryProvider,
+        financing: {
+          settlementAsset: destinationDebtAsset,
+          borrowerDebtPrepaymentUnits: '0',
+          costs: [],
+          solverAdvancedCostUnits: '0',
+          separatelyPaidCostUnits: '0',
+          confirmedExternalFundingUnits: '0',
+          externalFunding: [],
+        },
+      },
+    },
+  } as unknown as MigrationExecutionContext;
+  const store = new MemoryContextStore(settlementContext);
+  store.chainEvidence.push(
+    finalizedEvidence('LIQUIDITY_RESERVATION', 1, {
+      recoveryReserveProvider: recoveryProvider,
+      recoveryReserveUnits: '10100000000',
+    }),
+    finalizedEvidence('SOURCE_CLOSE', 2, {}),
+    finalizedEvidence('TRANSPORT_ORIGIN', 3, {
+      amountInUnits: context.quote.amountInUnits,
+    }),
+    finalizedEvidence(
+      'TRANSPORT_DESTINATION',
+      4,
+      { amountOutUnits: '9890100000000000000' },
+      31_338,
+    ),
+    finalizedEvidence('TARGET_POSITION', 5, { collateralUnits: '9890100000000000000' }, 31_338),
+  );
+  return store;
+}
+
+function finalizedEvidence(
+  type: EvidenceType,
+  index: number,
+  normalizedPayload: Record<string, unknown>,
+  chainId = 31_337,
+): Evidence {
+  return evidenceSchema.parse({
+    evidenceId: hex32(100 + index),
+    migrationId: MIGRATION_ID,
+    type,
+    schemaVersion: 1,
+    provider: 'TEST',
+    network: `eip155:${chainId.toString()}`,
+    chainId,
+    blockNumber: (100 + index).toString(),
+    blockHash: hex32(200 + index),
+    transactionHash: hex32(300 + index),
+    providerReference: `fixture-${type.toLowerCase()}`,
+    rawObservationHash: hex32(400 + index),
+    normalizedPayload,
+    observedAt: '2026-11-09T00:00:00.000Z',
+    verificationState: 'FINALIZED',
+    verificationMethod: 'RECEIPT_AND_STATE',
+    verifierVersion: 'test-v1',
+  });
+}
+
+function settlementAction(): FinalizedChainAction {
+  return {
+    ...action(),
+    payload: {
+      action: 'settleLiquidity',
+      recoveryReserveProvider: '0x4000000000000000000000000000000000000004',
+      recoveryReserveMaximumUnits: '10100000000',
+      repaymentUnits: '10050000000',
+      financingRevalidation: {
+        observedAt: '2026-11-09T00:00:00.000Z',
+        solverPrincipalUnits: '10000000000',
+        solverFeeUnits: '50000000',
+        capitalizedCostUnits: '0',
+        requiredDestinationBorrowUnits: '10050000000',
+        confirmedExternalFundingUnits: '0',
+      },
+    },
+  };
+}
+
+function hex32(value: number): `0x${string}` {
+  return `0x${value.toString(16).padStart(64, '0')}`;
+}
+
 function fakeExecution(): MigrationExecutionPort {
   const perform = vi.fn(async (): Promise<FinalizedChainAction> => action());
   return {
@@ -397,6 +547,20 @@ function fakeExecution(): MigrationExecutionPort {
     settleLiquidity: perform,
     executeRecovery: perform,
   };
+}
+
+function createSandboxWorkflowHandlers(
+  store: WorkflowContextStore,
+  execution: MigrationExecutionPort,
+  simulator: DeterministicTransportSimulator,
+): ReadonlyMap<string, CommandHandler> {
+  return createWorkflowHandlers({
+    store,
+    execution,
+    transport: new SimulatedTransportExecutionPort(simulator),
+    registry: new PendingSandboxRegistryPort(),
+    evidenceProviders: sandboxEvidenceProviders,
+  });
 }
 
 function action(): FinalizedChainAction {

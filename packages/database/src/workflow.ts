@@ -3,6 +3,7 @@ import {
   deriveMigrationPhase,
   evidenceSchema,
   hashCanonicalText,
+  ledgerReconciliationSchema,
   phaseEvidenceFromRecords,
   type Evidence,
   type MigrationPhase,
@@ -14,6 +15,7 @@ import {
   auditEvents,
   commands,
   evidence as evidenceTable,
+  ledgerEntries,
   liquidityReservations,
   migrations,
   outboxMessages,
@@ -127,6 +129,9 @@ export async function advanceMigrationWithEvidence(
         .returning({ evidenceId: evidenceTable.evidenceId });
 
       if (parsedEvidence.verificationState === 'FINALIZED') {
+        if (parsedEvidence.type === 'LEDGER_RECONCILIATION') {
+          await persistLedgerReconciliation(transaction, parsedEvidence);
+        }
         if (parsedEvidence.type === 'LIQUIDITY_RESERVATION') {
           await transaction
             .update(liquidityReservations)
@@ -292,6 +297,92 @@ export async function advanceMigrationWithEvidence(
   );
 }
 
+async function persistLedgerReconciliation(
+  transaction: Parameters<Parameters<DebtShiftDatabase['transaction']>[0]>[0],
+  record: Evidence,
+): Promise<void> {
+  const reconciliation = ledgerReconciliationSchema.parse(record.normalizedPayload.ledger);
+  if (reconciliation.migrationId !== record.migrationId) {
+    throw new Error('Ledger reconciliation belongs to another migration.');
+  }
+  const supportingEvidenceIds = [
+    ...new Set(reconciliation.entries.map((entry) => entry.evidenceId)),
+  ];
+  const supportingEvidence = await transaction
+    .select({ evidenceId: evidenceTable.evidenceId })
+    .from(evidenceTable)
+    .where(
+      and(
+        eq(evidenceTable.migrationId, record.migrationId),
+        eq(evidenceTable.verificationState, 'FINALIZED'),
+        inArray(evidenceTable.evidenceId, supportingEvidenceIds),
+      ),
+    );
+  if (supportingEvidence.length !== supportingEvidenceIds.length) {
+    throw new Error('Ledger entries must reference finalized evidence from the same migration.');
+  }
+  for (const entry of reconciliation.entries) {
+    await transaction
+      .insert(ledgerEntries)
+      .values({
+        entryId: entry.entryId,
+        migrationId: entry.migrationId,
+        sequence: entry.sequence,
+        componentCode: entry.componentCode,
+        componentId: entry.componentId,
+        evidenceId: entry.evidenceId,
+        basis: entry.basis,
+        chainId: entry.chainId.toString(),
+        token: entry.token.toLowerCase(),
+        amountUnits: entry.amountUnits,
+        debitParty: entry.debitParty,
+        creditParty: entry.creditParty,
+        category: entry.category,
+        transactionReference: entry.transactionReference ?? null,
+        createdAt: new Date(entry.createdAt),
+      })
+      .onConflictDoNothing({ target: ledgerEntries.entryId });
+  }
+  const persisted = await transaction
+    .select()
+    .from(ledgerEntries)
+    .where(
+      and(
+        eq(ledgerEntries.migrationId, record.migrationId),
+        inArray(
+          ledgerEntries.entryId,
+          reconciliation.entries.map((entry) => entry.entryId),
+        ),
+      ),
+    );
+  if (persisted.length !== reconciliation.entries.length) {
+    throw new Error('Ledger reconciliation was not persisted completely.');
+  }
+  const persistedById = new Map(persisted.map((entry) => [entry.entryId, entry]));
+  for (const expected of reconciliation.entries) {
+    const actual = persistedById.get(expected.entryId);
+    if (
+      actual === undefined ||
+      actual.migrationId !== expected.migrationId ||
+      actual.sequence !== expected.sequence ||
+      actual.componentCode !== expected.componentCode ||
+      actual.componentId !== expected.componentId ||
+      actual.evidenceId !== expected.evidenceId ||
+      actual.basis !== expected.basis ||
+      actual.chainId !== expected.chainId.toString() ||
+      actual.token !== expected.token.toLowerCase() ||
+      actual.amountUnits !== expected.amountUnits ||
+      actual.debitParty !== expected.debitParty ||
+      actual.creditParty !== expected.creditParty ||
+      actual.category !== expected.category ||
+      actual.transactionReference !== (expected.transactionReference ?? null) ||
+      actual.createdAt.toISOString() !== new Date(expected.createdAt).toISOString()
+    ) {
+      throw new Error('Stored ledger entry conflicts with the finalized reconciliation.');
+    }
+  }
+}
+
 async function openRecoveryCase(
   transaction: Parameters<Parameters<DebtShiftDatabase['transaction']>[0]>[0],
   record: Evidence,
@@ -448,6 +539,25 @@ export async function listActiveFinalizedChainEvidence(
   database: DebtShiftDatabase,
   migrationId: string,
 ): Promise<readonly Evidence[]> {
+  const records = await listActiveFinalizedEvidence(database, migrationId);
+  return records.filter(
+    (record) =>
+      record.chainId !== undefined &&
+      record.blockNumber !== undefined &&
+      record.blockHash !== undefined,
+  );
+}
+
+/**
+ * Returns the non-superseded finalized evidence set used to build the terminal
+ * receipt bundle. This deliberately includes provider/workflow evidence that
+ * has no EVM block coordinates; the chain-only view above remains the input to
+ * canonicality revalidation.
+ */
+export async function listActiveFinalizedEvidence(
+  database: DebtShiftDatabase,
+  migrationId: string,
+): Promise<readonly Evidence[]> {
   const rows = await database
     .select()
     .from(evidenceTable)
@@ -460,11 +570,7 @@ export async function listActiveFinalizedChainEvidence(
   );
   return records.filter(
     (record) =>
-      record.verificationState === 'FINALIZED' &&
-      record.chainId !== undefined &&
-      record.blockNumber !== undefined &&
-      record.blockHash !== undefined &&
-      !supersededEvidenceIds.has(record.evidenceId),
+      record.verificationState === 'FINALIZED' && !supersededEvidenceIds.has(record.evidenceId),
   );
 }
 

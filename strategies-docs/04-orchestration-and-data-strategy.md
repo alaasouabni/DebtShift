@@ -213,6 +213,10 @@ For each migration:
 
 ## Ledger rules
 
+- Every durable row declares one accounting basis. `FINALIZED_MOVEMENT` requires finalized
+  same-migration evidence for an observed value movement. `SIGNED_COST_CLASSIFICATION` may represent
+  a signed `SEPARATELY_PAID` economic cost but is never treated as proof of payment, destination
+  funding, solver repayment, or residual disposition.
 - Each balance movement creates equal debit and credit semantics in the migration ledger.
 - Principal and fee are separate entries.
 - Source payoff, borrower debt prepayment, solver-advanced costs, capitalized costs, separately paid
@@ -229,6 +233,13 @@ For each migration:
 - `SETTLED` additionally requires finalized evidence that destination proceeds plus authorized
   supplementary funding paid the exact solver principal and fee and every required capitalized-cost
   recipient. A ledger receivable is not payment.
+- The finalized reconciliation evidence and its component rows are stored atomically. Component and
+  entry identities are unique, sequences are contiguous, supporting evidence belongs to the same
+  migration, and a replay with conflicting durable content fails closed.
+- The isolated recovery reserve is explicit: locked units equal consumed principal plus consumed fee
+  plus the finalized refund. Destination settlement is explicit: destination loan proceeds plus
+  finalized supplementary funding equal principal payout plus fee payout plus capitalized-cost payout
+  plus residual return. Both equations require zero unexplained imbalance.
 
 ## Feasibility evidence and phase predicates
 

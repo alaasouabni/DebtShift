@@ -36,6 +36,7 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
   readonly #morpho: MorphoBlueReadAdapter;
   readonly #sourcePrices: ChainlinkPriceReader;
   readonly #destinationPrices: ChainlinkPriceReader;
+  readonly #sourceDebtBufferBps: number;
 
   constructor(
     @Inject(LiveProtocolService) private readonly protocols: LiveProtocolService,
@@ -43,6 +44,7 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
     @Inject(ConfigService) config: ConfigService,
   ) {
     const configuration = protocols.configuration;
+    this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
     this.#destinationClient = createPublicClient({
       transport: http(config.getOrThrow<string>('DESTINATION_RPC_URL')),
     });
@@ -112,6 +114,10 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       'source collateral',
     );
     const deadline = new Date(Date.parse(evaluatedAt) + 5 * 60 * 1_000).toISOString();
+    const sourceDebtMaximumUnits = addBasisPointHeadroom(
+      BigInt(position.debtUnits),
+      this.#sourceDebtBufferBps,
+    );
     const quoteBase = {
       maxSlippageBps: 50,
       destinationReceiver: position.position.borrower,
@@ -129,14 +135,14 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       this.transport.getOneClickDryQuote({
         inputAsset: route.sourceDebtAsset,
         outputAsset: route.destinationDebtAsset,
-        amountUnits: position.debtUnits,
+        amountUnits: sourceDebtMaximumUnits.toString(),
         amountKind: 'EXACT_INPUT',
         ...quoteBase,
       }),
       this.transport.getOneClickDryQuote({
         inputAsset: route.destinationDebtAsset,
         outputAsset: route.sourceDebtAsset,
-        amountUnits: position.debtUnits,
+        amountUnits: sourceDebtMaximumUnits.toString(),
         amountKind: 'EXACT_OUTPUT',
         ...quoteBase,
       }),
@@ -302,21 +308,21 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
           provenance: `morpho-direct:${market.blockNumber}`,
         },
         assetRouteSupported: true,
-        adapterVersionApproved: false,
+        adapterVersionApproved: route.execution.kind === 'EXECUTABLE',
         transportMinimumMet: BigInt(collateralQuote.minAmountOutUnits) > 0n,
         financing: {
           evaluatedAt,
           settlementAsset: route.destinationDebtAsset,
           sourcePayoff: {
             asset: route.sourceDebtAsset,
-            amountUnits: position.debtUnits,
+            amountUnits: sourceDebtMaximumUnits.toString(),
             settlementAmountUnits: settlementPayoffUnits.toString(),
             conversion: {
               quoteHash: conversionHash,
               provider: 'NEAR_INTENTS_1CLICK_BID_ASK_BOUND',
               inputAsset: route.sourceDebtAsset,
               outputAsset: route.destinationDebtAsset,
-              amountInUnits: position.debtUnits,
+              amountInUnits: sourceDebtMaximumUnits.toString(),
               amountOutUnits: settlementPayoffUnits.toString(),
               expiresAt: earliestExpiry(debtForwardQuote, debtReverseQuote),
             },
@@ -431,6 +437,10 @@ function minBigInt(left: bigint, right: bigint): bigint {
 
 function maxBigInt(left: bigint, right: bigint): bigint {
   return left > right ? left : right;
+}
+
+function addBasisPointHeadroom(amount: bigint, basisPoints: number): bigint {
+  return (amount * BigInt(10_000 + basisPoints) + 9_999n) / 10_000n;
 }
 
 function zeroFloorSubtract(left: bigint, right: bigint): bigint {

@@ -1,4 +1,8 @@
-import type { ProviderQuote, TokenReference } from '@debtshift/domain';
+import type {
+  ProviderQuote,
+  TokenReference,
+  TransportProvider as TransportProviderName,
+} from '@debtshift/domain';
 import {
   baseUnitAmountSchema,
   basisPointsSchema,
@@ -48,8 +52,8 @@ export interface TransportSubmission {
 }
 
 export interface TransportObservation {
-  readonly provider: 'DEBTSHIFT_SIMULATOR';
-  readonly simulated: true;
+  readonly provider: TransportProviderName;
+  readonly simulated: boolean;
   readonly providerReference: string;
   readonly quoteHash: Hex;
   readonly originTransactionHash?: Hex;
@@ -336,6 +340,10 @@ export function verifyTransportDelivery(
 ): TransportVerificationResult {
   const failures: string[] = [];
   if (observation.status !== 'SUCCESS') failures.push('STATUS_NOT_SUCCESS');
+  if (observation.provider !== quote.provider) failures.push('PROVIDER_MISMATCH');
+  if (observation.simulated !== (quote.mode === 'SIMULATED')) {
+    failures.push('SIMULATION_MODE_MISMATCH');
+  }
   if (observation.quoteHash !== quote.quoteHash) failures.push('QUOTE_HASH_MISMATCH');
   if (observation.destinationTransactionHash === undefined) {
     failures.push('DESTINATION_TRANSACTION_MISSING');
@@ -362,6 +370,10 @@ export function verifyTransportRefund(
 ): TransportVerificationResult {
   const failures: string[] = [];
   if (observation.status !== 'REFUNDED') failures.push('STATUS_NOT_REFUNDED');
+  if (observation.provider !== quote.provider) failures.push('PROVIDER_MISMATCH');
+  if (observation.simulated !== (quote.mode === 'SIMULATED')) {
+    failures.push('SIMULATION_MODE_MISMATCH');
+  }
   if (observation.quoteHash !== quote.quoteHash) failures.push('QUOTE_HASH_MISMATCH');
   if (observation.refundTransactionHash === undefined) {
     failures.push('REFUND_TRANSACTION_MISSING');

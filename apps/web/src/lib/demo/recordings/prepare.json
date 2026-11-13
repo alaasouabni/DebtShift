@@ -1,8 +1,11 @@
 {
-  "simulation": {
-    "provider": "DEBTSHIFT_SIMULATOR",
-    "mode": "SIMULATED",
-    "warning": "This route uses test assets and is not a 1Click testnet transaction."
+  "execution": {
+    "mode": "sandbox",
+    "transportProvider": "DEBTSHIFT_SIMULATOR",
+    "transportMode": "SIMULATED",
+    "simulatedTransport": true,
+    "fundedExecutionEnabled": true,
+    "warning": "Contract-backed sandbox: test assets and an explicitly simulated external transport provider."
   },
   "verifyingContract": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
   "intent": {
@@ -43,7 +46,7 @@
       "decimals": 6,
       "symbol": "dUSDC"
     },
-    "maxSourceDebtUnits": "10000000000",
+    "maxSourceDebtUnits": "10010000000",
     "minSourceCollateralUnits": "10000000000000000000",
     "maxTotalFeeUnits": "50000000",
     "maxSlippageBps": 50,
@@ -54,13 +57,13 @@
       "stressMaximumLtvBps": 6500
     },
     "maxDurationSeconds": 600,
-    "expiration": "1794437177",
-    "nonce": "198371127028302215204921622229851238888"
+    "expiration": "1794536258",
+    "nonce": "197386799843947626081419411278701582115"
   },
-  "intentHash": "0x9a3d50071585fa2b122b8c63bb119bfb546545334dee273bf3e5ba059e33b0ea",
+  "intentHash": "0x246af1a32ff1db0fc8114b36112ab63c8ba2b4fb7e37c5436cee5fb0191a42fe",
   "plan": {
-    "intentHash": "0x9a3d50071585fa2b122b8c63bb119bfb546545334dee273bf3e5ba059e33b0ea",
-    "migrationId": "0x43a1f4d520750a011a634bb1c9de28a599dd23ef5c728df52d1e20f10f2a95e4",
+    "intentHash": "0x246af1a32ff1db0fc8114b36112ab63c8ba2b4fb7e37c5436cee5fb0191a42fe",
+    "migrationId": "0xb89427c2904ab80a102f0bd127ba983384557f83076559b0c88ff2063aa804b5",
     "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     "sourcePositionId": "0x126dbb1e057f980a423c60074f2a7c7075c4e57347a99abc37799cf925e527de",
     "sourceMarket": {
@@ -99,17 +102,18 @@
       "decimals": 18,
       "symbol": "dWETH"
     },
-    "sourceRepaymentMaxUnits": "10000000000",
+    "sourceRepaymentMaxUnits": "10010000000",
     "sourceCollateralMinUnits": "10000000000000000000",
-    "targetDebtMaxUnits": "10050000000",
+    "targetDebtMaxUnits": "10060000000",
     "minDestinationCollateralUnits": "9940050000000000000",
     "transportProvider": "DEBTSHIFT_SIMULATOR",
-    "transportQuoteHash": "0x025c22b87f36d432ceaf3f2bae1853e22e920212f57821c652788cb313722664",
-    "transportDepositAddress": "simulator:025c22b87f36d432ceaf3f2bae1853e2",
+    "transportQuoteHash": "0x29682dd96aa441925946a12f5652892d025618ed89a7db5823e4c6db81c5df47",
+    "transportDepositAddress": "simulator:29682dd96aa441925946a12f5652892d",
     "destinationReceiver": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+    "transportRefundReceiver": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
     "refundReceiver": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     "fundingProvider": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
-    "reservationHash": "0xf97c5b1b6a054931d8fe7acb5c0f29ed0352e4ba92c3541bdac397b2c4cfe548",
+    "reservationHash": "0xcab13134adbec1f613a26f269158900ade2869ed7416e4c9b84fc11047918782",
     "payoutAsset": {
       "chainId": 31338,
       "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
@@ -117,13 +121,13 @@
       "symbol": "dUSDC"
     },
     "payoutReceiver": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-    "principalMaxUnits": "10000000000",
+    "principalMaxUnits": "10010000000",
     "feeMaxUnits": "50000000",
     "financing": {
       "modelVersion": 1,
-      "evaluatedAt": "2026-11-11T22:36:17.463Z",
-      "validUntil": "1794436817",
-      "capacityEvidenceHash": "0x304d84db2e6ee041929130f05fe0ed4f4db2a52c1cdc79ba6d1d28abaccc2b1a",
+      "evaluatedAt": "2026-11-13T02:07:38.597Z",
+      "validUntil": "1794535898",
+      "capacityEvidenceHash": "0x2c5a9e5af64c342bbf6e1bed7e89bc51a9269a660a8ac239d77c7454564f1efc",
       "liquidityBufferBps": 1000,
       "stressCollateralDropBps": 1000,
       "settlementAsset": {
@@ -132,9 +136,9 @@
         "decimals": 6,
         "symbol": "dUSDC"
       },
-      "sourceDebtPayoffAssetUnits": "10000000000",
-      "sourceDebtPayoffUnits": "10000000000",
-      "sourceConversionQuoteHash": "0x1694812346ce0ae8ddbfd4d8b2f7b034efa1b8339bc4e83a43be428421467ddf",
+      "sourceDebtPayoffAssetUnits": "10010000000",
+      "sourceDebtPayoffUnits": "10010000000",
+      "sourceConversionQuoteHash": "0x261eb3694a58143004eca2c05d0f873ea76686d12401847e6659761068c0b271",
       "borrowerDebtPrepaymentAssetUnits": "0",
       "borrowerDebtPrepaymentUnits": "0",
       "costs": [
@@ -205,29 +209,35 @@
         }
       ],
       "solverAdvancedCostUnits": "0",
-      "solverPrincipalUnits": "10000000000",
+      "solverPrincipalUnits": "10010000000",
       "solverFeeUnits": "50000000",
       "capitalizedCostUnits": "0",
       "separatelyPaidCostUnits": "50000000",
-      "totalRequiredRepaymentAndFinancedCostUnits": "10050000000",
+      "totalRequiredRepaymentAndFinancedCostUnits": "10060000000",
       "externalFunding": [],
       "confirmedExternalFundingUnits": "0",
       "protocolBorrowCapacityUnits": "14850000000",
       "policyBorrowCapacityUnits": "11583000000",
       "liquidityBorrowCapacityUnits": "90909090909",
-      "signedBorrowCapacityUnits": "10050000000",
-      "maximumSafeBorrowingCapacityUnits": "10050000000",
-      "requiredDestinationBorrowUnits": "10050000000",
+      "signedBorrowCapacityUnits": "10060000000",
+      "maximumSafeBorrowingCapacityUnits": "10060000000",
+      "requiredDestinationBorrowUnits": "10060000000",
       "fundingShortfallUnits": "0"
     },
-    "routeHash": "0xc698927402ccb82dac3ae56fb7ee81515bbd8decb45bc1ee652bb82fa394ef16",
-    "deadline": "1794436817",
-    "nonce": "314703253574020766154192869559406055657"
+    "routeHash": "0xff014e69440f60268df2f55f01344eb25ed5ca8d2c064a3bf8bba70620d1987c",
+    "deadline": "1794535898",
+    "nonce": "216528954324196861884665543901401188071"
   },
-  "planHash": "0x332846045ddda09d64d3db9cd63bb0ec6058ee8e9dfc33767cab4110b527ccfc",
+  "planHash": "0xae862db956a18a711b14ed5f6aa1692ac5c3ff06aee460e64816fc9f39f1ff9f",
+  "sourceAuthorization": {
+    "kind": "NONE"
+  },
+  "targetAuthorization": {
+    "kind": "NONE"
+  },
   "quote": {
-    "quoteId": "sim-025c22b87f36d432",
-    "quoteHash": "0x025c22b87f36d432ceaf3f2bae1853e22e920212f57821c652788cb313722664",
+    "quoteId": "sim-29682dd96aa44192",
+    "quoteHash": "0x29682dd96aa441925946a12f5652892d025618ed89a7db5823e4c6db81c5df47",
     "provider": "DEBTSHIFT_SIMULATOR",
     "mode": "SIMULATED",
     "inputAsset": {
@@ -258,14 +268,14 @@
       }
     ],
     "destinationReceiver": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
-    "refundReceiver": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-    "depositAddress": "simulator:025c22b87f36d432ceaf3f2bae1853e2",
-    "expiresAt": "2026-11-11T22:41:17.000Z",
-    "correlationId": "sim-025c22b87f36d432",
-    "rawResponseHash": "0x194619b7f984855a80cdf520170d1cf68e90170df34ed37d53830596a7f2073b"
+    "refundReceiver": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+    "depositAddress": "simulator:29682dd96aa441925946a12f5652892d",
+    "expiresAt": "2026-11-13T02:12:38.000Z",
+    "correlationId": "sim-29682dd96aa44192",
+    "rawResponseHash": "0xf8a0c4344180c21f0e4444e3193fac32ac363775d7e39db919c5d44d22a22a30"
   },
   "sourceSnapshot": {
-    "snapshotId": "0x9b3dd9235bf0c876ec649cfe6e57e71b298bfc7a61d1c7a9881f8941c08d6cbe",
+    "snapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
     "position": {
       "market": {
         "chainId": 31337,
@@ -295,9 +305,388 @@
     },
     "borrowAprBps": 700,
     "block": {
-      "number": "19",
-      "hash": "0xc2f0551c0d57e6f8b86204d1b7f9b941ab4404c2ec7ac7e05796471078dcd701",
-      "observedAt": "2026-11-11T22:36:17.000Z"
+      "number": "295",
+      "hash": "0x906aeab7b9e1e059a051687877356e3dd104d0e38f5d31ec0f224c46ef42d713",
+      "observedAt": "2026-11-13T02:07:38.000Z"
     }
+  },
+  "routeAnalysis": {
+    "analysis": {
+      "agent": "DEBTSHIFT_ROUTE_RISK_AGENT",
+      "deterministic": true,
+      "policyVersion": 1,
+      "wallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "analyses": [
+        {
+          "sourcePosition": {
+            "snapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+            "position": {
+              "market": {
+                "chainId": 31337,
+                "protocol": "LOCAL_AAVE_MOCK",
+                "deployment": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+                "marketId": "0x456866d088913085255907bec2d30e1262f40446d4927fbba78207114cfb29e0"
+              },
+              "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+              "collateralAsset": {
+                "chainId": 31337,
+                "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+                "decimals": 18,
+                "symbol": "sWETH"
+              },
+              "debtAsset": {
+                "chainId": 31337,
+                "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                "decimals": 6,
+                "symbol": "sUSDC"
+              }
+            },
+            "collateralUnits": "10000000000000000000",
+            "debtUnits": "10000000000",
+            "health": {
+              "kind": "AAVE_HEALTH_FACTOR",
+              "healthFactorWad": "1500000000000000000"
+            },
+            "borrowAprBps": 700,
+            "block": {
+              "number": "295",
+              "hash": "0x906aeab7b9e1e059a051687877356e3dd104d0e38f5d31ec0f224c46ef42d713",
+              "observedAt": "2026-11-13T02:07:38.000Z"
+            }
+          },
+          "comparison": {
+            "policyVersion": 1,
+            "selectedCandidateId": "local-morpho-balanced",
+            "evaluations": [
+              {
+                "candidateId": "local-morpho-balanced",
+                "eligible": true,
+                "scoreUsdMicro": "13287671",
+                "economics": {
+                  "sourceAprBps": 700,
+                  "targetAprBeforeBps": 400,
+                  "targetAprAfterBps": 450,
+                  "targetRateImpactBps": 50,
+                  "aprReductionBps": 250,
+                  "stressTargetAprBps": 650,
+                  "allInCostUsdMicro": "100000000",
+                  "carryingCostUsdMicro": "0",
+                  "grossSavingsUsdMicro": "123287671",
+                  "stressGrossSavingsUsdMicro": "24657534",
+                  "netBenefitUsdMicro": "23287671",
+                  "stressNetBenefitUsdMicro": "-75342466",
+                  "annualGrossSavingsUsdMicro": "250000000",
+                  "breakEvenSeconds": "12614400"
+                },
+                "safety": {
+                  "kind": "MAX_LTV_BPS",
+                  "postLtvBps": 5081,
+                  "stressLtvBps": 5646,
+                  "maximumLtvBps": 7000,
+                  "stressMaximumLtvBps": 6500
+                },
+                "financing": {
+                  "modelVersion": 1,
+                  "eligible": true,
+                  "settlementAsset": {
+                    "chainId": 31338,
+                    "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                    "decimals": 6,
+                    "symbol": "dUSDC"
+                  },
+                  "sourceDebtPayoffAssetUnits": "10010000000",
+                  "sourceDebtPayoffUnits": "10010000000",
+                  "sourceConversionQuoteHash": "0x261eb3694a58143004eca2c05d0f873ea76686d12401847e6659761068c0b271",
+                  "borrowerDebtPrepaymentUnits": "0",
+                  "solverAdvancedCostUnits": "0",
+                  "solverPrincipalUnits": "10010000000",
+                  "solverFeeUnits": "50000000",
+                  "capitalizedCostUnits": "0",
+                  "separatelyPaidCostUnits": "50000000",
+                  "totalRequiredRepaymentAndFinancedCostUnits": "10060000000",
+                  "confirmedExternalFundingUnits": "0",
+                  "protocolBorrowCapacityUnits": "14850000000",
+                  "policyBorrowCapacityUnits": "11583000000",
+                  "liquidityBorrowCapacityUnits": "90909090909",
+                  "signedBorrowCapacityUnits": "10060000000",
+                  "maximumSafeBorrowingCapacityUnits": "10060000000",
+                  "requiredDestinationBorrowUnits": "10060000000",
+                  "fundingShortfallUnits": "0",
+                  "components": [
+                    {
+                      "componentId": "local-morpho-balanced:source-gas",
+                      "kind": "NETWORK",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "10000000",
+                      "settlementAmountUnits": "10000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-balanced:destination-gas",
+                      "kind": "NETWORK",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "10000000",
+                      "settlementAmountUnits": "10000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-balanced:transport",
+                      "kind": "TRANSPORT",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "10000000",
+                      "settlementAmountUnits": "10000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-balanced:slippage",
+                      "kind": "SLIPPAGE",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "5000000",
+                      "settlementAmountUnits": "5000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-balanced:protocol",
+                      "kind": "PROTOCOL",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "15000000",
+                      "settlementAmountUnits": "15000000",
+                      "counted": true
+                    }
+                  ],
+                  "externalFunding": [],
+                  "rejections": []
+                },
+                "rejections": [],
+                "provenance": {
+                  "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+                  "marketSnapshotId": "0x658e7db34f0ac8d4918d9724f9f4123cee212b4c267bbc8d0fe456c9c8d0a9ff",
+                  "marketBlockNumber": "295",
+                  "marketBlockHash": "0x941b81802e902df2f872bd8c16afed6e70d4f541ea162d3749eb97f97e30e278",
+                  "oracleUpdatedAt": "2026-11-13T02:07:38.000Z",
+                  "evaluatedAt": "2026-11-13T02:07:38.597Z",
+                  "rateProjection": "local-target-read-plus-bounded-impact-v1"
+                },
+                "rank": 1
+              },
+              {
+                "candidateId": "local-morpho-low-liquidity",
+                "eligible": false,
+                "scoreUsdMicro": "60616438",
+                "economics": {
+                  "sourceAprBps": 700,
+                  "targetAprBeforeBps": 350,
+                  "targetAprAfterBps": 425,
+                  "targetRateImpactBps": 75,
+                  "aprReductionBps": 275,
+                  "stressTargetAprBps": 625,
+                  "allInCostUsdMicro": "60000000",
+                  "carryingCostUsdMicro": "0",
+                  "grossSavingsUsdMicro": "135616438",
+                  "stressGrossSavingsUsdMicro": "36986301",
+                  "netBenefitUsdMicro": "75616438",
+                  "stressNetBenefitUsdMicro": "-23013699",
+                  "annualGrossSavingsUsdMicro": "275000000",
+                  "breakEvenSeconds": "6880582"
+                },
+                "safety": {
+                  "kind": "MAX_LTV_BPS",
+                  "postLtvBps": 5066,
+                  "stressLtvBps": 5629,
+                  "maximumLtvBps": 7000,
+                  "stressMaximumLtvBps": 6500
+                },
+                "financing": {
+                  "modelVersion": 1,
+                  "eligible": false,
+                  "settlementAsset": {
+                    "chainId": 31338,
+                    "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                    "decimals": 6,
+                    "symbol": "dUSDC"
+                  },
+                  "sourceDebtPayoffAssetUnits": "10010000000",
+                  "sourceDebtPayoffUnits": "10010000000",
+                  "sourceConversionQuoteHash": "0x450bc3818d852750c49559a82064c6a438a3592d01d6089fe4acc9bcee63499c",
+                  "borrowerDebtPrepaymentUnits": "0",
+                  "solverAdvancedCostUnits": "0",
+                  "solverPrincipalUnits": "10010000000",
+                  "solverFeeUnits": "20000000",
+                  "capitalizedCostUnits": "0",
+                  "separatelyPaidCostUnits": "40000000",
+                  "totalRequiredRepaymentAndFinancedCostUnits": "10030000000",
+                  "confirmedExternalFundingUnits": "0",
+                  "protocolBorrowCapacityUnits": "14850000000",
+                  "policyBorrowCapacityUnits": "11583000000",
+                  "liquidityBorrowCapacityUnits": "9090909090",
+                  "signedBorrowCapacityUnits": "10030000000",
+                  "maximumSafeBorrowingCapacityUnits": "9090909090",
+                  "requiredDestinationBorrowUnits": "10030000000",
+                  "fundingShortfallUnits": "939090910",
+                  "components": [
+                    {
+                      "componentId": "local-morpho-low-liquidity:source-gas",
+                      "kind": "NETWORK",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "8000000",
+                      "settlementAmountUnits": "8000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-low-liquidity:destination-gas",
+                      "kind": "NETWORK",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "8000000",
+                      "settlementAmountUnits": "8000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-low-liquidity:transport",
+                      "kind": "TRANSPORT",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "8000000",
+                      "settlementAmountUnits": "8000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-low-liquidity:slippage",
+                      "kind": "SLIPPAGE",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "4000000",
+                      "settlementAmountUnits": "4000000",
+                      "counted": true
+                    },
+                    {
+                      "componentId": "local-morpho-low-liquidity:protocol",
+                      "kind": "PROTOCOL",
+                      "financingClass": "SEPARATELY_PAID",
+                      "asset": {
+                        "chainId": 31338,
+                        "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                        "decimals": 6,
+                        "symbol": "dUSDC"
+                      },
+                      "amountUnits": "12000000",
+                      "settlementAmountUnits": "12000000",
+                      "counted": true
+                    }
+                  ],
+                  "externalFunding": [],
+                  "rejections": [
+                    {
+                      "code": "REQUIRED_BORROW_EXCEEDS_SAFE_CAPACITY",
+                      "message": "Required destination borrowing exceeds the minimum of protocol, policy, liquidity, and signed capacity."
+                    },
+                    {
+                      "code": "FUNDING_SHORTFALL",
+                      "message": "Confirmed external funding plus safe destination borrowing cannot cover all financed uses."
+                    }
+                  ]
+                },
+                "rejections": [
+                  {
+                    "code": "REQUIRED_BORROW_EXCEEDS_SAFE_CAPACITY",
+                    "message": "Required destination borrowing exceeds the minimum of protocol, policy, liquidity, and signed capacity."
+                  },
+                  {
+                    "code": "FUNDING_SHORTFALL",
+                    "message": "Confirmed external funding plus safe destination borrowing cannot cover all financed uses."
+                  },
+                  {
+                    "code": "INSUFFICIENT_BORROW_LIQUIDITY",
+                    "message": "Target liquidity does not cover the requested debt and policy buffer."
+                  }
+                ],
+                "provenance": {
+                  "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+                  "marketSnapshotId": "0x6621d43136c3094f16f136d060bd47046d022c7dfe5a2d44825b1a95554c3b11",
+                  "marketBlockNumber": "295",
+                  "marketBlockHash": "0x941b81802e902df2f872bd8c16afed6e70d4f541ea162d3749eb97f97e30e278",
+                  "oracleUpdatedAt": "2026-11-13T02:07:38.000Z",
+                  "evaluatedAt": "2026-11-13T02:07:38.597Z",
+                  "rateProjection": "local-constrained-market-impact-v1"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "explanations": [
+      {
+        "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+        "result": {
+          "decisionHash": "0xf6cc4cab7fc17252007ed517c94c2f3893baa1f96e830f721027e0fa2361884e",
+          "provider": "DETERMINISTIC",
+          "fallbackUsed": false,
+          "explanation": {
+            "summary": "Route local-morpho-balanced passes the deterministic economics, liquidity, freshness, and safety policy.",
+            "mainEconomicBenefit": "Projected net benefit is $23.28 over the selected horizon, from an APR reduction of 2.50%.",
+            "mainRisks": [
+              "Stress target APR is 6.50%.",
+              "Cross-chain settlement remains non-atomic and depends on independently verified custody."
+            ],
+            "breakEvenExplanation": "At unchanged projected rates, one-time costs break even after about 146.0 days.",
+            "safetyExplanation": "Projected LTV is 50.81% and stressed LTV is 56.46%. Required destination borrowing is 10060 dUSDC, maximum safe capacity is 10060 dUSDC, and the confirmed funding shortfall is 0 dUSDC.",
+            "dataFreshnessWarning": "Market block 295 and oracle update 2026-11-13T02:07:38.000Z were evaluated at 2026-11-13T02:07:38.597Z; execution must re-read critical state.",
+            "reviewAndSignStatement": "Review every amount, market, receiver, fee cap, deadline, and risk limit before signing. This explanation cannot authorize execution."
+          }
+        }
+      }
+    ]
   }
 }

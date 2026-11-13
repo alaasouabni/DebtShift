@@ -1,5 +1,58 @@
 name: debtshift
 
+x-debtshift-app: &debtshift-app
+  image: ${DEBTSHIFT_IMAGE:-debtshift-app:local}
+
+x-sandbox-environment: &sandbox-environment
+  NODE_ENV: ${DEBTSHIFT_NODE_ENV:-development}
+  DEBTSHIFT_MODE: sandbox
+  MARKET_DATA_PROVIDER: SIMULATOR
+  LIVE_MARKET_CONFIG_JSON: ''
+  API_PORT: 3001
+  API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
+  WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-http://localhost:3000}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-debtshift}:${POSTGRES_PASSWORD:-debtshift_local}@postgres:5432/${POSTGRES_DB:-debtshift}
+  REDIS_URL: redis://redis:6379
+  SOURCE_CHAIN_ID: 31337
+  SOURCE_RPC_URL: http://chains:8545
+  SOURCE_DEPLOYMENT_BLOCK_NUMBER: 0
+  SOURCE_FINALITY_CONFIRMATIONS: 1
+  SOURCE_DEBT_BUFFER_BPS: 10
+  DESTINATION_CHAIN_ID: 31338
+  DESTINATION_RPC_URL: http://chains:8546
+  DESTINATION_DEPLOYMENT_BLOCK_NUMBER: 0
+  DESTINATION_FINALITY_CONFIRMATIONS: 1
+  EIP712_VERIFYING_CONTRACT: '0x5fc8d32690cc91d4c39d9d3abcbd16989f875707'
+  SANDBOX_EXECUTOR_PRIVATE_KEY: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+  SOURCE_DEBT_TOKEN_ADDRESS: '0x5fbdb2315678afecb367f032d93f642f64180aa3'
+  SOURCE_COLLATERAL_TOKEN_ADDRESS: '0xe7f1725e7734ce288f8367e1bb143e90bb3f0512'
+  SOURCE_LENDING_ADDRESS: '0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0'
+  SOURCE_VAULT_ADDRESS: '0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9'
+  SOURCE_ESCROW_ADDRESS: '0xdc64a140aa3e981100a9beca4e685f962f0cf6c9'
+  SOURCE_ADAPTER_ADDRESS: '0x5fc8d32690cc91d4c39d9d3abcbd16989f875707'
+  DESTINATION_DEBT_TOKEN_ADDRESS: '0x5fbdb2315678afecb367f032d93f642f64180aa3'
+  DESTINATION_COLLATERAL_TOKEN_ADDRESS: '0xe7f1725e7734ce288f8367e1bb143e90bb3f0512'
+  DESTINATION_LENDING_ADDRESS: '0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0'
+  DESTINATION_ESCROW_ADDRESS: '0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9'
+  DESTINATION_ADAPTER_ADDRESS: '0xdc64a140aa3e981100a9beca4e685f962f0cf6c9'
+  EXECUTOR_ADDRESS: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
+  TRANSPORT_PROVIDER: DEBTSHIFT_SIMULATOR
+  INTENTS_MODE: simulated
+  INTENTS_BASE_URL: https://1click.chaindefuser.com
+  INTENTS_AUTH_TOKEN: ''
+  SIMULATOR_TERMINAL_OUTCOME: ${SIMULATOR_TERMINAL_OUTCOME:-SUCCESS}
+  SIMULATOR_PROCESSING_POLLS: ${SIMULATOR_PROCESSING_POLLS:-1}
+  NEAR_NETWORK: ${NEAR_NETWORK:-sandbox}
+  NEAR_RPC_URL: ${NEAR_RPC_URL:-https://test.rpc.fastnear.com}
+  NEAR_REGISTRY_ACCOUNT: ${NEAR_REGISTRY_ACCOUNT:-}
+  NEAR_SIGNER_ACCOUNT_ID: ${NEAR_SIGNER_ACCOUNT_ID:-}
+  NEAR_SIGNER_PRIVATE_KEY: ${NEAR_SIGNER_PRIVATE_KEY:-}
+  NEAR_STORAGE_DEPOSIT_YOCTO: ${NEAR_STORAGE_DEPOSIT_YOCTO:-1000000000000000000000000}
+  NEAR_FUNCTION_CALL_GAS: ${NEAR_FUNCTION_CALL_GAS:-100000000000000}
+  AGENT_MODE: DETERMINISTIC
+  MAINNET_EXECUTION_ENABLED: 'false'
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
 services:
   postgres:
     image: postgres:17.6-alpine
@@ -8,7 +61,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-debtshift}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-debtshift_local}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - debtshift_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +75,7 @@ services:
     image: redis:8.2.2-alpine
     command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - debtshift_redis:/data
     healthcheck:
@@ -30,6 +83,107 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
+
+  chains:
+    <<: *debtshift-app
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/v1}
+    command: ['node', 'packages/protocols/dist/local-stack.js']
+    environment:
+      ANVIL_PATH: /usr/local/bin/anvil
+      ANVIL_BIND_HOST: 0.0.0.0
+      ANVIL_BLOCK_TIME_SECONDS: 1
+      DEBTSHIFT_LOCAL_STACK_READY_FILE: /tmp/debtshift-local-stack-ready
+      SOURCE_CHAIN_ID: 31337
+      SOURCE_RPC_URL: http://127.0.0.1:8545
+      DESTINATION_CHAIN_ID: 31338
+      DESTINATION_RPC_URL: http://127.0.0.1:8546
+    ports:
+      - '127.0.0.1:${SOURCE_RPC_PORT:-8545}:8545'
+      - '127.0.0.1:${DESTINATION_RPC_PORT:-8546}:8546'
+    healthcheck:
+      test: ['CMD', 'node', 'scripts/health-local-chains.mjs']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    <<: *debtshift-app
+    command: ['npm', 'run', 'db:migrate', '--workspace', '@debtshift/database']
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-debtshift}:${POSTGRES_PASSWORD:-debtshift_local}@postgres:5432/${POSTGRES_DB:-debtshift}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    <<: *debtshift-app
+    command: ['node', 'apps/api/dist/main.js']
+    environment: *sandbox-environment
+    ports:
+      - '${API_PORT:-3001}:3001'
+    depends_on:
+      chains:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  worker:
+    <<: *debtshift-app
+    command: ['node', 'apps/worker/dist/main.js']
+    environment: *sandbox-environment
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    <<: *debtshift-app
+    command: ['npm', 'run', 'start', '--workspace', '@debtshift/web']
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
     restart: unless-stopped
 
 volumes:

@@ -10,13 +10,18 @@ import {
 import {
   evidenceSchema,
   hashCanonicalText,
+  ledgerEntrySchema,
+  ledgerReconciliationSchema,
   type Evidence,
   type EvidenceType,
+  type LedgerComponentCode,
+  type LedgerEntry,
+  type LedgerReconciliation,
+  type TransportProvider,
 } from '@debtshift/domain';
 import {
   verifyTransportDelivery,
   verifyTransportRefund,
-  type DeterministicTransportSimulator,
   type TransportObservation,
 } from '@debtshift/intents';
 import type { Hex } from 'viem';
@@ -30,6 +35,8 @@ export interface FinalizedChainAction {
   readonly blockHash: Hex;
   readonly payload: Record<string, unknown>;
 }
+
+type FinalizedTransactionEvidence = Evidence & { readonly transactionHash: Hex };
 
 export interface ChainCanonicalityFailure {
   readonly evidence: Evidence;
@@ -77,6 +84,34 @@ export interface MigrationExecutionPort {
   ): Promise<FinalizedChainAction>;
 }
 
+export interface TransportExecutionPort {
+  readonly provider: TransportProvider;
+  bindOrigin(
+    context: MigrationExecutionContext,
+    originTransactionHash: Hex,
+  ): Promise<{
+    readonly providerReference: string;
+    readonly observationCount: number;
+  }>;
+  observe(context: MigrationExecutionContext): Promise<{
+    readonly observation: TransportObservation;
+    readonly observationCount: number;
+  }>;
+}
+
+export interface WorkflowEvidenceProviders {
+  readonly financing: string;
+  readonly liquidity: string;
+  readonly source: string;
+  readonly target: string;
+  readonly ledger: string;
+  readonly recovery: string;
+}
+
+export interface ReceiptRegistryPort {
+  finalize(context: MigrationExecutionContext): Promise<Evidence>;
+}
+
 export interface WorkflowContextStore {
   get(migrationId: string): Promise<MigrationExecutionContext>;
   listActiveFinalizedChainEvidence(migrationId: string): Promise<readonly Evidence[]>;
@@ -101,11 +136,21 @@ export class PostgresWorkflowContextStore implements WorkflowContextStore {
   }
 }
 
-export function createSimulatedWorkflowHandlers(
-  store: WorkflowContextStore,
-  execution: MigrationExecutionPort,
-  simulator: DeterministicTransportSimulator,
-): ReadonlyMap<string, CommandHandler> {
+export interface WorkflowHandlerDependencies {
+  readonly store: WorkflowContextStore;
+  readonly execution: MigrationExecutionPort;
+  readonly transport: TransportExecutionPort;
+  readonly registry: ReceiptRegistryPort;
+  readonly evidenceProviders: WorkflowEvidenceProviders;
+}
+
+export function createWorkflowHandlers({
+  store,
+  execution,
+  transport,
+  registry,
+  evidenceProviders,
+}: WorkflowHandlerDependencies): ReadonlyMap<string, CommandHandler> {
   return new Map<string, CommandHandler>([
     [
       'RESERVE_LIQUIDITY',
@@ -115,13 +160,13 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'LIQUIDITY_RESERVATION',
-            'LOCAL_TEST_VAULT',
+            evidenceProviders.liquidity,
             action,
           ),
         ];
@@ -139,13 +184,13 @@ export function createSimulatedWorkflowHandlers(
             chainEvidence(
               context.migration.migrationId,
               'FINANCING_REVALIDATION',
-              'DEBTSHIFT_RISK_VALIDATOR',
+              evidenceProviders.financing,
               error.action,
             ),
             chainEvidence(
               context.migration.migrationId,
               'REQUOTE_REQUIRED',
-              'LOCAL_TEST_VAULT',
+              evidenceProviders.liquidity,
               error.action,
             ),
           ];
@@ -154,13 +199,13 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'SOURCE_CLOSE',
-            'LOCAL_SOURCE_ADAPTER',
+            evidenceProviders.source,
             action,
           ),
         ];
@@ -170,22 +215,18 @@ export function createSimulatedWorkflowHandlers(
       'DISPATCH_TRANSPORT',
       handler(store, execution, async (context) => {
         const action = await execution.dispatchTransport(context);
-        restoreSimulator(simulator, context);
-        const providerReference = await simulator.submitOrigin({
-          quoteHash: context.quote.quoteHash as Hex,
-          originTransactionHash: action.transactionHash,
-        });
+        const binding = await transport.bindOrigin(context, action.transactionHash);
         await store.updateTransport(context.migration.migrationId, {
           providerState: 'PROCESSING',
-          providerReference,
+          providerReference: binding.providerReference,
           originTransactionHash: action.transactionHash,
-          observationCount: simulator.getState(providerReference).pollCount,
+          observationCount: binding.observationCount,
         });
         return [
           chainEvidence(
             context.migration.migrationId,
             'TRANSPORT_ORIGIN',
-            'DEBTSHIFT_SIMULATOR',
+            transport.provider,
             action,
           ),
         ];
@@ -194,14 +235,11 @@ export function createSimulatedWorkflowHandlers(
     [
       'VERIFY_DESTINATION',
       handler(store, execution, async (context) => {
-        restoreSimulator(simulator, context);
-        const providerReference = context.transportLeg.providerReference ?? context.quote.quoteId;
-        const observation = await simulator.getStatus(providerReference);
-        const state = simulator.getState(providerReference);
+        const { observation, observationCount } = await transport.observe(context);
         await store.updateTransport(context.migration.migrationId, {
           providerState: observation.status,
-          providerReference,
-          observationCount: state.pollCount,
+          providerReference: observation.providerReference,
+          observationCount,
           ...(observation.destinationTransactionHash === undefined
             ? {}
             : { destinationTransactionHash: observation.destinationTransactionHash }),
@@ -230,7 +268,7 @@ export function createSimulatedWorkflowHandlers(
             chainEvidence(
               context.migration.migrationId,
               'TRANSPORT_DESTINATION',
-              'DEBTSHIFT_SIMULATOR',
+              observation.provider,
               action,
               observation,
             ),
@@ -266,7 +304,7 @@ export function createSimulatedWorkflowHandlers(
             chainEvidence(
               context.migration.migrationId,
               'FINANCING_REVALIDATION',
-              'DEBTSHIFT_RISK_VALIDATOR',
+              evidenceProviders.financing,
               error.action,
             ),
             capacityDeteriorationRecoveryEvidence(context, error.action),
@@ -276,13 +314,13 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'TARGET_POSITION',
-            'LOCAL_TARGET_ADAPTER',
+            evidenceProviders.target,
             action,
           ),
         ];
@@ -292,35 +330,30 @@ export function createSimulatedWorkflowHandlers(
       'SETTLE_LIQUIDITY',
       handler(store, execution, async (context) => {
         const action = await execution.settleLiquidity(context);
+        const activeEvidence = await store.listActiveFinalizedChainEvidence(
+          context.migration.migrationId,
+        );
+        const ledger = buildSettlementLedger(context, action, activeEvidence);
         return [
           chainEvidence(
             context.migration.migrationId,
             'FINANCING_REVALIDATION',
-            'DEBTSHIFT_RISK_VALIDATOR',
+            evidenceProviders.financing,
             action,
           ),
           chainEvidence(
             context.migration.migrationId,
             'LIQUIDITY_SETTLEMENT',
-            'LOCAL_TEST_VAULT',
+            evidenceProviders.liquidity,
             action,
           ),
-          chainEvidence(
-            context.migration.migrationId,
-            'LEDGER_RECONCILIATION',
-            'DEBTSHIFT_LEDGER',
-            action,
-          ),
+          ledgerEvidence(context.migration.migrationId, evidenceProviders.ledger, action, ledger),
         ];
       }),
     ],
     [
       'FINALIZE_NEAR_RECEIPT',
-      {
-        execute: async () => {
-          throw new RetryableCommandError('NEAR receipt finalization is not enabled before M7.');
-        },
-      },
+      handler(store, execution, async (context) => [await registry.finalize(context)]),
     ],
     [
       'EXECUTE_RECOVERY',
@@ -331,7 +364,7 @@ export function createSimulatedWorkflowHandlers(
           chainEvidence(
             context.migration.migrationId,
             'RECOVERY_COMPLETED',
-            'LOCAL_RECOVERY',
+            evidenceProviders.recovery,
             await execution.executeRecovery(context, 'POLICY_SELECTED_RECOVERY'),
           ),
         ],
@@ -461,18 +494,6 @@ function canonicalityFailureEvidence(
   return [outcome, ...retractions];
 }
 
-function restoreSimulator(
-  simulator: DeterministicTransportSimulator,
-  context: MigrationExecutionContext,
-): void {
-  simulator.restoreQuote(context.quote, {
-    pollCount: context.transportLeg.observationCount,
-    ...(context.transportLeg.originTransactionHash === null
-      ? {}
-      : { originTransactionHash: context.transportLeg.originTransactionHash as Hex }),
-  });
-}
-
 function chainEvidence(
   migrationId: string,
   type: EvidenceType,
@@ -503,6 +524,442 @@ function chainEvidence(
     verificationMethod: 'RECEIPT_AND_STATE',
     verifierVersion: 'debtshift-worker-v1',
   });
+}
+
+function ledgerEvidence(
+  migrationId: string,
+  provider: string,
+  action: FinalizedChainAction,
+  ledger: LedgerReconciliation,
+): Evidence {
+  const observedAt = ledger.entries[0]?.createdAt ?? new Date().toISOString();
+  const payload = { ...action.payload, observation: {}, ledger };
+  const evidenceId = actionEvidenceId(migrationId, 'LEDGER_RECONCILIATION', action);
+  return evidenceSchema.parse({
+    evidenceId,
+    migrationId,
+    type: 'LEDGER_RECONCILIATION',
+    schemaVersion: 1,
+    provider,
+    network: `eip155:${action.chainId.toString()}`,
+    chainId: action.chainId,
+    blockNumber: action.blockNumber,
+    blockHash: action.blockHash,
+    transactionHash: action.transactionHash,
+    providerReference: evidenceId,
+    rawObservationHash: hashCanonicalText(canonicalJson(payload)),
+    normalizedPayload: payload,
+    observedAt,
+    verificationState: 'FINALIZED',
+    verificationMethod: 'RECEIPT_STATE_AND_BALANCED_LEDGER',
+    verifierVersion: 'debtshift-worker-v1',
+  });
+}
+
+function buildSettlementLedger(
+  context: MigrationExecutionContext,
+  settlement: FinalizedChainAction,
+  records: readonly Evidence[],
+): LedgerReconciliation {
+  const plan = context.signedPlan.plan;
+  const migrationId = context.migration.migrationId;
+  const reservation = requiredEvidence(records, 'LIQUIDITY_RESERVATION');
+  const sourceClose = requiredEvidence(records, 'SOURCE_CLOSE');
+  const transportOrigin = requiredEvidence(records, 'TRANSPORT_ORIGIN');
+  const transportDestination = requiredEvidence(records, 'TRANSPORT_DESTINATION');
+  const targetPosition = requiredEvidence(records, 'TARGET_POSITION');
+  const settlementRevalidation = requiredRecord(
+    settlement.payload.financingRevalidation,
+    'settlement financing revalidation',
+  );
+  const principal = unsignedPayloadBigInt(settlementRevalidation, 'solverPrincipalUnits', true);
+  const fee = unsignedPayloadBigInt(settlementRevalidation, 'solverFeeUnits');
+  const capitalized = unsignedPayloadBigInt(settlementRevalidation, 'capitalizedCostUnits');
+  const solverAdvanced = BigInt(plan.financing.solverAdvancedCostUnits);
+  const separatelyPaid = BigInt(plan.financing.separatelyPaidCostUnits);
+  if (solverAdvanced !== 0n || capitalized !== 0n) {
+    throw new Error(
+      'The P0 route cannot settle cost components without signed, receipt-verifiable recipients.',
+    );
+  }
+  const requiredBorrow = unsignedPayloadBigInt(
+    settlementRevalidation,
+    'requiredDestinationBorrowUnits',
+    true,
+  );
+  const externalFunding = unsignedPayloadBigInt(
+    settlementRevalidation,
+    'confirmedExternalFundingUnits',
+  );
+  const prepayment = BigInt(plan.financing.borrowerDebtPrepaymentUnits);
+  if (prepayment > 0n && plan.financing.borrowerDebtPrepaymentEvidenceId === undefined) {
+    throw new Error('Borrower debt prepayment is missing finalized evidence.');
+  }
+  if (externalFunding !== BigInt(plan.financing.confirmedExternalFundingUnits)) {
+    throw new Error('Finalized supplementary funding differs from the signed financing structure.');
+  }
+  const available = requiredBorrow + externalFunding;
+  const obligation = principal + fee + capitalized;
+  if (available < obligation) {
+    throw new Error('Finalized settlement has an unexplained funding shortfall.');
+  }
+  const residual = available - obligation;
+  const originCollateral = unsignedPayloadBigInt(
+    transportOrigin.normalizedPayload,
+    'amountInUnits',
+    true,
+  );
+  const destinationCollateral = unsignedPayloadBigInt(
+    transportDestination.normalizedPayload,
+    'amountOutUnits',
+    true,
+  );
+  const suppliedCollateral = unsignedPayloadBigInt(
+    targetPosition.normalizedPayload,
+    'collateralUnits',
+    true,
+  );
+  if (suppliedCollateral !== destinationCollateral) {
+    throw new Error('Target collateral supply does not equal verified destination custody.');
+  }
+
+  const reservationProvider = requiredPayloadText(
+    reservation.normalizedPayload,
+    'recoveryReserveProvider',
+  );
+  const settlementProvider = requiredPayloadText(settlement.payload, 'recoveryReserveProvider');
+  if (reservationProvider.toLowerCase() !== settlementProvider.toLowerCase()) {
+    throw new Error('Recovery reserve provider changed before settlement.');
+  }
+  const recoveryReserveLocked = unsignedPayloadBigInt(
+    reservation.normalizedPayload,
+    'recoveryReserveUnits',
+    true,
+  );
+  const settlementReserveMaximum = unsignedPayloadBigInt(
+    settlement.payload,
+    'recoveryReserveMaximumUnits',
+    true,
+  );
+  if (recoveryReserveLocked !== settlementReserveMaximum) {
+    throw new Error('Settled recovery reserve differs from the finalized reservation.');
+  }
+  const recoveryReserveConsumed = principal + fee;
+  if (recoveryReserveConsumed > recoveryReserveLocked) {
+    throw new Error('Settlement exceeds the isolated recovery reserve.');
+  }
+  const repayment = unsignedPayloadBigInt(settlement.payload, 'repaymentUnits', true);
+  if (repayment !== recoveryReserveConsumed) {
+    throw new Error('Settlement receipt does not match the finalized principal and fee.');
+  }
+  const recoveryReserveRefunded = recoveryReserveLocked - recoveryReserveConsumed;
+  const observedAt = requiredPayloadText(settlementRevalidation, 'observedAt');
+  const settlementEvidenceId = actionEvidenceId(migrationId, 'LIQUIDITY_SETTLEMENT', settlement);
+  const financingEvidenceId = hashCanonicalText(
+    `debtshift.evidence.v1:${migrationId}:FINANCING_FEASIBILITY`,
+  );
+  const reserveAccount = `recovery-reserve:${plan.fundingProvider}:${migrationId}`;
+  const entries: LedgerEntry[] = [];
+  const append = (input: {
+    readonly componentCode: LedgerComponentCode;
+    readonly componentId: string;
+    readonly evidenceId: Hex;
+    readonly basis?: LedgerEntry['basis'];
+    readonly chainId: number;
+    readonly token: string;
+    readonly amountUnits: bigint;
+    readonly debitParty: string;
+    readonly creditParty: string;
+    readonly category: LedgerEntry['category'];
+    readonly transactionReference?: string;
+  }): void => {
+    if (input.amountUnits === 0n) return;
+    const sequence = entries.length + 1;
+    entries.push(
+      ledgerEntrySchema.parse({
+        entryId: hashCanonicalText(
+          `debtshift.ledger.v1:${migrationId}:${sequence.toString()}:${input.componentId}`,
+        ),
+        migrationId,
+        sequence,
+        componentCode: input.componentCode,
+        componentId: input.componentId,
+        evidenceId: input.evidenceId,
+        basis: input.basis ?? 'FINALIZED_MOVEMENT',
+        chainId: input.chainId,
+        token: input.token,
+        amountUnits: input.amountUnits.toString(),
+        debitParty: input.debitParty,
+        creditParty: input.creditParty,
+        category: input.category,
+        ...(input.transactionReference === undefined
+          ? {}
+          : { transactionReference: input.transactionReference }),
+        createdAt: observedAt,
+      }),
+    );
+  };
+
+  append({
+    componentCode: 'SOURCE_DEBT_PAYOFF',
+    componentId: 'source-debt-payoff',
+    evidenceId: sourceClose.evidenceId,
+    chainId: plan.sourceDebtAsset.chainId,
+    token: plan.sourceDebtAsset.address,
+    amountUnits: principal,
+    debitParty: plan.fundingProvider,
+    creditParty: plan.sourceMarket.deployment,
+    category: 'PRINCIPAL',
+    transactionReference: sourceClose.transactionHash,
+  });
+  append({
+    componentCode: 'BORROWER_DEBT_PREPAYMENT',
+    componentId: 'borrower-debt-prepayment',
+    evidenceId: plan.financing.borrowerDebtPrepaymentEvidenceId ?? sourceClose.evidenceId,
+    chainId: plan.sourceDebtAsset.chainId,
+    token: plan.sourceDebtAsset.address,
+    amountUnits: prepayment,
+    debitParty: plan.borrower,
+    creditParty: plan.sourceMarket.deployment,
+    category: 'PRINCIPAL',
+  });
+  for (const cost of plan.financing.costs.filter(
+    (component) => component.financingClass === 'SEPARATELY_PAID',
+  )) {
+    append({
+      componentCode: 'SEPARATELY_PAID_COST_CLASSIFICATION',
+      componentId: `separately-paid-cost:${cost.componentId}`,
+      evidenceId: financingEvidenceId,
+      basis: 'SIGNED_COST_CLASSIFICATION',
+      chainId: plan.financing.settlementAsset.chainId,
+      token: plan.financing.settlementAsset.address,
+      amountUnits: BigInt(cost.settlementAmountUnits),
+      debitParty: plan.borrower,
+      creditParty: `external-cost:${cost.kind}:${cost.componentId}`,
+      category: 'COST',
+    });
+  }
+  append({
+    componentCode: 'RECOVERY_RESERVE_LOCKED',
+    componentId: 'recovery-reserve-locked',
+    evidenceId: reservation.evidenceId,
+    chainId: plan.sourceDebtAsset.chainId,
+    token: plan.sourceDebtAsset.address,
+    amountUnits: recoveryReserveLocked,
+    debitParty: reservationProvider,
+    creditParty: reserveAccount,
+    category: 'RESERVE',
+    transactionReference: reservation.transactionHash,
+  });
+  append({
+    componentCode: 'TRANSPORT_ORIGIN_COLLATERAL',
+    componentId: 'transport-origin-collateral',
+    evidenceId: transportOrigin.evidenceId,
+    chainId: plan.sourceCollateralAsset.chainId,
+    token: plan.sourceCollateralAsset.address,
+    amountUnits: originCollateral,
+    debitParty: plan.transportRefundReceiver,
+    creditParty: plan.transportDepositAddress,
+    category: 'COLLATERAL',
+    transactionReference: transportOrigin.transactionHash,
+  });
+  append({
+    componentCode: 'TRANSPORT_DESTINATION_COLLATERAL',
+    componentId: 'transport-destination-collateral',
+    evidenceId: transportDestination.evidenceId,
+    chainId: plan.destinationCollateralAsset.chainId,
+    token: plan.destinationCollateralAsset.address,
+    amountUnits: destinationCollateral,
+    debitParty: `transport:${plan.transportProvider}:${transportDestination.providerReference ?? transportDestination.evidenceId}`,
+    creditParty: plan.destinationReceiver,
+    category: 'COLLATERAL',
+    transactionReference: transportDestination.transactionHash,
+  });
+  append({
+    componentCode: 'TARGET_COLLATERAL_SUPPLY',
+    componentId: 'target-collateral-supply',
+    evidenceId: targetPosition.evidenceId,
+    chainId: plan.destinationCollateralAsset.chainId,
+    token: plan.destinationCollateralAsset.address,
+    amountUnits: suppliedCollateral,
+    debitParty: plan.destinationReceiver,
+    creditParty: plan.targetMarket.deployment,
+    category: 'COLLATERAL',
+    transactionReference: targetPosition.transactionHash,
+  });
+  append({
+    componentCode: 'DESTINATION_LOAN_PROCEEDS',
+    componentId: 'destination-loan-proceeds',
+    evidenceId: targetPosition.evidenceId,
+    chainId: plan.payoutAsset.chainId,
+    token: plan.payoutAsset.address,
+    amountUnits: requiredBorrow,
+    debitParty: plan.targetMarket.deployment,
+    creditParty: plan.destinationReceiver,
+    category: 'PRINCIPAL',
+    transactionReference: targetPosition.transactionHash,
+  });
+  for (const funding of plan.financing.externalFunding) {
+    if (funding.escrow.toLowerCase() !== plan.destinationReceiver.toLowerCase()) {
+      throw new Error('Supplementary funding is not held by the signed destination escrow.');
+    }
+    append({
+      componentCode: 'SUPPLEMENTARY_SETTLEMENT_FUNDING',
+      componentId: `supplementary-funding:${funding.fundingId}`,
+      evidenceId: funding.evidenceId,
+      chainId: funding.asset.chainId,
+      token: funding.asset.address,
+      amountUnits: BigInt(funding.amountUnits),
+      debitParty: `supplementary-funder:${funding.fundingId}`,
+      creditParty: plan.destinationReceiver,
+      category: 'PRINCIPAL',
+    });
+  }
+  append({
+    componentCode: 'SOLVER_PRINCIPAL_PAYOUT',
+    componentId: 'solver-principal-payout',
+    evidenceId: targetPosition.evidenceId,
+    chainId: plan.payoutAsset.chainId,
+    token: plan.payoutAsset.address,
+    amountUnits: principal,
+    debitParty: plan.destinationReceiver,
+    creditParty: plan.payoutReceiver,
+    category: 'PRINCIPAL',
+    transactionReference: targetPosition.transactionHash,
+  });
+  append({
+    componentCode: 'SOLVER_FEE_PAYOUT',
+    componentId: 'solver-fee-payout',
+    evidenceId: targetPosition.evidenceId,
+    chainId: plan.payoutAsset.chainId,
+    token: plan.payoutAsset.address,
+    amountUnits: fee,
+    debitParty: plan.destinationReceiver,
+    creditParty: plan.payoutReceiver,
+    category: 'FEE',
+    transactionReference: targetPosition.transactionHash,
+  });
+  append({
+    componentCode: 'RESIDUAL_RETURN',
+    componentId: 'residual-return',
+    evidenceId: targetPosition.evidenceId,
+    chainId: plan.payoutAsset.chainId,
+    token: plan.payoutAsset.address,
+    amountUnits: residual,
+    debitParty: plan.destinationReceiver,
+    creditParty: plan.refundReceiver,
+    category: 'RESIDUAL',
+    transactionReference: targetPosition.transactionHash,
+  });
+  append({
+    componentCode: 'RECOVERY_RESERVE_PRINCIPAL_CONSUMED',
+    componentId: 'recovery-reserve-principal-consumed',
+    evidenceId: settlementEvidenceId,
+    chainId: plan.sourceDebtAsset.chainId,
+    token: plan.sourceDebtAsset.address,
+    amountUnits: principal,
+    debitParty: reserveAccount,
+    creditParty: plan.fundingProvider,
+    category: 'PRINCIPAL',
+    transactionReference: settlement.transactionHash,
+  });
+  append({
+    componentCode: 'RECOVERY_RESERVE_FEE_CONSUMED',
+    componentId: 'recovery-reserve-fee-consumed',
+    evidenceId: settlementEvidenceId,
+    chainId: plan.sourceDebtAsset.chainId,
+    token: plan.sourceDebtAsset.address,
+    amountUnits: fee,
+    debitParty: reserveAccount,
+    creditParty: plan.fundingProvider,
+    category: 'FEE',
+    transactionReference: settlement.transactionHash,
+  });
+  append({
+    componentCode: 'RECOVERY_RESERVE_REFUND',
+    componentId: 'recovery-reserve-refund',
+    evidenceId: settlementEvidenceId,
+    chainId: plan.sourceDebtAsset.chainId,
+    token: plan.sourceDebtAsset.address,
+    amountUnits: recoveryReserveRefunded,
+    debitParty: reserveAccount,
+    creditParty: settlementProvider,
+    category: 'REFUND',
+    transactionReference: settlement.transactionHash,
+  });
+
+  return ledgerReconciliationSchema.parse({
+    version: 1,
+    migrationId,
+    sourceDebtPayoffUnits: (principal + prepayment).toString(),
+    borrowerDebtPrepaymentUnits: prepayment.toString(),
+    solverPrincipalUnits: principal.toString(),
+    solverFeeUnits: fee.toString(),
+    capitalizedCostUnits: capitalized.toString(),
+    separatelyPaidCostUnits: separatelyPaid.toString(),
+    requiredDestinationBorrowUnits: requiredBorrow.toString(),
+    confirmedExternalFundingUnits: externalFunding.toString(),
+    recoveryReserveLockedUnits: recoveryReserveLocked.toString(),
+    recoveryReserveConsumedUnits: recoveryReserveConsumed.toString(),
+    recoveryReserveRefundedUnits: recoveryReserveRefunded.toString(),
+    residualReturnUnits: residual.toString(),
+    unexplainedImbalanceUnits: '0',
+    entries,
+  });
+}
+
+function actionEvidenceId(
+  migrationId: string,
+  type: EvidenceType,
+  action: FinalizedChainAction,
+): Hex {
+  return hashCanonicalText(
+    `debtshift.evidence.v1:${migrationId}:${type}:${action.transactionHash}`,
+  );
+}
+
+function requiredEvidence(
+  records: readonly Evidence[],
+  type: EvidenceType,
+): FinalizedTransactionEvidence {
+  const record = records.findLast(
+    (candidate) => candidate.type === type && candidate.verificationState === 'FINALIZED',
+  );
+  if (record === undefined)
+    throw new Error(`Finalized ${type} evidence is required for the ledger.`);
+  if (record.transactionHash === undefined) {
+    throw new Error(`${type} evidence is missing its transaction reference.`);
+  }
+  return record as FinalizedTransactionEvidence;
+}
+
+function requiredRecord(value: unknown, label: string): Readonly<Record<string, unknown>> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} is missing.`);
+  }
+  return value as Readonly<Record<string, unknown>>;
+}
+
+function unsignedPayloadBigInt(
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+  positive = false,
+): bigint {
+  const value = payload[field];
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw new Error(`${field} is not an unsigned base-unit amount.`);
+  }
+  const amount = BigInt(value);
+  if (positive && amount === 0n) throw new Error(`${field} must be positive.`);
+  return amount;
+}
+
+function requiredPayloadText(payload: Readonly<Record<string, unknown>>, field: string): string {
+  const value = payload[field];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${field} is not a canonical text value.`);
+  }
+  return value;
 }
 
 function recoveryEvidence(

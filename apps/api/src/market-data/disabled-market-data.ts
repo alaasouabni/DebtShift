@@ -1,4 +1,13 @@
-import type { PositionSnapshot } from '@debtshift/domain';
+import type {
+  ExecutionPlan,
+  PersistedSourceLendingAuthorization,
+  PersistedTargetLendingAuthorization,
+  PositionSnapshot,
+  PreparedSourceLendingAuthorization,
+  PreparedTargetLendingAuthorization,
+  SignedTargetLendingAuthorization,
+  SubmittedSourceLendingAuthorization,
+} from '@debtshift/domain';
 import type { RouteCandidate, RoutePolicy } from '@debtshift/optimizer';
 import type { Address } from 'viem';
 
@@ -8,8 +17,7 @@ import type {
   ProtocolDataPort,
 } from './ports.js';
 
-const DISABLED_MESSAGE =
-  'Lending market access is disabled in the isolated 1Click canary environment.';
+const DISABLED_MESSAGE = 'Lending market access is disabled by the selected runtime policy.';
 
 export class DisabledProtocolDataPort implements ProtocolDataPort {
   readonly provider = 'DISABLED' as const;
@@ -23,6 +31,32 @@ export class DisabledProtocolDataPort implements ProtocolDataPort {
   }
 
   verifySourceSnapshot(_snapshot: PositionSnapshot): Promise<void> {
+    return Promise.reject(new Error(DISABLED_MESSAGE));
+  }
+
+  prepareSourceAuthorization(_plan: ExecutionPlan): Promise<PreparedSourceLendingAuthorization> {
+    return Promise.reject(new Error(DISABLED_MESSAGE));
+  }
+
+  verifySourceAuthorization(
+    _input: SubmittedSourceLendingAuthorization,
+    _plan: ExecutionPlan,
+  ): Promise<PersistedSourceLendingAuthorization> {
+    return Promise.reject(new Error(DISABLED_MESSAGE));
+  }
+
+  prepareTargetAuthorization(
+    _borrower: Address,
+    _deadline: bigint,
+  ): Promise<PreparedTargetLendingAuthorization> {
+    return Promise.reject(new Error(DISABLED_MESSAGE));
+  }
+
+  verifyTargetAuthorization(
+    _input: SignedTargetLendingAuthorization,
+    _borrower: Address,
+    _planDeadline: bigint,
+  ): Promise<PersistedTargetLendingAuthorization> {
     return Promise.reject(new Error(DISABLED_MESSAGE));
   }
 }

@@ -37,7 +37,7 @@ const TEST_PRIVATE_KEY = `0x${'7f'.repeat(32)}` as const;
 const account = privateKeyToAccount(TEST_PRIVATE_KEY);
 const verifyingContract = evmAddressSchema.parse('0x9000000000000000000000000000000000000009');
 const canonicalFixture = JSON.parse(
-  readFileSync(new URL('../../../docs/fixtures/canonical-hashes-v1.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../docs/fixtures/canonical-hashes-v2.json', import.meta.url), 'utf8'),
 ) as {
   outputs: {
     sourcePositionId: string;
@@ -139,6 +139,7 @@ function buildPlan() {
     transportQuoteHash: QUOTE_HASH,
     transportDepositAddress: 'simulator:deposit:migration-7',
     destinationReceiver: '0x7000000000000000000000000000000000000007',
+    transportRefundReceiver: '0x7100000000000000000000000000000000000007',
     refundReceiver: account.address,
     fundingProvider: '0x8000000000000000000000000000000000000008',
     reservationHash: RESERVATION_HASH,
@@ -201,6 +202,7 @@ function phaseEvidence(
     routeQuote: false,
     intentAuthorization: false,
     executionPlanAuthorization: false,
+    sourceLendingAuthorization: false,
     financingFeasibility: false,
     financingRevalidation: false,
     supplementaryFunding: false,
@@ -291,6 +293,7 @@ describe('evidence-derived migration phases', () => {
           routeQuote: true,
           intentAuthorization: true,
           executionPlanAuthorization: true,
+          sourceLendingAuthorization: true,
           financingFeasibility: true,
           liquidityReservation: true,
           sourceClose: true,

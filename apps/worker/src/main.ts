@@ -6,18 +6,37 @@ import { resolve } from 'node:path';
 
 import {
   createDebtShiftDatabaseFromUrl,
+  listActiveFinalizedEvidence,
   publishPendingOutbox,
   recoverStaleCommands,
+  type DebtShiftDatabase,
 } from '@debtshift/database';
-import { parseDebtShiftEnvironment } from '@debtshift/domain';
-import { DeterministicTransportSimulator } from '@debtshift/intents';
+import { parseDebtShiftEnvironment, type DebtShiftEnvironment } from '@debtshift/domain';
+import {
+  DeterministicTransportSimulator,
+  OneClickCommittedClient,
+  type OneClickClientConfig,
+} from '@debtshift/intents';
 import { Logger } from '@nestjs/common';
 import type { ConnectionOptions } from 'bullmq';
 
-import { createSimulatedWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
-import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
+import { composeWorkflowHandlers, type WorkflowAdapterSet } from './composition.js';
+import { PostgresWorkflowContextStore } from './handlers.js';
+import { ProductionEvmExecutionPort } from './production/evm-execution.js';
+import { NearReceiptRegistryPort } from './production/near-receipt-registry.js';
+import {
+  OneClickTransportExecutionPort,
+  PostgresOneClickObservationStore,
+} from './production/one-click-transport.js';
+import { FundedTestnetTransportExecutionPort } from './production/testnet-transport.js';
+import { DualAnvilSandboxExecutionPort } from './simulator/dual-anvil-execution.js';
 import { DurableCommandProcessor, PostgresCommandPersistence } from './processor.js';
 import { BullCommandPublisher, createCommandQueue, createCommandWorker } from './queue.js';
+import {
+  PendingSandboxRegistryPort,
+  sandboxEvidenceProviders,
+  SimulatedTransportExecutionPort,
+} from './sandbox/simulated-transport.js';
 
 async function bootstrap(): Promise<void> {
   loadLocalEnvironment();
@@ -28,16 +47,11 @@ async function bootstrap(): Promise<void> {
   const redis = redisConnection(environment.REDIS_URL);
   const queue = createCommandQueue(redis);
   const publisher = new BullCommandPublisher(queue);
-  const simulator = new DeterministicTransportSimulator({
-    outcome: environment.SIMULATOR_TERMINAL_OUTCOME,
-    processingPolls: environment.SIMULATOR_PROCESSING_POLLS,
+  const handlers = composeWorkflowHandlers({
+    environment,
+    store: new PostgresWorkflowContextStore(databaseClient.db),
+    ...createModeAdapters(environment, databaseClient.db),
   });
-  const execution = new DualAnvilSimulationExecutionPort(environment);
-  const handlers = createSimulatedWorkflowHandlers(
-    new PostgresWorkflowContextStore(databaseClient.db),
-    execution,
-    simulator,
-  );
   const processor = new DurableCommandProcessor(
     new PostgresCommandPersistence(databaseClient.db),
     handlers,
@@ -87,9 +101,115 @@ async function bootstrap(): Promise<void> {
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
   Logger.log(
-    `DebtShift worker ready in ${environment.DEBTSHIFT_ENV}; recovered ${recovered} stale command(s).`,
+    `DebtShift worker ready in ${environment.DEBTSHIFT_MODE}; recovered ${recovered} stale command(s).`,
     'Bootstrap',
   );
+}
+
+function createModeAdapters(
+  environment: ReturnType<typeof parseDebtShiftEnvironment>,
+  database: DebtShiftDatabase,
+): {
+  readonly adapters?: WorkflowAdapterSet;
+} {
+  if (environment.DEBTSHIFT_MODE === 'sandbox') {
+    const simulator = new DeterministicTransportSimulator({
+      outcome: environment.SIMULATOR_TERMINAL_OUTCOME,
+      processingPolls: environment.SIMULATOR_PROCESSING_POLLS,
+    });
+    return {
+      adapters: {
+        mode: 'sandbox',
+        execution: new DualAnvilSandboxExecutionPort(environment),
+        transport: new SimulatedTransportExecutionPort(simulator),
+        registry: hasNearRegistryConfiguration(environment)
+          ? nearRegistry(environment, database)
+          : new PendingSandboxRegistryPort(),
+        evidenceProviders: sandboxEvidenceProviders,
+      },
+    };
+  }
+  if (
+    environment.DEBTSHIFT_MODE === 'mainnet-readonly' ||
+    (environment.DEBTSHIFT_MODE === 'mainnet' && !environment.MAINNET_EXECUTION_ENABLED)
+  ) {
+    return {};
+  }
+  if (environment.DEBTSHIFT_MODE === 'testnet') {
+    const simulator = new DeterministicTransportSimulator({
+      outcome: environment.SIMULATOR_TERMINAL_OUTCOME,
+      processingPolls: environment.SIMULATOR_PROCESSING_POLLS,
+    });
+    return {
+      adapters: {
+        mode: 'testnet',
+        execution: new ProductionEvmExecutionPort(environment),
+        transport: new FundedTestnetTransportExecutionPort(environment, simulator),
+        registry: nearRegistry(environment, database),
+        evidenceProviders: productionEvidenceProviders,
+      },
+    };
+  }
+  return {
+    adapters: {
+      mode: 'mainnet',
+      execution: new ProductionEvmExecutionPort(environment),
+      transport: new OneClickTransportExecutionPort(
+        new OneClickCommittedClient(oneClickClientConfiguration(environment)),
+        new PostgresOneClickObservationStore(database),
+      ),
+      registry: nearRegistry(environment, database),
+      evidenceProviders: productionEvidenceProviders,
+    },
+  };
+}
+
+const productionEvidenceProviders = Object.freeze({
+  financing: 'DEBTSHIFT_RISK_VALIDATOR',
+  liquidity: 'DEBTSHIFT_LIQUIDITY_VAULT',
+  source: 'AAVE_V3_SOURCE_ADAPTER',
+  target: 'MORPHO_BLUE_DESTINATION_ADAPTER',
+  ledger: 'DEBTSHIFT_LEDGER',
+  recovery: 'DEBTSHIFT_RECOVERY',
+});
+
+function nearRegistry(
+  environment: DebtShiftEnvironment,
+  database: DebtShiftDatabase,
+): NearReceiptRegistryPort {
+  return new NearReceiptRegistryPort({
+    environment,
+    loadActiveFinalizedEvidence: (migrationId) =>
+      listActiveFinalizedEvidence(database, migrationId),
+  });
+}
+
+function hasNearRegistryConfiguration(environment: DebtShiftEnvironment): boolean {
+  return (
+    environment.NEAR_REGISTRY_ACCOUNT.length !== 0 &&
+    environment.NEAR_SIGNER_ACCOUNT_ID.length !== 0 &&
+    environment.NEAR_SIGNER_PRIVATE_KEY.length !== 0
+  );
+}
+
+function oneClickClientConfiguration(environment: DebtShiftEnvironment): OneClickClientConfig {
+  return {
+    baseUrl: environment.INTENTS_BASE_URL,
+    authToken: environment.INTENTS_AUTH_TOKEN,
+    requestTimeoutMs: environment.INTENTS_REQUEST_TIMEOUT_MS,
+    responseLimitBytes: environment.INTENTS_RESPONSE_LIMIT_BYTES,
+    catalogCacheTtlMs: environment.INTENTS_CATALOG_CACHE_TTL_MS,
+    resilience: {
+      maximumAttempts: environment.INTENTS_MAX_ATTEMPTS,
+      baseRetryDelayMs: environment.INTENTS_RETRY_BASE_DELAY_MS,
+      maximumRetryDelayMs: environment.INTENTS_RETRY_MAX_DELAY_MS,
+      circuitFailureThreshold: environment.INTENTS_CIRCUIT_FAILURE_THRESHOLD,
+      circuitResetMs: environment.INTENTS_CIRCUIT_RESET_MS,
+      rateLimitCapacity: environment.INTENTS_RATE_LIMIT_CAPACITY,
+      rateLimitWindowMs: environment.INTENTS_RATE_LIMIT_WINDOW_MS,
+      maximumCacheEntries: environment.INTENTS_CACHE_MAX_ENTRIES,
+    },
+  };
 }
 
 function redisConnection(redisUrl: string): ConnectionOptions {

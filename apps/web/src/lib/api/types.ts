@@ -12,6 +12,20 @@
  * the backend itself sends a bounded integer.
  */
 
+import type {
+  PreparedSourceLendingAuthorization,
+  PreparedTargetLendingAuthorization,
+  SignedTargetLendingAuthorization,
+  SubmittedSourceLendingAuthorization,
+} from '@debtshift/domain';
+
+export type {
+  PreparedSourceLendingAuthorization,
+  PreparedTargetLendingAuthorization,
+  SignedTargetLendingAuthorization,
+  SubmittedSourceLendingAuthorization,
+};
+
 export type Address = string;
 export type Hex32 = string;
 
@@ -308,6 +322,7 @@ export interface ProviderQuote {
   readonly destinationReceiver: string;
   readonly refundReceiver: string;
   readonly depositAddress?: string;
+  readonly depositMemo?: string;
   readonly expiresAt: string;
   readonly correlationId?: string;
   readonly rawResponseHash: Hex32;
@@ -340,6 +355,12 @@ export interface ExecutionPlan {
   readonly transportQuoteHash: Hex32;
   readonly transportDepositAddress: string;
   readonly destinationReceiver: Address;
+  /**
+   * Where the transport provider returns value if the crossing fails.
+   * Signed since the plan's EIP-712 version 2; absent from payloads
+   * recorded before it.
+   */
+  readonly transportRefundReceiver?: Address;
   readonly refundReceiver: Address;
   readonly fundingProvider: Address;
   readonly reservationHash: Hex32;
@@ -354,13 +375,24 @@ export interface ExecutionPlan {
 }
 
 /*
- * `simulation` is what the API returns today; `environment` is what the
+ * `execution` is what the API returns since 2026-11-13. The two older
+ * shapes are kept because recorded payloads still carry them.
+ *
+ * `simulation` is what the API returned before; `environment` is what the
  * frontend contract specifies since the 2026-11-12 strategy update. Both are
  * optional here because either may be present while the backend migrates.
  * Never read them directly — `readEnvironment` in `lib/environment` is the one
  * place that understands both and fails closed when neither is usable.
  */
 export interface PreparedMigration {
+  readonly execution?: {
+    readonly mode: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet';
+    readonly transportProvider: TransportProvider;
+    readonly transportMode: ProviderMode;
+    readonly simulatedTransport: boolean;
+    readonly fundedExecutionEnabled: boolean;
+    readonly warning: string;
+  };
   readonly simulation?: {
     readonly provider: 'DEBTSHIFT_SIMULATOR';
     readonly mode: 'SIMULATED';
@@ -377,6 +409,13 @@ export interface PreparedMigration {
   readonly intentHash: Hex32;
   readonly plan: ExecutionPlan;
   readonly planHash: Hex32;
+  /**
+   * Permissions the lending protocols themselves need, prepared by the
+   * backend. `NONE` when the market needs nothing beyond the two
+   * signatures; absent from payloads recorded before 2026-11-13.
+   */
+  readonly sourceAuthorization?: PreparedSourceLendingAuthorization;
+  readonly targetAuthorization?: PreparedTargetLendingAuthorization;
   readonly quote: ProviderQuote;
   readonly sourceSnapshot: PositionSnapshot;
   readonly routeAnalysis: RouteAnalysisResponse;
@@ -395,6 +434,8 @@ export interface ExecuteRequest {
   };
   readonly quote: ProviderQuote;
   readonly sourceSnapshot: PositionSnapshot;
+  readonly sourceAuthorization: SubmittedSourceLendingAuthorization;
+  readonly targetAuthorization: SignedTargetLendingAuthorization;
 }
 
 export interface ExecuteResponse {
@@ -466,6 +507,7 @@ export type EvidenceType =
   | 'ROUTE_QUOTE'
   | 'INTENT_AUTHORIZATION'
   | 'EXECUTION_PLAN_AUTHORIZATION'
+  | 'SOURCE_LENDING_AUTHORIZATION'
   | 'FINANCING_FEASIBILITY'
   | 'FINANCING_REVALIDATION'
   | 'SUPPLEMENTARY_FUNDING'
@@ -483,7 +525,7 @@ export type EvidenceType =
   | 'RECOVERY_COMPLETED';
 
 export type LedgerCategory =
-  'PRINCIPAL' | 'FEE' | 'COLLATERAL' | 'REFUND' | 'RESIDUAL' | 'SHORTFALL';
+  'PRINCIPAL' | 'FEE' | 'COST' | 'COLLATERAL' | 'RESERVE' | 'REFUND' | 'RESIDUAL' | 'SHORTFALL';
 
 export interface Migration {
   readonly migrationId: Hex32;
@@ -548,7 +590,17 @@ export interface LedgerEntry {
   readonly entryId: Hex32;
   readonly migrationId: Hex32;
   readonly sequence: number;
-  readonly chainId: number;
+  /**
+   * What the entry is, the evidence it rests on and whether it is a
+   * finalized movement or a signed classification. Present since the
+   * receipt-linked ledger of 2026-11-13; absent from older rows.
+   */
+  readonly componentCode?: string | null;
+  readonly componentId?: string | null;
+  readonly evidenceId?: Hex32 | null;
+  readonly basis?: 'FINALIZED_MOVEMENT' | 'SIGNED_COST_CLASSIFICATION' | null;
+  /** A number in older rows, a decimal string since the receipt-linked ledger. */
+  readonly chainId: number | string;
   readonly token: Address;
   readonly amountUnits: string;
   readonly debitParty: string;

@@ -39,11 +39,12 @@ describe('local market intelligence fixtures', () => {
     expect(selected?.economics.netBenefitUsdMicro).toBe('23287671');
     expect(selected?.financing).toMatchObject({
       eligible: true,
-      solverPrincipalUnits: '10000000000',
+      sourceDebtPayoffAssetUnits: '10010000000',
+      solverPrincipalUnits: '10010000000',
       solverFeeUnits: '50000000',
       separatelyPaidCostUnits: '50000000',
-      totalRequiredRepaymentAndFinancedCostUnits: '10050000000',
-      requiredDestinationBorrowUnits: '10050000000',
+      totalRequiredRepaymentAndFinancedCostUnits: '10060000000',
+      requiredDestinationBorrowUnits: '10060000000',
       fundingShortfallUnits: '0',
     });
     expect(selected?.provenance.marketBlockNumber).toBe('200');
@@ -137,8 +138,10 @@ function localRoute(): LocalRouteDefinition {
       symbol: 'dWETH',
     },
     execution: {
-      kind: 'SIMULATOR',
+      kind: 'EXECUTABLE',
+      mode: 'sandbox',
       destinationEscrow: '0x7000000000000000000000000000000000000007',
+      sourceEscrow: '0x7100000000000000000000000000000000000007',
       sourceVault: '0x8000000000000000000000000000000000000008',
       executor: '0x9000000000000000000000000000000000000009',
     },

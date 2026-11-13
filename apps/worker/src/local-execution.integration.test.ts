@@ -27,7 +27,7 @@ import { createWalletClient, http, type Abi, type Address, type Hex } from 'viem
 import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
-import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
+import { DualAnvilSandboxExecutionPort } from './simulator/dual-anvil-execution.js';
 
 const ANVIL_PATH = resolveAnvilPath();
 const ANVIL_AVAILABLE = spawnSync(ANVIL_PATH, ['--version'], { windowsHide: true }).status === 0;
@@ -35,7 +35,7 @@ const BORROW_UNITS = 10_000_000_000n;
 const FEE_UNITS = 50_000_000n;
 const COLLATERAL_UNITS = 10n * 10n ** 18n;
 
-describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => {
+describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil contract sandbox execution port', () => {
   it('executes and reconciles the complete successful dual-chain workflow', async () => {
     await withDeployment(
       async ({ source, destination, deployment, execution, context, simulator }) => {
@@ -87,7 +87,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => 
         );
         const receivable = await readBigInt(
           source,
-          'TestLiquidityVault',
+          'LiquidityVault',
           deployment.source.vault,
           'principalReceivable',
           [deployment.source.debtToken],
@@ -113,6 +113,9 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => 
         const observation = await simulator.getStatus(context.quote.quoteId);
         expect(observation.status).toBe('REFUNDED');
         const recovery = await execution.executeRecovery(context, 'TRANSPORT_REFUNDED');
+        expect(recovery.payload.recoveryReserveSettlement).toMatchObject({
+          status: 'SETTLED_FROM_ISOLATED_RESERVE',
+        });
         expect(
           (await execution.executeRecovery(context, 'TRANSPORT_REFUNDED')).transactionHash,
         ).toBe(recovery.transactionHash);
@@ -133,7 +136,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => 
         );
         const receivable = await readBigInt(
           source,
-          'TestLiquidityVault',
+          'LiquidityVault',
           deployment.source.vault,
           'principalReceivable',
           [deployment.source.debtToken],
@@ -141,7 +144,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => 
 
         expect(borrowerRefund).toBe(COLLATERAL_UNITS);
         expect(destinationPosition).toEqual([0n, 0n]);
-        expect(receivable).toBe(BORROW_UNITS);
+        expect(receivable).toBe(0n);
       },
       'REFUNDED',
     );
@@ -179,7 +182,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil simulation execution port', () => 
         );
         const receivable = await readBigInt(
           source,
-          'TestLiquidityVault',
+          'LiquidityVault',
           deployment.source.vault,
           'principalReceivable',
           [deployment.source.debtToken],
@@ -199,7 +202,7 @@ interface DeploymentFixture {
   readonly source: LocalAnvilChain;
   readonly destination: LocalAnvilChain;
   readonly deployment: LocalDebtShiftDeployment;
-  readonly execution: DualAnvilSimulationExecutionPort;
+  readonly execution: DualAnvilSandboxExecutionPort;
   readonly context: MigrationExecutionContext;
   readonly simulator: DeterministicTransportSimulator;
 }
@@ -219,10 +222,10 @@ async function withDeployment(
       destination.publicClient,
     );
     const environment = parseDebtShiftEnvironment({
-      DEBTSHIFT_ENV: 'local',
+      DEBTSHIFT_MODE: 'sandbox',
       SOURCE_RPC_URL: source.rpcUrl,
       DESTINATION_RPC_URL: destination.rpcUrl,
-      LOCAL_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
+      SANDBOX_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
       SOURCE_DEBT_TOKEN_ADDRESS: deployment.source.debtToken,
       SOURCE_COLLATERAL_TOKEN_ADDRESS: deployment.source.collateralToken,
       SOURCE_VAULT_ADDRESS: deployment.source.vault,
@@ -247,7 +250,7 @@ async function withDeployment(
       source,
       destination,
       deployment,
-      execution: new DualAnvilSimulationExecutionPort(environment),
+      execution: new DualAnvilSandboxExecutionPort(environment),
       context,
       simulator,
     });
@@ -322,14 +325,29 @@ async function buildContext(
       capacityEvidenceHash: `0x${'cd'.repeat(32)}`,
       liquidityBufferBps: 1000,
       stressCollateralDropBps: 1000,
+      settlementAsset: { address: deployment.destination.debtToken, decimals: 6 },
+      sourceDebtPayoffAssetUnits: BORROW_UNITS.toString(),
+      sourceDebtPayoffUnits: BORROW_UNITS.toString(),
+      borrowerDebtPrepaymentAssetUnits: '0',
+      borrowerDebtPrepaymentUnits: '0',
+      costs: [],
+      solverAdvancedCostUnits: '0',
       fundingShortfallUnits: '0',
       confirmedExternalFundingUnits: externalFunding === undefined ? '0' : FEE_UNITS.toString(),
       externalFunding: externalFunding === undefined ? [] : [externalFunding],
       solverPrincipalUnits: BORROW_UNITS.toString(),
       solverFeeUnits: FEE_UNITS.toString(),
       capitalizedCostUnits: '0',
+      separatelyPaidCostUnits: '0',
       totalRequiredRepaymentAndFinancedCostUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      protocolBorrowCapacityUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      policyBorrowCapacityUnits: (BORROW_UNITS + FEE_UNITS).toString(),
+      liquidityBorrowCapacityUnits: (BORROW_UNITS + FEE_UNITS).toString(),
       signedBorrowCapacityUnits:
+        externalFunding === undefined
+          ? (BORROW_UNITS + FEE_UNITS).toString()
+          : BORROW_UNITS.toString(),
+      maximumSafeBorrowingCapacityUnits:
         externalFunding === undefined
           ? (BORROW_UNITS + FEE_UNITS).toString()
           : BORROW_UNITS.toString(),
@@ -339,6 +357,7 @@ async function buildContext(
           : BORROW_UNITS.toString(),
     },
     destinationReceiver: deployment.destination.escrow,
+    transportRefundReceiver: deployment.source.escrow,
     refundReceiver: deployment.borrower,
     fundingProvider: deployment.source.vault,
     payoutReceiver: deployment.deployer,
@@ -378,6 +397,10 @@ async function buildContext(
       planHash,
       signature,
     } as unknown as MigrationExecutionContext['signedPlan'],
+    targetLendingAuthorization: {
+      authorization: { kind: 'NONE' },
+      encodedAuthorization: '0x',
+    },
     sourceSnapshot: {
       collateralUnits: COLLATERAL_UNITS.toString(),
       debtUnits: BORROW_UNITS.toString(),

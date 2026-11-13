@@ -12,6 +12,7 @@
  * pure-logic tests keep running in the fast node environment.
  */
 
+import { encodeFunctionData, erc20Abi } from 'viem';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -53,6 +54,26 @@ vi.mock('next/navigation', () => ({
  * The real `WalletProvider` runs against it — the wallet module is not mocked,
  * so the account/chain gating under test is the production code path.
  */
+/** A typed-data payload as it reaches the wallet, after JSON. */
+interface TypedPayload {
+  readonly primaryType: string;
+  readonly types: Record<string, readonly { readonly name: string; readonly type: string }[]>;
+  readonly domain: {
+    readonly chainId?: number;
+    readonly verifyingContract: string;
+    readonly version?: string;
+  };
+  readonly message: Record<string, string>;
+}
+
+/** The lending part of an execute body. */
+interface SubmittedBody {
+  readonly targetAuthorization: Record<string, string>;
+  readonly sourceAuthorization: Record<string, string>;
+}
+
+const APPROVAL_HASH = `0x${'cd'.repeat(32)}`;
+
 function installWallet({
   account = BORROWER,
   chainId = SOURCE_CHAIN,
@@ -62,6 +83,8 @@ function installWallet({
     request: vi.fn(async ({ method }: { method: string }) => {
       if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [account];
       if (method === 'eth_chainId') return `0x${chainId.toString(16)}`;
+      if (method === 'eth_sendTransaction') return APPROVAL_HASH;
+      if (method === 'eth_getTransactionReceipt') return { blockNumber: '0x10', status: '0x1' };
       if (method === 'eth_signTypedData_v4') {
         if (!signs) {
           const rejection = Object.assign(new Error('User rejected the request.'), { code: 4001 });
@@ -149,11 +172,9 @@ describe('the prepare step', () => {
 });
 
 describe('signature 1 — the policy review', () => {
-  it('shows the simulator warning verbatim', async () => {
+  it('shows the backend warning verbatim', async () => {
     await reachPolicyStep();
-    expect(
-      screen.getByText('This route uses test assets and is not a 1Click testnet transaction.'),
-    ).toBeDefined();
+    expect(screen.getByText(prepared.execution!.warning)).toBeDefined();
   });
 
   it('puts every material intent field on screen before the button', async () => {
@@ -393,9 +414,16 @@ describe('submission', () => {
 
 /* ----------------------------------------------------- strategy 2026-11-12 */
 
-/** The same real payload, carrying the shape the contract now specifies. */
+/** The same real payload with its `execution` block replaced or removed. */
+function withExecution(execution: Record<string, unknown> | undefined) {
+  const { execution: recorded, ...rest } = prepared as unknown as Record<string, unknown>;
+  if (execution === undefined) return rest;
+  return { ...rest, execution: { ...(recorded as Record<string, unknown>), ...execution } };
+}
+
+/** The same real payload carrying only the interim `environment` shape. */
 function withEnvironment(environment: Record<string, unknown> | undefined) {
-  const { simulation: _legacy, ...rest } = prepared as unknown as Record<string, unknown>;
+  const { execution: _current, ...rest } = prepared as unknown as Record<string, unknown>;
   return environment === undefined ? rest : { ...rest, environment };
 }
 
@@ -408,21 +436,16 @@ async function reachSubmitStep() {
 }
 
 describe('the environment comes from the backend', () => {
-  it('labels today legacy response as the contract-backed sandbox', async () => {
+  it('labels the recorded response as the contract-backed sandbox', async () => {
     await reachPolicyStep();
     const banner = screen.getByRole('note');
     expect(banner.textContent).toContain('Contract-backed sandbox · test funds');
     expect(banner.textContent).toContain('Mode sandbox · transport DEBTSHIFT_SIMULATOR');
   });
 
-  it('reads the new environment shape without the legacy field', async () => {
+  it('follows the mode the backend reports', async () => {
     prepareMock.mockResolvedValue(
-      withEnvironment({
-        mode: 'testnet',
-        transportProvider: 'DEBTSHIFT_SIMULATOR',
-        executionEnabled: true,
-        warning: 'Public testnet assets only.',
-      }),
+      withExecution({ mode: 'testnet', warning: 'Public testnet assets only.' }),
     );
     await reachPolicyStep();
 
@@ -447,10 +470,12 @@ describe('the environment comes from the backend', () => {
 describe('when the backend does not allow execution', () => {
   it('disables submission on mainnet while the server switch is off', async () => {
     prepareMock.mockResolvedValue(
-      withEnvironment({
+      withExecution({
         mode: 'mainnet',
         transportProvider: 'NEAR_INTENTS_1CLICK',
-        executionEnabled: false,
+        transportMode: 'LIVE',
+        simulatedTransport: false,
+        fundedExecutionEnabled: false,
       }),
     );
     const submit = await reachSubmitStep();
@@ -465,10 +490,11 @@ describe('when the backend does not allow execution', () => {
 
   it('never offers submission in a read-only environment', async () => {
     prepareMock.mockResolvedValue(
-      withEnvironment({
+      withExecution({
         mode: 'mainnet-readonly',
         transportProvider: 'NEAR_INTENTS_1CLICK',
-        executionEnabled: true,
+        simulatedTransport: false,
+        fundedExecutionEnabled: true,
       }),
     );
     const submit = await reachSubmitStep();
@@ -477,8 +503,8 @@ describe('when the backend does not allow execution', () => {
   });
 
   it('fails closed when the backend reports no environment at all', async () => {
-    // Neither shape present: the app must not assume a sandbox.
-    prepareMock.mockResolvedValue(withEnvironment(undefined));
+    // No shape present: the app must not assume a sandbox.
+    prepareMock.mockResolvedValue(withExecution(undefined));
     const submit = await reachSubmitStep();
 
     expect(submit).toHaveProperty('disabled', true);
@@ -489,10 +515,12 @@ describe('when the backend does not allow execution', () => {
 
   it('allows submission on mainnet only when the backend reports it enabled', async () => {
     prepareMock.mockResolvedValue(
-      withEnvironment({
+      withExecution({
         mode: 'mainnet',
         transportProvider: 'NEAR_INTENTS_1CLICK',
-        executionEnabled: true,
+        transportMode: 'LIVE',
+        simulatedTransport: false,
+        fundedExecutionEnabled: true,
       }),
     );
     const submit = await reachSubmitStep();
@@ -639,5 +667,277 @@ describe('moving between steps', () => {
     // A failure interrupts: it is an alert, not a silent paragraph.
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/policy signature was not completed/i);
+  });
+});
+
+/* ------------------------------------------------- what reaches the wallet */
+
+describe('the typed data handed to the wallet', () => {
+  function signedPayloads(provider: ReturnType<typeof installWallet>) {
+    return provider.request.mock.calls
+      .map(([call]) => call as { method: string; params?: unknown[] })
+      .filter((call) => call.method === 'eth_signTypedData_v4')
+      .map((call) => JSON.parse(call.params![1] as string) as TypedPayload);
+  }
+
+  it('carries the EIP712Domain type, which a wallet needs to hash the domain', async () => {
+    const provider = installWallet();
+    await reachPolicyStep();
+    fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+    await screen.findByText(/authorize this exact execution/i);
+
+    const [payload] = signedPayloads(provider);
+    expect(payload!.primaryType).toBe('RefinanceIntent');
+    // Without this a wallet hashes an empty domain and the signature verifies nowhere.
+    expect(payload!.types.EIP712Domain!.map((field: { name: string }) => field.name)).toEqual([
+      'name',
+      'version',
+      'chainId',
+      'verifyingContract',
+    ]);
+    expect(payload!.domain.chainId).toBe(SOURCE_CHAIN);
+    expect(payload!.domain.verifyingContract.toLowerCase()).toBe(
+      prepared.verifyingContract.toLowerCase(),
+    );
+  });
+
+  it('sends amounts as exact decimal strings, never as numbers', async () => {
+    const provider = installWallet();
+    await reachPolicyStep();
+    fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+    await screen.findByText(/authorize this exact execution/i);
+
+    const [payload] = signedPayloads(provider);
+    expect(payload!.message.maxSourceDebt).toBe(prepared.intent.maxSourceDebtUnits);
+  });
+
+  it('signs the plan under version 2, with the transport refund receiver in it', async () => {
+    const provider = installWallet();
+    await reachSubmitStep();
+    const plan = signedPayloads(provider).find(
+      (payload) => payload.primaryType === 'ExecutionPlan',
+    );
+    expect(plan!.domain.version).toBe('2');
+    expect(plan!.message.transportRefundReceiver!.toLowerCase()).toBe(
+      prepared.plan.transportRefundReceiver!.toLowerCase(),
+    );
+  });
+});
+
+/* ------------------------------------------------------ lending permissions */
+
+describe('submitting to the current backend', () => {
+  it('sends both lending authorizations, NONE when the market needs nothing', async () => {
+    const submit = await reachSubmitStep();
+    fireEvent.click(submit);
+    await waitFor(() => expect(executeMock).toHaveBeenCalled());
+    const body = executeMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(body.sourceAuthorization).toEqual({ kind: 'NONE' });
+    expect(body.targetAuthorization).toEqual({ kind: 'NONE' });
+  });
+
+  it('adds no step when no permission is required', async () => {
+    await reachPolicyStep();
+    const list = screen.getByRole('list', { name: /authorization steps/i });
+    expect(list.querySelectorAll('li')).toHaveLength(4);
+    expect(screen.queryByText(/Lending permissions/i)).toBeNull();
+  });
+});
+
+describe('a route whose markets ask for permissions', () => {
+  const MODULE = '0x00000000000000000000000000000000000000aa';
+  const SPENDER = '0x00000000000000000000000000000000000000bb';
+  const AMOUNT = prepared.plan.sourceCollateralMinUnits;
+  const TOKEN = prepared.plan.sourceCollateralAsset.address;
+
+  function morpho(chainId: number = SOURCE_CHAIN) {
+    return {
+      kind: 'MORPHO_BLUE',
+      chainId,
+      morpho: '0x00000000000000000000000000000000000000cc',
+      module: MODULE,
+      enable: {
+        authorizer: BORROWER,
+        authorized: MODULE,
+        isAuthorized: true,
+        nonce: '4',
+        deadline: prepared.plan.deadline,
+      },
+      disable: {
+        authorizer: BORROWER,
+        authorized: MODULE,
+        isAuthorized: false,
+        nonce: '5',
+        deadline: prepared.plan.deadline,
+      },
+    };
+  }
+
+  function approval(data?: string) {
+    return {
+      kind: 'ERC20_APPROVAL',
+      chainId: SOURCE_CHAIN,
+      token: TOKEN,
+      spender: SPENDER,
+      amountUnits: AMOUNT,
+      transaction: {
+        to: TOKEN,
+        data:
+          data ??
+          encodeFunctionData({
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [SPENDER, BigInt(AMOUNT)],
+          }),
+        valueUnits: '0',
+      },
+    };
+  }
+
+  function withPermissions(target: unknown, source: unknown) {
+    return { ...prepared, targetAuthorization: target, sourceAuthorization: source };
+  }
+
+  async function reachLendingStep() {
+    await reachPolicyStep();
+    fireEvent.click(screen.getByRole('button', { name: /^sign the policy$/i }));
+    await screen.findByText(/authorize this exact execution/i);
+    fireEvent.click(screen.getByRole('button', { name: /sign the execution plan/i }));
+    await screen.findByRole('heading', { level: 1, name: /let the lending markets take part/i });
+  }
+
+  it('shows a fifth step and does not go straight to submit', async () => {
+    prepareMock.mockResolvedValue(withPermissions(morpho(), approval()));
+    await reachLendingStep();
+    const list = screen.getByRole('list', { name: /authorization steps/i });
+    expect(list.querySelectorAll('li')).toHaveLength(5);
+    expect(screen.queryByRole('button', { name: /submit both signatures/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /continue to submit/i })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
+  it('shows the exact terms of each permission before asking', async () => {
+    prepareMock.mockResolvedValue(withPermissions(morpho(), approval()));
+    await reachLendingStep();
+    const text = document.body.textContent ?? '';
+    expect(text).toContain(MODULE);
+    expect(text).toContain(SPENDER);
+    expect(text).toContain(`amountUnits ${AMOUNT}`);
+    expect(text).toContain('enable.isAuthorized true · nonce 4');
+    expect(text).toContain('disable.isAuthorized false · nonce 5');
+    expect(text).toMatch(/a transaction, not a signature/i);
+  });
+
+  it('collects the pair and the mined approval, then submits them with the signatures', async () => {
+    const provider = installWallet();
+    prepareMock.mockResolvedValue(withPermissions(morpho(), approval()));
+    await reachLendingStep();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign the grant/i }));
+    await screen.findByRole('button', { name: /grant signed/i });
+    fireEvent.click(screen.getByRole('button', { name: /sign the removal/i }));
+    await screen.findByRole('button', { name: /removal signed/i });
+
+    fireEvent.click(screen.getByRole('button', { name: /send the approval/i }));
+    await screen.findByRole('button', { name: /approval mined/i });
+
+    // The approval is sent with no value attached, to the token, as prepared.
+    const sent = provider.request.mock.calls
+      .map(([call]) => call as { method: string; params?: Record<string, string>[] })
+      .find((call) => call.method === 'eth_sendTransaction');
+    expect(sent!.params![0]).toMatchObject({
+      to: TOKEN,
+      value: '0x0',
+      data: approval().transaction.data,
+    });
+
+    const next = screen.getByRole('button', { name: /continue to submit/i });
+    expect(next).toHaveProperty('disabled', false);
+    fireEvent.click(next);
+    fireEvent.click(await screen.findByRole('button', { name: /submit both signatures/i }));
+
+    await waitFor(() => expect(executeMock).toHaveBeenCalled());
+    const body = executeMock.mock.calls[0]![0] as SubmittedBody;
+    expect(body.targetAuthorization.kind).toBe('MORPHO_BLUE');
+    expect(body.targetAuthorization.enableSignature).toMatch(/^0x/);
+    expect(body.targetAuthorization.disableSignature).toMatch(/^0x/);
+    expect(body.targetAuthorization.module).toBe(MODULE);
+    expect(body.sourceAuthorization).toMatchObject({
+      kind: 'ERC20_APPROVAL',
+      spender: SPENDER,
+      amountUnits: AMOUNT,
+      transactionHash: APPROVAL_HASH,
+    });
+  });
+
+  it("signs the Morpho messages under Morpho's own domain", async () => {
+    const provider = installWallet();
+    prepareMock.mockResolvedValue(withPermissions(morpho(), { kind: 'NONE' }));
+    await reachLendingStep();
+    fireEvent.click(screen.getByRole('button', { name: /sign the grant/i }));
+    await screen.findByRole('button', { name: /grant signed/i });
+
+    const payloads = provider.request.mock.calls
+      .map(([call]) => call as { method: string; params?: unknown[] })
+      .filter((call) => call.method === 'eth_signTypedData_v4')
+      .map((call) => JSON.parse(call.params![1] as string) as TypedPayload);
+    const grant = payloads.find((payload) => payload.primaryType === 'Authorization');
+    expect(grant!.types.EIP712Domain!.map((field: { name: string }) => field.name)).toEqual([
+      'chainId',
+      'verifyingContract',
+    ]);
+    expect(grant!.message.isAuthorized).toBe(true);
+    expect(grant!.message.authorized!.toLowerCase()).toBe(MODULE);
+  });
+
+  it('asks for the right network instead of signing on the wrong one', async () => {
+    prepareMock.mockResolvedValue(withPermissions(morpho(31338), { kind: 'NONE' }));
+    await reachLendingStep();
+    expect(screen.getByText(/This permission is given on/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /sign the grant/i })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(screen.getByRole('button', { name: /switch network/i })).toBeDefined();
+  });
+
+  it('will not send a transaction that is not the approval shown', async () => {
+    const provider = installWallet();
+    const unlimited = encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [SPENDER, 2n ** 256n - 1n],
+    });
+    prepareMock.mockResolvedValue(withPermissions({ kind: 'NONE' }, approval(unlimited)));
+    await reachLendingStep();
+
+    expect(screen.getByText(/This transaction will not be sent/i)).toBeDefined();
+    const send = screen.getByRole('button', { name: /send the approval/i });
+    expect(send).toHaveProperty('disabled', true);
+    fireEvent.click(send);
+    expect(
+      provider.request.mock.calls.some(
+        ([call]) => (call as { method: string }).method === 'eth_sendTransaction',
+      ),
+    ).toBe(false);
+  });
+
+  it('never asks for a transaction where the backend has execution switched off', async () => {
+    const provider = installWallet();
+    prepareMock.mockResolvedValue({
+      ...withPermissions({ kind: 'NONE' }, approval()),
+      execution: { ...prepared.execution, mode: 'mainnet', fundedExecutionEnabled: false },
+    });
+    await reachLendingStep();
+    const send = screen.getByRole('button', { name: /send the approval/i });
+    expect(send).toHaveProperty('disabled', true);
+    fireEvent.click(send);
+    expect(
+      provider.request.mock.calls.some(
+        ([call]) => (call as { method: string }).method === 'eth_sendTransaction',
+      ),
+    ).toBe(false);
   });
 });

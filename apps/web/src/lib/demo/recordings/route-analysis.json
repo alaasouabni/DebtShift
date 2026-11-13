@@ -7,7 +7,7 @@
     "analyses": [
       {
         "sourcePosition": {
-          "snapshotId": "0xdc2c4047dfa491112c2b7c996b4d530f6f34398e274cf5c25b450fd5cc0e98ec",
+          "snapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
           "position": {
             "market": {
               "chainId": 31337,
@@ -37,9 +37,9 @@
           },
           "borrowAprBps": 700,
           "block": {
-            "number": "18",
-            "hash": "0x45ac769d9422af776203f375cab11e6b983b07b59aac205b108109fe7858741a",
-            "observedAt": "2026-11-11T22:34:07.000Z"
+            "number": "295",
+            "hash": "0x906aeab7b9e1e059a051687877356e3dd104d0e38f5d31ec0f224c46ef42d713",
+            "observedAt": "2026-11-13T02:07:38.000Z"
           }
         },
         "comparison": {
@@ -68,8 +68,8 @@
               },
               "safety": {
                 "kind": "MAX_LTV_BPS",
-                "postLtvBps": 5076,
-                "stressLtvBps": 5640,
+                "postLtvBps": 5081,
+                "stressLtvBps": 5646,
                 "maximumLtvBps": 7000,
                 "stressMaximumLtvBps": 6500
               },
@@ -82,23 +82,23 @@
                   "decimals": 6,
                   "symbol": "dUSDC"
                 },
-                "sourceDebtPayoffAssetUnits": "10000000000",
-                "sourceDebtPayoffUnits": "10000000000",
-                "sourceConversionQuoteHash": "0xa83f17ec7455853cbb61fc01a55328cede5a5b8dce21fc552cb9542cc0c79e11",
+                "sourceDebtPayoffAssetUnits": "10010000000",
+                "sourceDebtPayoffUnits": "10010000000",
+                "sourceConversionQuoteHash": "0x5be0670eaddb4da7a974631a5c7040181161a6b2ab31a956031bb15b2302baac",
                 "borrowerDebtPrepaymentUnits": "0",
                 "solverAdvancedCostUnits": "0",
-                "solverPrincipalUnits": "10000000000",
+                "solverPrincipalUnits": "10010000000",
                 "solverFeeUnits": "50000000",
                 "capitalizedCostUnits": "0",
                 "separatelyPaidCostUnits": "50000000",
-                "totalRequiredRepaymentAndFinancedCostUnits": "10050000000",
+                "totalRequiredRepaymentAndFinancedCostUnits": "10060000000",
                 "confirmedExternalFundingUnits": "0",
                 "protocolBorrowCapacityUnits": "14850000000",
                 "policyBorrowCapacityUnits": "11583000000",
                 "liquidityBorrowCapacityUnits": "90909090909",
-                "signedBorrowCapacityUnits": "10050000000",
-                "maximumSafeBorrowingCapacityUnits": "10050000000",
-                "requiredDestinationBorrowUnits": "10050000000",
+                "signedBorrowCapacityUnits": "10060000000",
+                "maximumSafeBorrowingCapacityUnits": "10060000000",
+                "requiredDestinationBorrowUnits": "10060000000",
                 "fundingShortfallUnits": "0",
                 "components": [
                   {
@@ -177,12 +177,12 @@
               },
               "rejections": [],
               "provenance": {
-                "sourceSnapshotId": "0xdc2c4047dfa491112c2b7c996b4d530f6f34398e274cf5c25b450fd5cc0e98ec",
-                "marketSnapshotId": "0xdcca39067e53d710eb525e2116dd93528298212c031c430a352a7e0ededb39e5",
-                "marketBlockNumber": "10",
-                "marketBlockHash": "0x31c39e06739f5906e5fb95ebef608cd399dfa1d2e97f6771e1ddc52a6967b321",
-                "oracleUpdatedAt": "2026-11-11T22:34:07.000Z",
-                "evaluatedAt": "2026-11-11T22:34:07.395Z",
+                "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+                "marketSnapshotId": "0x5713495579ca987c682a6d6a8494dc4334a3f5424ddf0eda4e0610098bcbea3a",
+                "marketBlockNumber": "294",
+                "marketBlockHash": "0xed116e9b37083012d0f86f5ffc4ba4b4ea3bbea17618b7009393a8af699c8c8c",
+                "oracleUpdatedAt": "2026-11-13T02:07:37.000Z",
+                "evaluatedAt": "2026-11-13T02:07:38.500Z",
                 "rateProjection": "local-target-read-plus-bounded-impact-v1"
               },
               "rank": 1
@@ -209,8 +209,8 @@
               },
               "safety": {
                 "kind": "MAX_LTV_BPS",
-                "postLtvBps": 5061,
-                "stressLtvBps": 5623,
+                "postLtvBps": 5066,
+                "stressLtvBps": 5629,
                 "maximumLtvBps": 7000,
                 "stressMaximumLtvBps": 6500
               },
@@ -223,24 +223,24 @@
                   "decimals": 6,
                   "symbol": "dUSDC"
                 },
-                "sourceDebtPayoffAssetUnits": "10000000000",
-                "sourceDebtPayoffUnits": "10000000000",
-                "sourceConversionQuoteHash": "0xa67336c6434dab8c9e1d47c18ab6e4076f29aa41b6ee5d24d6453cd6d54bf060",
+                "sourceDebtPayoffAssetUnits": "10010000000",
+                "sourceDebtPayoffUnits": "10010000000",
+                "sourceConversionQuoteHash": "0xdce5f01ed87c7d330d55c267a992abe0d924fd21bd15c363453b1e61d8afc83b",
                 "borrowerDebtPrepaymentUnits": "0",
                 "solverAdvancedCostUnits": "0",
-                "solverPrincipalUnits": "10000000000",
+                "solverPrincipalUnits": "10010000000",
                 "solverFeeUnits": "20000000",
                 "capitalizedCostUnits": "0",
                 "separatelyPaidCostUnits": "40000000",
-                "totalRequiredRepaymentAndFinancedCostUnits": "10020000000",
+                "totalRequiredRepaymentAndFinancedCostUnits": "10030000000",
                 "confirmedExternalFundingUnits": "0",
                 "protocolBorrowCapacityUnits": "14850000000",
                 "policyBorrowCapacityUnits": "11583000000",
                 "liquidityBorrowCapacityUnits": "9090909090",
-                "signedBorrowCapacityUnits": "10020000000",
+                "signedBorrowCapacityUnits": "10030000000",
                 "maximumSafeBorrowingCapacityUnits": "9090909090",
-                "requiredDestinationBorrowUnits": "10020000000",
-                "fundingShortfallUnits": "929090910",
+                "requiredDestinationBorrowUnits": "10030000000",
+                "fundingShortfallUnits": "939090910",
                 "components": [
                   {
                     "componentId": "local-morpho-low-liquidity:source-gas",
@@ -340,12 +340,12 @@
                 }
               ],
               "provenance": {
-                "sourceSnapshotId": "0xdc2c4047dfa491112c2b7c996b4d530f6f34398e274cf5c25b450fd5cc0e98ec",
-                "marketSnapshotId": "0x2193afe406340aeb9ebb6320ace0a37bb8d10a3dcd3c27a5889727b5225cbe43",
-                "marketBlockNumber": "10",
-                "marketBlockHash": "0x31c39e06739f5906e5fb95ebef608cd399dfa1d2e97f6771e1ddc52a6967b321",
-                "oracleUpdatedAt": "2026-11-11T22:34:07.000Z",
-                "evaluatedAt": "2026-11-11T22:34:07.395Z",
+                "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+                "marketSnapshotId": "0xe6fd917ab36a7e17445839ecefbaf53cf1a56ea1d431feff2b34bc99660dda19",
+                "marketBlockNumber": "294",
+                "marketBlockHash": "0xed116e9b37083012d0f86f5ffc4ba4b4ea3bbea17618b7009393a8af699c8c8c",
+                "oracleUpdatedAt": "2026-11-13T02:07:37.000Z",
+                "evaluatedAt": "2026-11-13T02:07:38.500Z",
                 "rateProjection": "local-constrained-market-impact-v1"
               }
             }
@@ -356,9 +356,9 @@
   },
   "explanations": [
     {
-      "sourceSnapshotId": "0xdc2c4047dfa491112c2b7c996b4d530f6f34398e274cf5c25b450fd5cc0e98ec",
+      "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
       "result": {
-        "decisionHash": "0xfd92dcedfcc269b29f872c86dfb140b042d53388eade287e16a7e741f8f77fd9",
+        "decisionHash": "0x51c01dd79dd5deaf6ae2f19503c8ffd52ae975fbfd820cfce5051a5b34b90706",
         "provider": "DETERMINISTIC",
         "fallbackUsed": false,
         "explanation": {
@@ -369,8 +369,8 @@
             "Cross-chain settlement remains non-atomic and depends on independently verified custody."
           ],
           "breakEvenExplanation": "At unchanged projected rates, one-time costs break even after about 146.0 days.",
-          "safetyExplanation": "Projected LTV is 50.76% and stressed LTV is 56.40%. Required destination borrowing is 10050 dUSDC, maximum safe capacity is 10050 dUSDC, and the confirmed funding shortfall is 0 dUSDC.",
-          "dataFreshnessWarning": "Market block 10 and oracle update 2026-11-11T22:34:07.000Z were evaluated at 2026-11-11T22:34:07.395Z; execution must re-read critical state.",
+          "safetyExplanation": "Projected LTV is 50.81% and stressed LTV is 56.46%. Required destination borrowing is 10060 dUSDC, maximum safe capacity is 10060 dUSDC, and the confirmed funding shortfall is 0 dUSDC.",
+          "dataFreshnessWarning": "Market block 294 and oracle update 2026-11-13T02:07:37.000Z were evaluated at 2026-11-13T02:07:38.500Z; execution must re-read critical state.",
           "reviewAndSignStatement": "Review every amount, market, receiver, fee cap, deadline, and risk limit before signing. This explanation cannot authorize execution."
         }
       }

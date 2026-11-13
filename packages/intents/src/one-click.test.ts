@@ -42,6 +42,7 @@ describe('OneClickReadOnlyClient', () => {
       expect(new Headers(init?.headers).get('authorization')).toBe('Bearer secret');
       return new Response(
         JSON.stringify({
+          correlationId: 'dry-quote-1',
           timestamp: '2026-11-10T12:00:00.000Z',
           signature: 'provider-signature',
           quoteRequest: body,
@@ -65,6 +66,7 @@ describe('OneClickReadOnlyClient', () => {
       authToken: 'secret',
       allowTestEndpoint: true,
       fetchImplementation: fetchImplementation as typeof fetch,
+      signatureVerifier: () => true,
     });
     const quote = await client.getDryQuote({
       inputAsset: SOURCE,
@@ -145,35 +147,38 @@ describe('OneClickReadOnlyClient', () => {
   });
 
   it('retries transient HTTP failures but not an invalid request response', async () => {
-    const fetchImplementation = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            timestamp: '2026-11-10T12:00:00.000Z',
-            signature: 'provider-signature',
-            quoteRequest: {},
-            quote: {
-              amountIn: '1000000',
-              amountInFormatted: '1',
-              amountInUsd: '1',
-              minAmountIn: '1000000',
-              amountOut: '998000',
-              amountOutFormatted: '0.998',
-              amountOutUsd: '0.998',
-              minAmountOut: '993010',
-            },
-          }),
-          { status: 200 },
-        ),
+    let attempts = 0;
+    const fetchImplementation = vi.fn<typeof fetch>(async (_url, init) => {
+      attempts += 1;
+      if (attempts === 1) return new Response('{}', { status: 503 });
+      const quoteRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({
+          correlationId: 'dry-quote-retry',
+          timestamp: '2026-11-10T12:00:00.000Z',
+          signature: 'provider-signature',
+          quoteRequest,
+          quote: {
+            amountIn: '1000000',
+            amountInFormatted: '1',
+            amountInUsd: '1',
+            minAmountIn: '1000000',
+            amountOut: '998000',
+            amountOutFormatted: '0.998',
+            amountOutUsd: '0.998',
+            minAmountOut: '993010',
+          },
+        }),
+        { status: 200 },
       );
+    });
     const client = new OneClickReadOnlyClient({
       baseUrl: 'https://oneclick.test',
       authToken: 'secret',
       allowTestEndpoint: true,
       resilience: { baseRetryDelayMs: 1, maximumRetryDelayMs: 1 },
       fetchImplementation,
+      signatureVerifier: () => true,
     });
     await expect(
       client.getDryQuote({

@@ -3,6 +3,8 @@ import {
   hashCanonicalText,
   hashExecutionFinancing,
   positionSnapshotSchema,
+  persistedSourceLendingAuthorizationSchema,
+  persistedTargetLendingAuthorizationSchema,
   providerQuoteSchema,
   refinanceIntentSchema,
   signatureSchema,
@@ -10,6 +12,8 @@ import {
   signedRefinanceIntentSchema,
   type EvidenceType,
   type PositionSnapshot,
+  type PersistedSourceLendingAuthorization,
+  type PersistedTargetLendingAuthorization,
   type ProviderQuote,
   type SignedExecutionPlan,
   type SignedRefinanceIntent,
@@ -43,6 +47,8 @@ export interface CreateAuthorizedMigrationInput {
   readonly signedPlan: SignedExecutionPlan;
   readonly quote: ProviderQuote;
   readonly sourceSnapshot: PositionSnapshot;
+  readonly sourceLendingAuthorization: PersistedSourceLendingAuthorization;
+  readonly targetLendingAuthorization: PersistedTargetLendingAuthorization;
 }
 
 export interface CreateAuthorizedMigrationResult {
@@ -55,7 +61,15 @@ export async function createAuthorizedMigration(
   database: DebtShiftDatabase,
   input: CreateAuthorizedMigrationInput,
 ): Promise<CreateAuthorizedMigrationResult> {
-  const { signedIntent, signedPlan, quote, sourceSnapshot } = input;
+  const {
+    signedIntent,
+    signedPlan,
+    quote,
+    sourceSnapshot,
+    sourceLendingAuthorization,
+    targetLendingAuthorization,
+  } = input;
+  persistedSourceLendingAuthorizationSchema.parse(sourceLendingAuthorization);
   const migrationId = signedPlan.plan.migrationId;
   return database.transaction(
     async (transaction) => {
@@ -149,6 +163,7 @@ export async function createAuthorizedMigration(
         routeHash: signedPlan.plan.routeHash,
         payload: signedPlan.plan,
         signature: signedPlan.signature,
+        targetLendingAuthorization,
       });
       const expiresAt = new Date(
         Math.min(Date.parse(quote.expiresAt), Number(BigInt(signedPlan.plan.deadline) * 1000n)),
@@ -192,7 +207,14 @@ export async function createAuthorizedMigration(
         ['SOURCE_POSITION_SNAPSHOT', 'DIRECT_RPC', sourceSnapshot],
         ['ROUTE_QUOTE', quote.provider, quote],
         ['INTENT_AUTHORIZATION', 'EIP712', signedIntent],
-        ['EXECUTION_PLAN_AUTHORIZATION', 'EIP712', signedPlan],
+        [
+          'SOURCE_LENDING_AUTHORIZATION',
+          sourceLendingAuthorization.kind === 'ERC20_APPROVAL'
+            ? 'ERC20_APPROVAL'
+            : 'SANDBOX_NOT_REQUIRED',
+          sourceLendingAuthorization,
+        ],
+        ['EXECUTION_PLAN_AUTHORIZATION', 'EIP712', { signedPlan, targetLendingAuthorization }],
         ['FINANCING_FEASIBILITY', 'DETERMINISTIC_ENGINE_V1', signedPlan.plan.financing],
       ];
       for (const [type, provider, payload] of initialEvidence) {
@@ -211,12 +233,32 @@ export async function createAuthorizedMigration(
                 blockHash: sourceSnapshot.block.hash,
               }
             : {}),
-          providerReference: evidenceId,
+          ...(type === 'SOURCE_LENDING_AUTHORIZATION' &&
+          sourceLendingAuthorization.kind === 'ERC20_APPROVAL'
+            ? {
+                chainId: sourceLendingAuthorization.authorization.chainId.toString(),
+                blockNumber: sourceLendingAuthorization.blockNumber,
+                blockHash: sourceLendingAuthorization.blockHash,
+                transactionHash: sourceLendingAuthorization.authorization.transactionHash,
+              }
+            : {}),
+          providerReference:
+            type === 'SOURCE_LENDING_AUTHORIZATION' &&
+            sourceLendingAuthorization.kind === 'ERC20_APPROVAL'
+              ? sourceLendingAuthorization.authorization.transactionHash
+              : evidenceId,
           rawObservationHash: hashCanonicalText(canonicalJson(payload)),
           normalizedPayload: toJsonRecord(payload),
           observedAt: new Date(observedAt),
           verificationState: 'FINALIZED',
-          verificationMethod: type.includes('AUTHORIZATION') ? 'SIGNATURE' : 'SCHEMA_AND_STATE',
+          verificationMethod:
+            type === 'SOURCE_LENDING_AUTHORIZATION'
+              ? sourceLendingAuthorization.kind === 'ERC20_APPROVAL'
+                ? 'FINALIZED_APPROVAL_RECEIPT_AND_EXACT_ALLOWANCE'
+                : 'SANDBOX_ADAPTER_NOT_REQUIRED'
+              : type.includes('AUTHORIZATION')
+                ? 'SIGNATURE'
+                : 'SCHEMA_AND_STATE',
           verifierVersion: 'debtshift-v1',
         });
       }
@@ -243,6 +285,10 @@ export async function createAuthorizedMigration(
         planHash: signedPlan.planHash,
         quoteHash: quote.quoteHash,
         financingHash: hashExecutionFinancing(signedPlan.plan.financing),
+        sourceAuthorization:
+          sourceLendingAuthorization.kind === 'ERC20_APPROVAL'
+            ? sourceLendingAuthorization.authorization.transactionHash
+            : 'NONE',
       };
       await transaction.insert(auditEvents).values({
         eventId: hashCanonicalText(`debtshift.audit.v1:${migrationId}:1`),
@@ -469,6 +515,7 @@ export async function getMigrationExecutionContext(
       planPayload: executionPlans.payload,
       planHash: executionPlans.planHash,
       planSignature: executionPlans.signature,
+      targetLendingAuthorization: executionPlans.targetLendingAuthorization,
       quotePayload: providerQuotes.payload,
       transportLeg: transportLegs,
     })
@@ -505,6 +552,9 @@ export async function getMigrationExecutionContext(
       signature: signatureSchema.parse(row.intentSignature),
     }),
     signedPlan,
+    targetLendingAuthorization: persistedTargetLendingAuthorizationSchema.parse(
+      row.targetLendingAuthorization,
+    ),
     sourceSnapshot: positionSnapshotSchema.parse(snapshotRow.payload),
     quote: providerQuoteSchema.parse(row.quotePayload),
     transportLeg: row.transportLeg,

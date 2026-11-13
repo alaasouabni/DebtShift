@@ -84,12 +84,17 @@ const REQUIRED_PLAN_FIELDS = [
 ] as const;
 
 describe('the fixture is a real prepared migration', () => {
-  it('is the simulator, explicitly marked', () => {
-    expect(prepared.simulation?.provider).toBe('DEBTSHIFT_SIMULATOR');
-    expect(prepared.simulation?.mode).toBe('SIMULATED');
-    expect(prepared.simulation?.warning).toBe(
-      'This route uses test assets and is not a 1Click testnet transaction.',
-    );
+  it('is the sandbox, with its transport explicitly marked simulated', () => {
+    expect(prepared.execution?.mode).toBe('sandbox');
+    expect(prepared.execution?.transportProvider).toBe('DEBTSHIFT_SIMULATOR');
+    expect(prepared.execution?.transportMode).toBe('SIMULATED');
+    expect(prepared.execution?.simulatedTransport).toBe(true);
+    expect(prepared.execution?.warning).toMatch(/simulated external transport provider/i);
+  });
+
+  it('needs no lending permission, as the sandbox markets ask for none', () => {
+    expect(prepared.sourceAuthorization).toEqual({ kind: 'NONE' });
+    expect(prepared.targetAuthorization).toEqual({ kind: 'NONE' });
   });
 
   it('carries a zero funding shortfall, as an executable plan must', () => {
@@ -172,9 +177,25 @@ describe('plan review coverage', () => {
   });
 
   it('names the refund path in plain words', () => {
-    const row = rows.find((entry) => entry.key === 'plan.refundReceiver');
+    // Signed since plan version 2: where the transport returns value if
+    // the crossing fails.
+    const row = rows.find((entry) => entry.key === 'plan.transportRefundReceiver');
     expect(row?.label.toLowerCase()).toContain('refund');
     expect(row?.label.toLowerCase()).toContain('fails');
+    expect(row?.raw).toBe(`transportRefundReceiver ${prepared.plan.transportRefundReceiver}`);
+  });
+
+  it('keeps the two refund receivers apart', () => {
+    const finalRow = rows.find((entry) => entry.key === 'plan.refundReceiver');
+    expect(finalRow?.label).toBe('Final refund receiver');
+    expect(finalRow?.raw).toBe(`refundReceiver ${prepared.plan.refundReceiver}`);
+  });
+
+  it('does not invent the transport refund row for a plan signed before it existed', () => {
+    const { transportRefundReceiver: _newer, ...older } = prepared.plan;
+    const olderRows = planRows(older, prepared.quote, prepared.planHash);
+    expect(olderRows.some((entry) => entry.key === 'plan.transportRefundReceiver')).toBe(false);
+    expect(olderRows).toHaveLength(rows.length - 1);
   });
 
   it('prints exact base-unit amounts in the raw lines', () => {

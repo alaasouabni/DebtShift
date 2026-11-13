@@ -5,7 +5,7 @@ import { AaveV3SourceLending, IAaveV3Pool } from "../src/AaveV3SourceLending.sol
 import { DebtShiftHashing } from "../src/DebtShiftHashing.sol";
 import { MigrationEscrow } from "../src/MigrationEscrow.sol";
 import { SourceAdapter } from "../src/SourceAdapter.sol";
-import { TestLiquidityVault } from "../src/TestLiquidityVault.sol";
+import { LiquidityVault } from "../src/LiquidityVault.sol";
 import { IERC20 } from "../src/interfaces/IERC20.sol";
 import { ISourceLending } from "../src/interfaces/ISourceLending.sol";
 import { MockAaveV3Pool } from "../src/mocks/MockAaveV3Pool.sol";
@@ -32,7 +32,7 @@ contract AaveV3SourceLendingTest {
     TestToken private collateralToken;
     TestToken private aToken;
     MockAaveV3Pool private pool;
-    TestLiquidityVault private vault;
+    LiquidityVault private vault;
     MigrationEscrow private escrow;
     AaveV3SourceLending private aaveLending;
     SourceAdapter private sourceAdapter;
@@ -55,7 +55,7 @@ contract AaveV3SourceLendingTest {
         collateralToken.approve(address(pool), SOURCE_COLLATERAL);
         pool.openPosition(borrower, SOURCE_COLLATERAL, SOURCE_DEBT);
 
-        vault = new TestLiquidityVault(address(this));
+        vault = new LiquidityVault(address(this));
         escrow = new MigrationEscrow(address(this));
         aaveLending = new AaveV3SourceLending(
             address(this),
@@ -75,6 +75,8 @@ contract AaveV3SourceLendingTest {
         debtToken.mint(address(this), 20_000_000_000);
         debtToken.approve(address(vault), 20_000_000_000);
         vault.deposit(IERC20(address(debtToken)), 20_000_000_000);
+        debtToken.mint(address(this), 100_000_000_000);
+        debtToken.approve(address(vault), type(uint256).max);
 
         vm.prank(borrower);
         aToken.approve(address(aaveLending), SOURCE_COLLATERAL);
@@ -132,7 +134,7 @@ contract AaveV3SourceLendingTest {
         require(pool.balanceOf(borrower) == SOURCE_DEBT, "debt repayment was not reverted");
         require(aToken.balanceOf(borrower) == SOURCE_COLLATERAL, "aToken claim was not reverted");
         require(
-            _reservationStatus(plan.migrationId) == TestLiquidityVault.ReservationStatus.ACTIVE,
+            _reservationStatus(plan.migrationId) == LiquidityVault.ReservationStatus.ACTIVE,
             "reservation draw was not reverted"
         );
         require(vault.principalReceivable(address(debtToken)) == 0, "vault receivable was created");
@@ -153,7 +155,7 @@ contract AaveV3SourceLendingTest {
             aToken.balanceOf(borrower) == SOURCE_COLLATERAL, "collateral changed on cap failure"
         );
         require(
-            _reservationStatus(plan.migrationId) == TestLiquidityVault.ReservationStatus.ACTIVE,
+            _reservationStatus(plan.migrationId) == LiquidityVault.ReservationStatus.ACTIVE,
             "reservation changed on cap failure"
         );
         require(vault.principalReceivable(address(debtToken)) == 0, "vault gained exposure");
@@ -189,6 +191,7 @@ contract AaveV3SourceLendingTest {
             principalMax: SOURCE_DEBT,
             feeMax: SOLVER_FEE,
             destinationReceiver: address(0xD357),
+            transportRefundReceiver: address(escrow),
             refundReceiver: borrower,
             payoutReceiver: borrower,
             deadline: uint64(block.timestamp + 30 minutes),
@@ -199,9 +202,9 @@ contract AaveV3SourceLendingTest {
     function _feasibility(bytes32 inputPlanHash)
         private
         view
-        returns (TestLiquidityVault.FeasibilityEvidence memory)
+        returns (LiquidityVault.FeasibilityEvidence memory)
     {
-        return TestLiquidityVault.FeasibilityEvidence({
+        return LiquidityVault.FeasibilityEvidence({
             planHash: inputPlanHash,
             analysisHash: keccak256(abi.encode("aave-analysis", inputPlanHash)),
             externalFundingEvidenceHash: bytes32(0),
@@ -228,8 +231,8 @@ contract AaveV3SourceLendingTest {
     function _reservationStatus(bytes32 migrationId)
         private
         view
-        returns (TestLiquidityVault.ReservationStatus status)
+        returns (LiquidityVault.ReservationStatus status)
     {
-        (,,,,,, status,,) = vault.reservations(migrationId);
+        (,,,,,, status,,,,) = vault.reservations(migrationId);
     }
 }

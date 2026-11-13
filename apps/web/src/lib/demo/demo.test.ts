@@ -125,6 +125,8 @@ describe('the demo never reaches a backend', () => {
       signedPlan: { plan: prepared.plan, planHash: prepared.planHash, signature: '0x' },
       quote: prepared.quote,
       sourceSnapshot: prepared.sourceSnapshot,
+      sourceAuthorization: { kind: 'NONE' },
+      targetAuthorization: { kind: 'NONE' },
     });
     await api.migration(DEMO_MIGRATION_ID);
 

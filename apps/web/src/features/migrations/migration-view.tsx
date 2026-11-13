@@ -27,6 +27,7 @@ import {
   COMMAND_TYPE_LABELS,
   EVIDENCE_TYPE_LABELS,
   LEDGER_CATEGORY_LABELS,
+  ledgerComponentLabel,
   PHASE_LABELS,
   VERIFICATION_STATE_LABELS,
 } from '../../lib/labels';
@@ -176,8 +177,9 @@ function SettledNote() {
   return (
     <section className="page" style={{ padding: '0 var(--page-gutter) 24px' }}>
       <Alert tone="warning" title="The solver is repaid. This is not the end.">
-        Your new loan is open, but the migration is complete only after the ledger is reconciled and
-        the final receipt is recorded. Keep this page open or come back later.
+        Your new loan is open and the money side is final. The migration is complete only once its
+        receipt is recorded on NEAR. Where no registry is configured, as in the sandbox, it stays at
+        this phase.
       </Alert>
     </section>
   );
@@ -853,7 +855,7 @@ function LedgerSection({
           >
             <thead>
               <tr style={{ color: 'var(--ink-muted)', textAlign: 'left' }}>
-                {['#', 'Category', 'Amount', 'From', 'To', 'Chain'].map((heading) => (
+                {['#', 'What', 'Amount', 'From', 'To', 'Chain'].map((heading) => (
                   <th
                     key={heading}
                     scope="col"
@@ -877,7 +879,20 @@ function LedgerSection({
                       {entry.sequence}
                     </td>
                     <td style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
-                      {LEDGER_CATEGORY_LABELS[entry.category]}
+                      {ledgerComponentLabel(entry.componentCode) ??
+                        LEDGER_CATEGORY_LABELS[entry.category] ??
+                        entry.category}
+                      {entry.componentCode ? (
+                        <>
+                          <br />
+                          <span className="mono" style={{ color: 'var(--ink-muted)' }}>
+                            {LEDGER_CATEGORY_LABELS[entry.category] ?? entry.category}
+                            {entry.basis === 'SIGNED_COST_CLASSIFICATION'
+                              ? ' · signed classification, not a movement'
+                              : ''}
+                          </span>
+                        </>
+                      ) : null}
                     </td>
                     <td
                       className="mono"

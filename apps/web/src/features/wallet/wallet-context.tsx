@@ -14,6 +14,7 @@
  * against an account the user has since left.
  */
 
+import { getTypesForEIP712Domain, serializeTypedData, type TypedDataDomain } from 'viem';
 import {
   createContext,
   useCallback,
@@ -53,6 +54,20 @@ export interface WalletState {
   requestChain(chainId: number): Promise<void>;
   /** Sign EIP-712 typed data. Returns the signature; throws on rejection. */
   signTypedData(typedData: unknown): Promise<string>;
+  /**
+   * Ask the wallet to send one transaction and return its hash. Only ever
+   * called from a user action, for a lending-protocol permission the
+   * backend prepared. Throws on rejection, and always in the recorded demo.
+   */
+  sendTransaction(transaction: { readonly to: string; readonly data: string }): Promise<string>;
+  /**
+   * Wait until a transaction is mined. Resolves with its block and whether
+   * it succeeded; rejects if it is not mined within the timeout.
+   */
+  waitForTransaction(
+    hash: string,
+    timeoutMs?: number,
+  ): Promise<{ readonly blockNumber: string; readonly succeeded: boolean }>;
   /**
    * True while this tab is in the recorded demo: no wallet is involved, the
    * account is the one the recording was made with, and nothing is signed.
@@ -281,13 +296,30 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       if (provider === undefined) throw new Error('No wallet is available.');
       if (account === undefined) throw new Error('No account is connected.');
 
-      // BigInt values in the typed message cannot survive JSON, so they are
-      // stringified here. The hash the wallet shows is unchanged: EIP-712
-      // encodes a uint256 identically whether it arrived as a BigInt or a
-      // decimal string.
-      const payload = JSON.stringify(typedData, (_key, value: unknown) =>
-        typeof value === 'bigint' ? value.toString() : value,
-      );
+      /*
+       * A wallet computes the domain separator from `types.EIP712Domain`. The
+       * helpers that build these messages leave it out, as libraries that sign
+       * with a local key derive it themselves. Sent as-is, a wallet would hash
+       * an empty domain and produce a signature that verifies nowhere. So the
+       * domain type is derived here from the fields the domain actually has,
+       * and the payload is serialized the way wallets expect (BigInt values as
+       * decimal strings, which EIP-712 encodes identically).
+       */
+      const data = typedData as {
+        domain?: TypedDataDomain;
+        types: Record<string, readonly { name: string; type: string }[]>;
+        primaryType: string;
+        message: Record<string, unknown>;
+      };
+      const payload = serializeTypedData({
+        domain: data.domain ?? {},
+        types: {
+          EIP712Domain: getTypesForEIP712Domain({ domain: data.domain }),
+          ...data.types,
+        },
+        primaryType: data.primaryType,
+        message: data.message,
+      } as never);
 
       const signature = (await provider.request({
         method: 'eth_signTypedData_v4',
@@ -302,6 +334,54 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
     [account],
   );
 
+  const sendTransaction = useCallback(
+    async (transaction: { readonly to: string; readonly data: string }): Promise<string> => {
+      // The demo replays recordings. It never asks for a transaction.
+      if (isDemoActive()) throw new Error('The recorded demo sends no transactions.');
+      const provider = providerRef.current;
+      if (provider === undefined) throw new Error('No wallet is available.');
+      if (account === undefined) throw new Error('No account is connected.');
+      const hash = (await provider.request({
+        method: 'eth_sendTransaction',
+        // No value is ever attached: these are permission calls, not payments.
+        params: [{ from: account, to: transaction.to, data: transaction.data, value: '0x0' }],
+      })) as string;
+      if (typeof hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+        throw new Error('The wallet returned a transaction hash this app cannot use.');
+      }
+      return hash;
+    },
+    [account],
+  );
+
+  const waitForTransaction = useCallback(
+    async (
+      hash: string,
+      timeoutMs = 120_000,
+    ): Promise<{ readonly blockNumber: string; readonly succeeded: boolean }> => {
+      const provider = providerRef.current;
+      if (provider === undefined) throw new Error('No wallet is available.');
+      const startedAt = Date.now();
+      for (;;) {
+        const receipt = (await provider.request({
+          method: 'eth_getTransactionReceipt',
+          params: [hash],
+        })) as { blockNumber?: string; status?: string } | null;
+        if (receipt !== null && typeof receipt.blockNumber === 'string') {
+          return {
+            blockNumber: BigInt(receipt.blockNumber).toString(),
+            succeeded: receipt.status === '0x1',
+          };
+        }
+        if (Date.now() - startedAt > timeoutMs) {
+          throw new Error('The transaction was not mined in time. Check it in your wallet.');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+      }
+    },
+    [],
+  );
+
   const value = useMemo<WalletState>(
     () => ({
       status,
@@ -313,6 +393,8 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       disconnect,
       requestChain,
       signTypedData,
+      sendTransaction,
+      waitForTransaction,
       isDemo,
       enterDemo,
       exitDemo,
@@ -327,6 +409,8 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       disconnect,
       requestChain,
       signTypedData,
+      sendTransaction,
+      waitForTransaction,
       isDemo,
       enterDemo,
       exitDemo,

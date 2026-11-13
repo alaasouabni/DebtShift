@@ -62,12 +62,14 @@ export class LocalMarketToolsService implements RouteRiskTools, MarketIntelligen
   readonly provider = 'SIMULATOR' as const;
   readonly #destinationClient: PublicClient;
   readonly #sourceChainId: number;
+  readonly #sourceDebtBufferBps: number;
 
   constructor(
     @Inject(LocalProtocolService) private readonly protocols: LocalProtocolService,
     @Inject(ConfigService) config: ConfigService,
   ) {
     this.#sourceChainId = config.getOrThrow<number>('SOURCE_CHAIN_ID');
+    this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
     this.#destinationClient = createPublicClient({
       transport: http(config.getOrThrow<string>('DESTINATION_RPC_URL')),
     });
@@ -121,6 +123,7 @@ export class LocalMarketToolsService implements RouteRiskTools, MarketIntelligen
         maximumLtvBps,
       },
       evaluatedAt,
+      this.#sourceDebtBufferBps,
     );
   }
 
@@ -155,6 +158,7 @@ export function buildLocalRouteCandidates(
   route: LocalRouteDefinition,
   observation: DestinationObservation,
   evaluatedAt = observation.observedAt,
+  sourceDebtBufferBps = 10,
 ): readonly RouteCandidate[] {
   const block = {
     number: observation.blockNumber.toString(),
@@ -169,7 +173,8 @@ export function buildLocalRouteCandidates(
     block,
   };
   const principal = BigInt(position.debtUnits);
-  const targetDebt = principal + BigInt(LOCAL_EXECUTION_FEE_UNITS);
+  const sourceDebtMaximum = addBasisPointHeadroom(principal, sourceDebtBufferBps);
+  const targetDebt = sourceDebtMaximum + BigInt(LOCAL_EXECUTION_FEE_UNITS);
   const deliveredCollateralValue =
     (BigInt(position.collateralUnits) * observation.collateralPriceInDebtWad * 99n) /
     (10n ** 30n * 100n);
@@ -227,6 +232,7 @@ export function buildLocalRouteCandidates(
       deliveredCollateralValue,
       availableBorrowUnits: observation.availableBorrowUnits,
       requestedBorrowUnits: targetDebt,
+      sourceDebtPayoffUnits: sourceDebtMaximum,
       solverFeeUnits: BigInt(LOCAL_EXECUTION_FEE_UNITS),
       separatelyPaidCosts: [
         ['source-gas', 'NETWORK', 10_000_000n],
@@ -251,7 +257,7 @@ export function buildLocalRouteCandidates(
     availableBorrowUnits: principal.toString(),
   });
   const lowLiquidityFee = 20_000_000n;
-  const lowLiquidityTargetDebt = principal + lowLiquidityFee;
+  const lowLiquidityTargetDebt = sourceDebtMaximum + lowLiquidityFee;
   const lowLiquidity = routeCandidateSchema.parse({
     candidateId: LOCAL_REJECTED_ROUTE_ID,
     market: constrainedMarket,
@@ -292,6 +298,7 @@ export function buildLocalRouteCandidates(
       deliveredCollateralValue,
       availableBorrowUnits: principal,
       requestedBorrowUnits: lowLiquidityTargetDebt,
+      sourceDebtPayoffUnits: sourceDebtMaximum,
       solverFeeUnits: lowLiquidityFee,
       separatelyPaidCosts: [
         ['source-gas', 'NETWORK', 8_000_000n],
@@ -316,6 +323,7 @@ interface LocalFinancingInput {
   readonly deliveredCollateralValue: bigint;
   readonly availableBorrowUnits: bigint;
   readonly requestedBorrowUnits: bigint;
+  readonly sourceDebtPayoffUnits: bigint;
   readonly solverFeeUnits: bigint;
   readonly separatelyPaidCosts: readonly (readonly [string, LocalCostKind, bigint])[];
 }
@@ -331,7 +339,7 @@ function localFinancingStructure(input: LocalFinancingInput) {
   const liquidityCapacity =
     (input.availableBorrowUnits * 10_000n) / BigInt(10_000 + LOCAL_LIQUIDITY_BUFFER_BPS);
   const conversionExpiry = new Date(Date.parse(input.evaluatedAt) + 10 * 60 * 1_000).toISOString();
-  const sourceDebtUnits = input.position.debtUnits;
+  const sourceDebtUnits = input.sourceDebtPayoffUnits.toString();
   const conversionHash = hashCanonicalText(
     `debtshift.local-parity-conversion.v1:${input.candidateId}:${sourceDebtUnits}:${input.evaluatedAt}`,
   );
@@ -377,4 +385,8 @@ function localFinancingStructure(input: LocalFinancingInput) {
 
 function minBigInt(left: bigint, right: bigint): bigint {
   return left < right ? left : right;
+}
+
+function addBasisPointHeadroom(amount: bigint, basisPoints: number): bigint {
+  return (amount * BigInt(10_000 + basisPoints) + 9_999n) / 10_000n;
 }

@@ -18,6 +18,10 @@ export interface StartAnvilOptions {
   readonly chainId: number;
   readonly port: number;
   readonly anvilPath?: string;
+  /** Interface exposed by Anvil. Keep loopback unless a container network needs access. */
+  readonly bindHost?: string;
+  /** Optional interval for long-running chains that need fresh block timestamps. */
+  readonly blockTimeSeconds?: number;
   /** Optional upstream used only to create an immutable local fork. */
   readonly forkUrl?: string;
   readonly forkBlockNumber?: bigint;
@@ -26,6 +30,14 @@ export interface StartAnvilOptions {
 type AnvilProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 export async function startAnvil(options: StartAnvilOptions): Promise<LocalAnvilChain> {
+  const bindHost = options.bindHost ?? '127.0.0.1';
+  if (bindHost.trim().length === 0) throw new Error('Anvil bind host cannot be empty.');
+  if (
+    options.blockTimeSeconds !== undefined &&
+    (!Number.isInteger(options.blockTimeSeconds) || options.blockTimeSeconds <= 0)
+  ) {
+    throw new Error('Anvil block time must be a positive integer number of seconds.');
+  }
   const rpcUrl = `http://127.0.0.1:${options.port}`;
   const chain = defineChain({
     id: options.chainId,
@@ -42,9 +54,12 @@ export async function startAnvil(options: StartAnvilOptions): Promise<LocalAnvil
     '--chain-id',
     String(options.chainId),
     '--host',
-    '127.0.0.1',
+    bindHost,
     '--silent',
   ];
+  if (options.blockTimeSeconds !== undefined) {
+    argumentsList.push('--block-time', String(options.blockTimeSeconds));
+  }
   if (options.forkUrl !== undefined) {
     argumentsList.push('--fork-url', options.forkUrl);
     if (options.forkBlockNumber !== undefined) {

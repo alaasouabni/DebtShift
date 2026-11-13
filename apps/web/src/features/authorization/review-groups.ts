@@ -97,6 +97,7 @@ const PLAN_GROUPS: readonly GroupSpec[] = [
       'plan.transportProvider',
       'plan.transportQuoteHash',
       'plan.transportDepositAddress',
+      'quote.depositMemo',
       'quote.amountInUnits',
       'quote.expectedAmountOutUnits',
       'quote.minAmountOutUnits',
@@ -104,7 +105,15 @@ const PLAN_GROUPS: readonly GroupSpec[] = [
       'quote.expiresAt',
     ],
   ],
-  ['Receivers', ['plan.destinationReceiver', 'plan.refundReceiver', 'plan.reservationHash']],
+  [
+    'Receivers',
+    [
+      'plan.destinationReceiver',
+      'plan.transportRefundReceiver',
+      'plan.refundReceiver',
+      'plan.reservationHash',
+    ],
+  ],
   ['Deadlines', ['plan.deadline', 'plan.financing.validUntil']],
   ['What your wallet signs', ['planHash']],
 ];

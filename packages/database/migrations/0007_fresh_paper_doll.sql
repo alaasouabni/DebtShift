@@ -1,0 +1,1 @@
+ALTER TABLE "execution_plans" ALTER COLUMN "target_lending_authorization" SET DEFAULT '{"authorization":{"kind":"NONE"},"encodedAuthorization":"0x"}'::jsonb;

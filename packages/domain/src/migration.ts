@@ -8,6 +8,7 @@ import {
   chainIdSchema,
   evmAddressSchema,
   isoTimestampSchema,
+  positiveBaseUnitAmountSchema,
   uint64StringSchema,
 } from './primitives.js';
 
@@ -33,6 +34,7 @@ export const evidenceTypeSchema = z.enum([
   'ROUTE_QUOTE',
   'INTENT_AUTHORIZATION',
   'EXECUTION_PLAN_AUTHORIZATION',
+  'SOURCE_LENDING_AUTHORIZATION',
   'FINANCING_FEASIBILITY',
   'FINANCING_REVALIDATION',
   'SUPPLEMENTARY_FUNDING',
@@ -167,23 +169,236 @@ export const transportLegSchema = z
   })
   .strict();
 
+export const ledgerCategorySchema = z.enum([
+  'PRINCIPAL',
+  'FEE',
+  'COST',
+  'COLLATERAL',
+  'RESERVE',
+  'REFUND',
+  'RESIDUAL',
+  'SHORTFALL',
+]);
+
+export const ledgerComponentCodeSchema = z.enum([
+  'SOURCE_DEBT_PAYOFF',
+  'BORROWER_DEBT_PREPAYMENT',
+  'SEPARATELY_PAID_COST_CLASSIFICATION',
+  'RECOVERY_RESERVE_LOCKED',
+  'TRANSPORT_ORIGIN_COLLATERAL',
+  'TRANSPORT_DESTINATION_COLLATERAL',
+  'TARGET_COLLATERAL_SUPPLY',
+  'DESTINATION_LOAN_PROCEEDS',
+  'SUPPLEMENTARY_SETTLEMENT_FUNDING',
+  'SOLVER_PRINCIPAL_PAYOUT',
+  'SOLVER_FEE_PAYOUT',
+  'CAPITALIZED_COST_PAYOUT',
+  'RESIDUAL_RETURN',
+  'RECOVERY_RESERVE_PRINCIPAL_CONSUMED',
+  'RECOVERY_RESERVE_FEE_CONSUMED',
+  'RECOVERY_RESERVE_REFUND',
+]);
+
 export const ledgerEntrySchema = z
   .object({
     entryId: bytes32Schema,
     migrationId: bytes32Schema,
     sequence: z.number().int().positive(),
+    componentCode: ledgerComponentCodeSchema,
+    componentId: canonicalTextSchema,
+    evidenceId: bytes32Schema,
+    basis: z.enum(['FINALIZED_MOVEMENT', 'SIGNED_COST_CLASSIFICATION']),
     chainId: chainIdSchema,
     token: evmAddressSchema,
-    amountUnits: baseUnitAmountSchema,
+    amountUnits: positiveBaseUnitAmountSchema,
     debitParty: canonicalTextSchema,
     creditParty: canonicalTextSchema,
-    category: z.enum(['PRINCIPAL', 'FEE', 'COLLATERAL', 'REFUND', 'RESIDUAL', 'SHORTFALL']),
+    category: ledgerCategorySchema,
     transactionReference: canonicalTextSchema.optional(),
     createdAt: isoTimestampSchema,
   })
   .strict()
   .refine((entry) => entry.debitParty !== entry.creditParty, {
     message: 'A ledger entry must move value between distinct parties.',
+  });
+
+export const ledgerReconciliationSchema = z
+  .object({
+    version: z.literal(1),
+    migrationId: bytes32Schema,
+    sourceDebtPayoffUnits: positiveBaseUnitAmountSchema,
+    borrowerDebtPrepaymentUnits: baseUnitAmountSchema,
+    solverPrincipalUnits: positiveBaseUnitAmountSchema,
+    solverFeeUnits: baseUnitAmountSchema,
+    capitalizedCostUnits: baseUnitAmountSchema,
+    separatelyPaidCostUnits: baseUnitAmountSchema,
+    requiredDestinationBorrowUnits: positiveBaseUnitAmountSchema,
+    confirmedExternalFundingUnits: baseUnitAmountSchema,
+    recoveryReserveLockedUnits: positiveBaseUnitAmountSchema,
+    recoveryReserveConsumedUnits: positiveBaseUnitAmountSchema,
+    recoveryReserveRefundedUnits: baseUnitAmountSchema,
+    residualReturnUnits: baseUnitAmountSchema,
+    unexplainedImbalanceUnits: z.literal('0'),
+    entries: z.array(ledgerEntrySchema).min(6).max(128),
+  })
+  .strict()
+  .superRefine((reconciliation, context) => {
+    const entryIds = new Set<string>();
+    const componentIds = new Set<string>();
+    const sequences = new Set<number>();
+    for (const [index, entry] of reconciliation.entries.entries()) {
+      if (entry.migrationId !== reconciliation.migrationId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries', index, 'migrationId'],
+          message: 'Ledger entry belongs to another migration.',
+        });
+      }
+      const expectedBasis =
+        entry.componentCode === 'SEPARATELY_PAID_COST_CLASSIFICATION'
+          ? 'SIGNED_COST_CLASSIFICATION'
+          : 'FINALIZED_MOVEMENT';
+      if (entry.basis !== expectedBasis) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries', index, 'basis'],
+          message: `${entry.componentCode} has an invalid ledger basis.`,
+        });
+      }
+      if (entryIds.has(entry.entryId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries', index, 'entryId'],
+          message: 'Duplicate ledger entryId.',
+        });
+      }
+      if (componentIds.has(entry.componentId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries', index, 'componentId'],
+          message: 'Duplicate ledger componentId.',
+        });
+      }
+      if (sequences.has(entry.sequence)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries', index, 'sequence'],
+          message: 'Duplicate ledger sequence.',
+        });
+      }
+      entryIds.add(entry.entryId);
+      componentIds.add(entry.componentId);
+      sequences.add(entry.sequence);
+    }
+    for (let sequence = 1; sequence <= reconciliation.entries.length; sequence += 1) {
+      if (!sequences.has(sequence)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries'],
+          message: 'Ledger sequences must be contiguous and start at one.',
+        });
+        break;
+      }
+    }
+
+    const value = (amount: string) => BigInt(amount);
+    const sum = (code: z.infer<typeof ledgerComponentCodeSchema>) =>
+      reconciliation.entries
+        .filter((entry) => entry.componentCode === code)
+        .reduce((total, entry) => total + value(entry.amountUnits), 0n);
+    const exact = (
+      code: z.infer<typeof ledgerComponentCodeSchema>,
+      expected: bigint,
+      label: string,
+    ) => {
+      if (sum(code) !== expected) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries'],
+          message: `${label} ledger total does not reconcile.`,
+        });
+      }
+    };
+
+    const principal = value(reconciliation.solverPrincipalUnits);
+    const fee = value(reconciliation.solverFeeUnits);
+    const capitalized = value(reconciliation.capitalizedCostUnits);
+    const separatelyPaid = value(reconciliation.separatelyPaidCostUnits);
+    const externalFunding = value(reconciliation.confirmedExternalFundingUnits);
+    const requiredBorrow = value(reconciliation.requiredDestinationBorrowUnits);
+    const recoveryReserveLocked = value(reconciliation.recoveryReserveLockedUnits);
+    const recoveryReserveConsumed = value(reconciliation.recoveryReserveConsumedUnits);
+    const recoveryReserveRefunded = value(reconciliation.recoveryReserveRefundedUnits);
+    const residual = value(reconciliation.residualReturnUnits);
+    const prepayment = value(reconciliation.borrowerDebtPrepaymentUnits);
+    const sourcePayoff = value(reconciliation.sourceDebtPayoffUnits);
+    const available = requiredBorrow + externalFunding;
+    const obligation = principal + fee + capitalized;
+
+    if (sourcePayoff !== principal + prepayment) {
+      context.addIssue({
+        code: 'custom',
+        path: ['sourceDebtPayoffUnits'],
+        message: 'Source payoff does not reconcile to solver principal plus borrower prepayment.',
+      });
+    }
+    if (available !== obligation + residual) {
+      context.addIssue({
+        code: 'custom',
+        path: ['residualReturnUnits'],
+        message: 'Destination borrowing and confirmed funding do not reconcile to payouts.',
+      });
+    }
+    if (recoveryReserveConsumed !== principal + fee) {
+      context.addIssue({
+        code: 'custom',
+        path: ['recoveryReserveConsumedUnits'],
+        message: 'Consumed recovery reserve does not reconcile to solver principal and fee.',
+      });
+    }
+    if (recoveryReserveLocked !== recoveryReserveConsumed + recoveryReserveRefunded) {
+      context.addIssue({
+        code: 'custom',
+        path: ['recoveryReserveRefundedUnits'],
+        message: 'Locked recovery reserve does not reconcile to consumption and refund.',
+      });
+    }
+
+    exact('SOURCE_DEBT_PAYOFF', principal, 'Source debt payoff');
+    exact('BORROWER_DEBT_PREPAYMENT', prepayment, 'Borrower debt prepayment');
+    exact(
+      'SEPARATELY_PAID_COST_CLASSIFICATION',
+      separatelyPaid,
+      'Separately paid cost classification',
+    );
+    exact('RECOVERY_RESERVE_LOCKED', recoveryReserveLocked, 'Recovery reserve lock');
+    exact('DESTINATION_LOAN_PROCEEDS', requiredBorrow, 'Destination loan proceeds');
+    exact('SUPPLEMENTARY_SETTLEMENT_FUNDING', externalFunding, 'Supplementary funding');
+    exact('SOLVER_PRINCIPAL_PAYOUT', principal, 'Solver principal payout');
+    exact('SOLVER_FEE_PAYOUT', fee, 'Solver fee payout');
+    exact('CAPITALIZED_COST_PAYOUT', capitalized, 'Capitalized cost payout');
+    exact('RESIDUAL_RETURN', residual, 'Residual return');
+    exact(
+      'RECOVERY_RESERVE_PRINCIPAL_CONSUMED',
+      principal,
+      'Recovery reserve principal consumption',
+    );
+    exact('RECOVERY_RESERVE_FEE_CONSUMED', fee, 'Recovery reserve fee consumption');
+    exact('RECOVERY_RESERVE_REFUND', recoveryReserveRefunded, 'Recovery reserve refund');
+
+    for (const code of [
+      'TRANSPORT_ORIGIN_COLLATERAL',
+      'TRANSPORT_DESTINATION_COLLATERAL',
+      'TARGET_COLLATERAL_SUPPLY',
+    ] as const) {
+      if (sum(code) === 0n) {
+        context.addIssue({
+          code: 'custom',
+          path: ['entries'],
+          message: `${code} is missing from the settlement ledger.`,
+        });
+      }
+    }
   });
 
 export const auditEventSchema = z
@@ -203,5 +418,8 @@ export type EvidenceType = z.infer<typeof evidenceTypeSchema>;
 export type Evidence = z.infer<typeof evidenceSchema>;
 export type Migration = z.infer<typeof migrationSchema>;
 export type Command = z.infer<typeof commandSchema>;
+export type LedgerCategory = z.infer<typeof ledgerCategorySchema>;
+export type LedgerComponentCode = z.infer<typeof ledgerComponentCodeSchema>;
 export type LedgerEntry = z.infer<typeof ledgerEntrySchema>;
+export type LedgerReconciliation = z.infer<typeof ledgerReconciliationSchema>;
 export type AuditEvent = z.infer<typeof auditEventSchema>;

@@ -51,6 +51,7 @@ Implementation must be understandable from this directory without relying on cha
 | [12-production-provider-boundaries.md](./12-production-provider-boundaries.md)             | Separates simulator fixtures from live Aave, Morpho, Chainlink, and 1Click providers.            |
 | [13-frontend-handoff.md](./13-frontend-handoff.md)                                         | Defines frontend ownership, API and signing contracts, user journeys, safety labels, and tests.  |
 | [14-submission-critical-plan.md](./14-submission-critical-plan.md)                         | Defines the two-day P0 delivery order, ownership, deferrals, safety rules, and submission gates. |
+| [15-account-handoff.md](./15-account-handoff.md)                                           | Gives the next Codex account the exact verified checkpoint, blockers, and resume commands.       |
 
 ## Work protocol
 

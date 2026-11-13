@@ -21,6 +21,7 @@ import {
   hashExecutionPlan,
   hashRefinanceIntent,
   hashSourcePosition,
+  ledgerReconciliationSchema,
   parseDebtShiftEnvironment,
   positionSnapshotSchema,
   refinanceIntentSchema,
@@ -43,9 +44,14 @@ import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
-import { createSimulatedWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
-import { DualAnvilSimulationExecutionPort } from './simulator/dual-anvil-execution.js';
+import { createWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
+import { DualAnvilSandboxExecutionPort } from './simulator/dual-anvil-execution.js';
 import { DurableCommandProcessor, PostgresCommandPersistence } from './processor.js';
+import {
+  PendingSandboxRegistryPort,
+  sandboxEvidenceProviders,
+  SimulatedTransportExecutionPort,
+} from './sandbox/simulated-transport.js';
 
 const ANVIL_PATH = resolveAnvilPath();
 const ANVIL_AVAILABLE = spawnSync(ANVIL_PATH, ['--version'], { windowsHide: true }).status === 0;
@@ -115,6 +121,44 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
           .from(debtShiftSchema.liquidityReservations);
         expect(reservations[0]?.status).toBe('SETTLED');
 
+        const ledgerEvidence = details?.evidence.find(
+          (record) => record.type === 'LEDGER_RECONCILIATION',
+        );
+        const reconciliation = ledgerReconciliationSchema.parse(
+          ledgerEvidence?.normalizedPayload.ledger,
+        );
+        expect(reconciliation).toMatchObject({
+          solverPrincipalUnits: '10000000000',
+          solverFeeUnits: '50000000',
+          requiredDestinationBorrowUnits: '10050000000',
+          recoveryReserveLockedUnits: '10050000000',
+          recoveryReserveConsumedUnits: '10050000000',
+          recoveryReserveRefundedUnits: '0',
+          residualReturnUnits: '0',
+          unexplainedImbalanceUnits: '0',
+        });
+        expect(details?.ledger.map((entry) => entry.componentCode)).toEqual([
+          'SOURCE_DEBT_PAYOFF',
+          'RECOVERY_RESERVE_LOCKED',
+          'TRANSPORT_ORIGIN_COLLATERAL',
+          'TRANSPORT_DESTINATION_COLLATERAL',
+          'TARGET_COLLATERAL_SUPPLY',
+          'DESTINATION_LOAN_PROCEEDS',
+          'SOLVER_PRINCIPAL_PAYOUT',
+          'SOLVER_FEE_PAYOUT',
+          'RECOVERY_RESERVE_PRINCIPAL_CONSUMED',
+          'RECOVERY_RESERVE_FEE_CONSUMED',
+        ]);
+        expect(details?.ledger).toHaveLength(reconciliation.entries.length);
+        const finalizedEvidenceIds = new Set(
+          details?.evidence
+            .filter((record) => record.verificationState === 'FINALIZED')
+            .map((record) => record.evidenceId),
+        );
+        expect(details?.ledger.every((entry) => finalizedEvidenceIds.has(entry.evidenceId))).toBe(
+          true,
+        );
+
         const targetArtifact = await import('@debtshift/protocols').then(
           ({ loadFoundryArtifact }) => loadFoundryArtifact('MockTargetLending'),
         );
@@ -153,15 +197,18 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
   }, 60_000);
 
   it('moves known transport custody into recovery after the signed deadline', async () => {
-    await withWorkflow('TIMEOUT', async ({ database, deployment, source, createProcessor }) => {
-      const migrationId = await createMigration(database, deployment, source, 'TIMEOUT');
-      await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE', true);
-      const details = await getMigrationDetails(database, migrationId);
+    await withWorkflow(
+      'TIMEOUT',
+      async ({ database, deployment, source, createProcessor, expireTransport }) => {
+        const migrationId = await createMigration(database, deployment, source, 'TIMEOUT');
+        await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE', expireTransport);
+        const details = await getMigrationDetails(database, migrationId);
 
-      expect(details?.evidence.map((record) => record.type)).toEqual(
-        expect.arrayContaining(['MIGRATION_EXPIRED', 'RECOVERY_OPENED', 'RECOVERY_COMPLETED']),
-      );
-    });
+        expect(details?.evidence.map((record) => record.type)).toEqual(
+          expect.arrayContaining(['MIGRATION_EXPIRED', 'RECOVERY_OPENED', 'RECOVERY_COMPLETED']),
+        );
+      },
+    );
   }, 60_000);
 
   it('halts before source close when the finalized reservation block is orphaned', async () => {
@@ -323,7 +370,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
         const [targetArtifact, tokenArtifact, vaultArtifact] = await Promise.all([
           loadFoundryArtifact('MockTargetLending'),
           loadFoundryArtifact('TestToken'),
-          loadFoundryArtifact('TestLiquidityVault'),
+          loadFoundryArtifact('LiquidityVault'),
         ]);
         const [targetPosition, borrowerRefund, reservation] = await Promise.all([
           destination.publicClient.readContract({
@@ -397,7 +444,7 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
 
         const [sourceArtifact, vaultArtifact] = await Promise.all([
           loadFoundryArtifact('MockSourceLending'),
-          loadFoundryArtifact('TestLiquidityVault'),
+          loadFoundryArtifact('LiquidityVault'),
         ]);
         const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
           source.publicClient.readContract({
@@ -587,6 +634,7 @@ interface WorkflowFixture {
   readonly source: LocalAnvilChain;
   readonly destination: LocalAnvilChain;
   readonly createProcessor: () => DurableCommandProcessor;
+  readonly expireTransport: () => void;
 }
 
 async function withWorkflow(
@@ -596,6 +644,7 @@ async function withWorkflow(
   const source = await startAnvil({ chainId: 31_337, port: 19_555, anvilPath: ANVIL_PATH });
   const destination = await startAnvil({ chainId: 31_338, port: 19_556, anvilPath: ANVIL_PATH });
   const postgres = new PGlite();
+  let transportClockOffsetMs = 0;
   try {
     for (const migrationFile of migrationFiles) {
       await postgres.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
@@ -610,10 +659,10 @@ async function withWorkflow(
       destination.publicClient,
     );
     const environment = parseDebtShiftEnvironment({
-      DEBTSHIFT_ENV: 'local',
+      DEBTSHIFT_MODE: 'sandbox',
       SOURCE_RPC_URL: source.rpcUrl,
       DESTINATION_RPC_URL: destination.rpcUrl,
-      LOCAL_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
+      SANDBOX_EXECUTOR_PRIVATE_KEY: DEFAULT_ANVIL_DEPLOYER_KEY,
       SOURCE_DEBT_TOKEN_ADDRESS: deployment.source.debtToken,
       SOURCE_COLLATERAL_TOKEN_ADDRESS: deployment.source.collateralToken,
       SOURCE_VAULT_ADDRESS: deployment.source.vault,
@@ -629,17 +678,29 @@ async function withWorkflow(
         outcome: outcome === 'REFUNDED' ? 'REFUNDED' : 'SUCCESS',
         feeBps: 100,
         processingPolls: outcome === 'TIMEOUT' ? 100 : 1,
+        now: () => Date.now() + transportClockOffsetMs,
       });
       return new DurableCommandProcessor(
         new PostgresCommandPersistence(database),
-        createSimulatedWorkflowHandlers(
-          new PostgresWorkflowContextStore(database),
-          new DualAnvilSimulationExecutionPort(environment),
-          simulator,
-        ),
+        createWorkflowHandlers({
+          store: new PostgresWorkflowContextStore(database),
+          execution: new DualAnvilSandboxExecutionPort(environment),
+          transport: new SimulatedTransportExecutionPort(simulator),
+          registry: new PendingSandboxRegistryPort(),
+          evidenceProviders: sandboxEvidenceProviders,
+        }),
       );
     };
-    await test({ database, deployment, source, destination, createProcessor });
+    await test({
+      database,
+      deployment,
+      source,
+      destination,
+      createProcessor,
+      expireTransport: () => {
+        transportClockOffsetMs = 360_000;
+      },
+    });
   } finally {
     await postgres.close();
     await Promise.all([source.stop(), destination.stop()]);
@@ -732,7 +793,7 @@ async function createMigration(
   );
   const planNonce = scenarioNonces[outcome].plan;
   const migrationId = computeMigrationId(intentHash, quote.quoteHash, planNonce);
-  const planDeadline = nowSeconds + (outcome === 'TIMEOUT' ? 5 : 300);
+  const planDeadline = nowSeconds + 300;
   const unsignedPlan = executionPlanSchema.parse({
     intentHash,
     migrationId,
@@ -752,6 +813,7 @@ async function createMigration(
     transportQuoteHash: quote.quoteHash,
     transportDepositAddress: quote.depositAddress,
     destinationReceiver: deployment.destination.escrow,
+    transportRefundReceiver: deployment.source.escrow,
     refundReceiver: deployment.borrower,
     fundingProvider: deployment.source.vault,
     reservationHash: hashCanonicalText(`reservation:${migrationId}`),
@@ -815,6 +877,10 @@ async function createMigration(
     },
   });
   await createAuthorizedMigration(database, {
+    sourceLendingAuthorization: {
+      kind: 'NONE',
+      authorization: { kind: 'NONE' },
+    },
     signedIntent: { intent, intentHash, signature: intentSignature },
     signedPlan: {
       plan,
@@ -823,6 +889,10 @@ async function createMigration(
     },
     quote,
     sourceSnapshot,
+    targetLendingAuthorization: {
+      authorization: { kind: 'NONE' },
+      encodedAuthorization: '0x',
+    },
   });
   return migrationId;
 }
@@ -943,17 +1013,21 @@ async function runUntil(
   createProcessor: () => DurableCommandProcessor,
   migrationId: string,
   terminalPhase: MigrationPhase,
-  waitForTimeout = false,
+  expireTransport?: () => void,
 ): Promise<void> {
   const ready: OutboxEnvelope[] = [];
   let active: OutboxEnvelope | undefined;
-  let timeoutWaited = false;
+  let transportExpired = false;
   for (let iteration = 0; iteration < 30; iteration += 1) {
     const details = await getMigrationDetails(database, migrationId);
     if (details?.migration.phase === terminalPhase) return;
-    if (waitForTimeout && details?.migration.phase === 'ROUTING' && !timeoutWaited) {
-      timeoutWaited = true;
-      await new Promise((resolvePromise) => setTimeout(resolvePromise, 6_000));
+    if (
+      expireTransport !== undefined &&
+      details?.migration.phase === 'ROUTING' &&
+      !transportExpired
+    ) {
+      transportExpired = true;
+      expireTransport();
     }
 
     if (active === undefined) {

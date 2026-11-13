@@ -1,18 +1,20 @@
 # DebtShift
 
-DebtShift is a test-funds-first cross-chain debt refinancing demonstrator. It discovers an
+DebtShift is a production-oriented cross-chain debt refinancing system. It discovers an
 existing lending position, deterministically compares safer or cheaper target routes, obtains
 bounded wallet authorization, coordinates a durable refinance, and records verifiable evidence.
 
-The complete refinance demonstration uses local/forked Aave V3 and Morpho Blue environments with
-a clearly labeled 1Click-compatible simulator. Production 1Click is limited to read-only catalog
-and dry-quote access plus one separately gated, manually approved, low-value transport canary. The
-canary is not a live debt refinance.
+DebtShift has one provider-neutral refinance workflow. The contract-backed sandbox and public
+testnet exercise that workflow through mode-specific adapters; they are not separate simulated
+business implementations. The sandbox executes real private-chain contracts and transactions and
+simulates only the unavailable external 1Click testnet boundary. Mainnet targets the complete
+Aave-to-1Click-to-Morpho workflow, not an isolated transport canary.
 
-Simulator fixtures live only under explicit `simulator/` namespaces. `mainnet-readonly` instead
-requires a complete runtime market registry and uses direct Aave, Morpho, and Chainlink RPC reads
-plus authenticated 1Click dry quotes; it cannot fall back to fixture values. See
-`strategies-docs/12-production-provider-boundaries.md` for the enforced boundary.
+The four runtime modes are `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet`.
+`mainnet-readonly` requires a complete runtime market registry and direct Aave, Morpho, Chainlink,
+and authenticated 1Click reads. Production modes cannot fall back to fixture values. Mainnet writes
+additionally require the restart-bound server switch `MAINNET_EXECUTION_ENABLED=true`; it defaults
+to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the enforced boundary.
 
 ## Repository
 
@@ -37,15 +39,28 @@ documented in `docs/local-setup.md`.
 
 ## Start
 
+Run the complete contract-backed sandbox with one command:
+
 ```sh
 cp .env.example .env
 npm ci
 npm run infra:up
+npm run smoke:local
+```
+
+This builds and starts PostgreSQL, Redis, both private chains, migrations, the API, worker, and web
+application. Open `http://localhost:3000`; API documentation is at
+`http://localhost:3001/docs`. Stop the stack with `npm run infra:down`.
+
+For application hot reload instead, start only the service dependencies:
+
+```sh
+npm run infra:dependencies
 npm run db:migrate --workspace @debtshift/database
 npm run local:chains # keep this terminal open
 ```
 
-Then, in another terminal:
+Then start the applications in another terminal:
 
 ```sh
 npm run dev
@@ -71,14 +86,17 @@ npm run demo:recovery
 ```
 
 Each command starts and stops two private Anvil chains and uses disposable test assets only.
-For an automated real-service check after starting the local chains, API, and worker, run
-`npm run smoke:local`.
+`npm run smoke:local` targets the running full sandbox and submits a signed HTTP-to-chain migration.
+Without NEAR registry credentials the local development stack reaches financially final `SETTLED`
+and keeps receipt registration retryable; a credentialed hosted stack reaches `COMPLETED` only
+after the registry receipt is verified.
 
 ## Safety boundary
 
 No real or funded borrower private key belongs in this repository or backend; only Foundry's
-well-known disposable Anvil keys are used for local tests. Real-fund lending and automated mainnet
-refinancing are disabled. The default Route/Risk Agent is deterministic and requires no AI service.
+well-known disposable Anvil keys are used for local tests. Mainnet writes are fail-closed by default
+and the first bounded transaction requires the documented verification gates and explicit financial
+authorization. The default Route/Risk Agent is deterministic and requires no AI service.
 Optional local or user-supplied AI providers can explain an already-computed result but cannot rank
 routes, alter signed fields, or invoke execution.
 

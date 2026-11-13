@@ -622,6 +622,11 @@ export default function LandingPage() {
             Nothing executes on one signature. If any term changes after you sign, the authorization
             is thrown away and you review again.
           </p>
+          <p className="section-lede">
+            Some lending markets also ask for a permission of their own, such as Morpho&apos;s
+            authorization or a token approval. When a route needs one, it is its own step, with its
+            exact terms.
+          </p>
         </div>
 
         <div className="duo-grid">

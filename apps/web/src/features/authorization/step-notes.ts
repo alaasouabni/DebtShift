@@ -6,7 +6,7 @@
  * "Signed".
  */
 
-export type StepId = 'prepare' | 'policy' | 'execution' | 'submit';
+export type StepId = 'prepare' | 'policy' | 'execution' | 'lending' | 'submit';
 export type StepStatus = 'done' | 'current' | 'upcoming';
 
 export function stepStatus(index: number, currentIndex: number): StepStatus {
@@ -28,6 +28,10 @@ export function stepNote(step: StepId, status: StepStatus, isDemo: boolean): str
       return signatureNote(1, status, isDemo);
     case 'execution':
       return signatureNote(2, status, isDemo);
+    case 'lending':
+      // Only present when a market on the route requires a permission.
+      if (status === 'done') return 'Permissions given';
+      return status === 'current' ? 'Required by the markets' : 'Asked by the lending markets';
     case 'submit':
       if (status === 'done') return isDemo ? 'Replay opened' : 'Submitted';
       return status === 'current' ? 'Ready to start' : 'Nothing moves before this';

@@ -6,6 +6,8 @@ import {
   executionFinancingClassSchema,
   executionFinancingCostKindSchema,
   migrationPhaseSchema,
+  ledgerCategorySchema,
+  ledgerComponentCodeSchema,
 } from '@debtshift/domain';
 import { describe, expect, it } from 'vitest';
 
@@ -18,6 +20,8 @@ import {
   FINANCING_CLASS_LABELS,
   FINANCING_COST_KIND_LABELS,
   LEDGER_CATEGORY_LABELS,
+  LEDGER_COMPONENT_LABELS,
+  ledgerComponentLabel,
   PHASE_LABELS,
   REJECTION_COPY,
   rejectionCopy,
@@ -71,10 +75,23 @@ describe('label coverage against the backend enums', () => {
   });
 
   it('covers every ledger category', () => {
-    // Inline in `ledgerEntrySchema`, so the list is mirrored here on purpose.
+    // Driven by the backend enum: a new category fails this until it has words.
     expect(Object.keys(LEDGER_CATEGORY_LABELS).sort()).toEqual(
-      ['COLLATERAL', 'FEE', 'PRINCIPAL', 'REFUND', 'RESIDUAL', 'SHORTFALL'].sort(),
+      [...ledgerCategorySchema.options].sort(),
     );
+  });
+
+  it('describes every ledger component the backend can record', () => {
+    for (const code of ledgerComponentCodeSchema.options) {
+      expect(LEDGER_COMPONENT_LABELS[code], code).toBeDefined();
+      expect(ledgerComponentLabel(code), code).not.toBe(code);
+    }
+  });
+
+  it('shows an unknown ledger component as sent rather than dropping it', () => {
+    expect(ledgerComponentLabel('SOMETHING_NEW')).toBe('SOMETHING_NEW');
+    expect(ledgerComponentLabel(undefined)).toBeUndefined();
+    expect(ledgerComponentLabel(null)).toBeUndefined();
   });
 
   it('covers all 28 rejection codes', () => {

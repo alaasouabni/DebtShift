@@ -16,6 +16,8 @@ contract MigrationEscrow is ReentrancyGuard {
     error FundingCommitmentMismatch();
     error FundingNotRefundable();
     error InvalidSettlement();
+    error InboundEvidenceAlreadyConsumed();
+    error UnfundedInboundAssignment();
 
     enum BalanceKind {
         TRANSPORTED_COLLATERAL,
@@ -70,6 +72,8 @@ contract MigrationEscrow is ReentrancyGuard {
     mapping(address account => bool allowed) public depositors;
     mapping(address account => bool allowed) public operators;
     mapping(bytes32 migrationId => mapping(address token => uint256 amount)) public balances;
+    mapping(address token => uint256 amount) public accountedBalances;
+    mapping(bytes32 evidenceHash => bool consumed) public consumedInboundEvidence;
     mapping(
         bytes32 migrationId => mapping(address token => mapping(BalanceKind kind => uint256 amount))
     ) public categorizedBalances;
@@ -86,6 +90,12 @@ contract MigrationEscrow is ReentrancyGuard {
         address indexed token,
         BalanceKind indexed kind,
         address sender,
+        uint256 amountUnits
+    );
+    event TransportInboundRegistered(
+        bytes32 indexed migrationId,
+        address indexed token,
+        bytes32 indexed evidenceHash,
         uint256 amountUnits
     );
     event BalanceReleased(
@@ -179,6 +189,33 @@ contract MigrationEscrow is ReentrancyGuard {
         emit CollateralAssigned(migrationId, address(token), msg.sender, amountUnits);
         emit BalanceCategoryAssigned(
             migrationId, address(token), BalanceKind.TRANSPORTED_COLLATERAL, sender, amountUnits
+        );
+    }
+
+    /// @notice Categorizes tokens already delivered directly by the configured transport provider.
+    /// @dev The operator supplies a unique persisted evidence hash, while the contract proves that
+    ///      the exact amount is present above all previously accounted migration balances.
+    function registerTransportInbound(
+        bytes32 migrationId,
+        IERC20 token,
+        uint256 amountUnits,
+        bytes32 evidenceHash
+    ) external onlyOperator nonReentrant {
+        _validateAssignment(migrationId, token, msg.sender, amountUnits);
+        if (evidenceHash == bytes32(0)) revert InvalidAssignment();
+        if (consumedInboundEvidence[evidenceHash]) revert InboundEvidenceAlreadyConsumed();
+        uint256 accounted = accountedBalances[address(token)];
+        uint256 actual = token.balanceOf(address(this));
+        if (actual < accounted || actual - accounted < amountUnits) {
+            revert UnfundedInboundAssignment();
+        }
+
+        consumedInboundEvidence[evidenceHash] = true;
+        _credit(migrationId, token, BalanceKind.TRANSPORTED_COLLATERAL, amountUnits);
+        emit TransportInboundRegistered(migrationId, address(token), evidenceHash, amountUnits);
+        emit CollateralAssigned(migrationId, address(token), msg.sender, amountUnits);
+        emit BalanceCategoryAssigned(
+            migrationId, address(token), BalanceKind.TRANSPORTED_COLLATERAL, msg.sender, amountUnits
         );
     }
 
@@ -374,6 +411,7 @@ contract MigrationEscrow is ReentrancyGuard {
     {
         balances[migrationId][address(token)] += amountUnits;
         categorizedBalances[migrationId][address(token)][kind] += amountUnits;
+        accountedBalances[address(token)] += amountUnits;
     }
 
     function _debit(bytes32 migrationId, IERC20 token, BalanceKind kind, uint256 amountUnits)
@@ -385,6 +423,7 @@ contract MigrationEscrow is ReentrancyGuard {
         }
         categorizedBalances[migrationId][address(token)][kind] = categorized - amountUnits;
         balances[migrationId][address(token)] -= amountUnits;
+        accountedBalances[address(token)] -= amountUnits;
     }
 
     function _validateAssignment(

@@ -118,6 +118,16 @@ export const AAVE_DATA_PROVIDER_ABI = [
 export const ERC20_METADATA_ABI = [
   {
     type: 'function',
+    name: 'allowance',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: 'allowance', type: 'uint256' }],
+  },
+  {
+    type: 'function',
     name: 'decimals',
     stateMutability: 'view',
     inputs: [],

@@ -5,5 +5,6 @@ export * from './local-chain.js';
 export * from './local-demo.js';
 export * from './local-deployment.js';
 export * from './morpho-blue.js';
+export * from './production-deployment.js';
 
 export const PROTOCOL_ADAPTER_VERSION = 1 as const;

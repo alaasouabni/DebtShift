@@ -6,15 +6,17 @@
  * and the frontend contract now says: consume backend capability metadata,
  * never infer the mode from the hostname, never expose a mode switch.
  *
- * Two shapes exist in the wild while the backend catches up with that
- * contract, so both are read here and nowhere else:
+ * Three shapes exist, so all of them are read here and nowhere else:
  *
- *   - legacy, what the API returns today:
+ *   - current, what the API returns since 2026-11-13:
+ *       execution: { mode, transportProvider, transportMode,
+ *                    simulatedTransport, fundedExecutionEnabled, warning }
+ *   - legacy, what the API returned before, still in recorded payloads:
  *       simulation: { provider: 'DEBTSHIFT_SIMULATOR', mode: 'SIMULATED', warning }
- *   - target, what `13-frontend-handoff.md` now specifies:
+ *   - interim, what `13-frontend-handoff.md` specified for a while:
  *       environment: { mode, transportProvider, executionEnabled, warning? }
  *
- * When neither is present this returns `undefined` and the UI fails closed —
+ * When none is present this returns `undefined` and the UI fails closed —
  * it says the environment is unknown and refuses to submit. It does not
  * assume a sandbox.
  */
@@ -32,8 +34,13 @@ export interface BackendEnvironment {
   /** The effective execution capability the backend reports. Never set here. */
   readonly executionEnabled: boolean;
   readonly warning?: string | undefined;
+  /**
+   * Whether the cross-chain transport is simulated, when the backend says
+   * so outright. `undefined` for shapes that did not carry it.
+   */
+  readonly simulatedTransport?: boolean | undefined;
   /** Which response shape this was read from. */
-  readonly source: 'environment' | 'legacy-simulation';
+  readonly source: 'execution' | 'environment' | 'legacy-simulation';
 }
 
 export function isEnvironmentMode(value: unknown): value is EnvironmentMode {
@@ -53,14 +60,34 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 /**
  * Read the environment out of a `prepare` response, whichever shape it has.
  *
- * The target shape wins when both are present. A malformed `environment`
- * object is NOT patched up with defaults: an unknown mode or a non-boolean
+ * The current shape wins, then the interim one, then the legacy one. A
+ * malformed object is NOT patched up with defaults: an unknown mode or a non-boolean
  * `executionEnabled` yields `undefined`, because guessing either one is the
  * exact inference the contract forbids.
  */
 export function readEnvironment(prepared: unknown): BackendEnvironment | undefined {
   const root = asRecord(prepared);
   if (root === undefined) return undefined;
+
+  const execution = asRecord(root.execution);
+  if (execution !== undefined) {
+    if (
+      !isEnvironmentMode(execution.mode) ||
+      !isTransportProvider(execution.transportProvider) ||
+      typeof execution.fundedExecutionEnabled !== 'boolean' ||
+      typeof execution.simulatedTransport !== 'boolean'
+    ) {
+      return undefined;
+    }
+    return {
+      mode: execution.mode,
+      transportProvider: execution.transportProvider,
+      executionEnabled: execution.fundedExecutionEnabled,
+      simulatedTransport: execution.simulatedTransport,
+      warning: typeof execution.warning === 'string' ? execution.warning : undefined,
+      source: 'execution',
+    };
+  }
 
   const environment = asRecord(root.environment);
   if (environment !== undefined) {
@@ -164,6 +191,8 @@ export function environmentBadge(environment: BackendEnvironment | undefined): E
  * that must be false in sandbox and testnet — where the workflow still has to
  * execute. So `executionEnabled` gates the two mainnet modes, read-only is
  * never submittable, and an unreported environment is never submittable.
+ * When the backend sends `fundedExecutionEnabled` itself, a `false` blocks
+ * submission in every mode: that is the backend's own word.
  *
  * This is a UI courtesy. The backend rejects a disallowed command itself; a
  * browser control can never enable execution.
@@ -172,6 +201,7 @@ export function canSubmit(environment: BackendEnvironment | undefined): boolean 
   if (environment === undefined) return false;
   if (environment.mode === 'mainnet-readonly') return false;
   if (environment.mode === 'mainnet') return environment.executionEnabled;
+  if (environment.source === 'execution') return environment.executionEnabled;
   return true;
 }
 
@@ -188,12 +218,19 @@ export function submitBlockedReason(
   if (environment.mode === 'mainnet' && !environment.executionEnabled) {
     return 'Mainnet execution is disabled on the server. Nothing in this browser can enable it.';
   }
+  if (environment.source === 'execution' && !environment.executionEnabled) {
+    return 'The backend reports funded execution as disabled. Nothing in this browser can enable it.';
+  }
   return undefined;
 }
 
 /** True when the transport-provider observations in this environment are simulated. */
 export function transportIsSimulated(environment: BackendEnvironment | undefined): boolean {
-  return environment?.transportProvider === 'DEBTSHIFT_SIMULATOR';
+  if (environment === undefined) return false;
+  // The backend's own statement wins over a guess from the provider name:
+  // on testnet the transport is simulated whatever it is called.
+  if (environment.simulatedTransport !== undefined) return environment.simulatedTransport;
+  return environment.transportProvider === 'DEBTSHIFT_SIMULATOR';
 }
 
 /**

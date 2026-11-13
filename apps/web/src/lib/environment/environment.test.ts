@@ -26,10 +26,113 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('readEnvironment — the legacy shape the API returns today', () => {
+function execution(overrides: Record<string, unknown> = {}) {
+  return {
+    execution: {
+      mode: 'sandbox',
+      transportProvider: 'DEBTSHIFT_SIMULATOR',
+      transportMode: 'SIMULATED',
+      simulatedTransport: true,
+      fundedExecutionEnabled: true,
+      warning: 'w',
+      ...overrides,
+    },
+  };
+}
+
+describe('readEnvironment — the shape the API returns', () => {
   it('reads the real captured prepare response as a sandbox', () => {
-    // The fixture is a real response: it carries `simulation`, not `environment`.
+    // The fixture is a real response from the API of 2026-11-13.
     const result = readEnvironment(prepared);
+    expect(result).toEqual({
+      mode: 'sandbox',
+      transportProvider: 'DEBTSHIFT_SIMULATOR',
+      executionEnabled: true,
+      simulatedTransport: true,
+      warning:
+        'Contract-backed sandbox: test assets and an explicitly simulated external transport provider.',
+      source: 'execution',
+    });
+    expect(canSubmit(result)).toBe(true);
+  });
+
+  it('reads every mode', () => {
+    for (const mode of ['sandbox', 'testnet', 'mainnet-readonly', 'mainnet'] as const) {
+      expect(readEnvironment(execution({ mode }))?.mode).toBe(mode);
+    }
+  });
+
+  it('takes the execution capability from fundedExecutionEnabled', () => {
+    expect(readEnvironment(execution({ fundedExecutionEnabled: false }))?.executionEnabled).toBe(
+      false,
+    );
+  });
+
+  it('wins over both older shapes when a response carries several', () => {
+    const result = readEnvironment({
+      ...execution({ mode: 'testnet' }),
+      environment: {
+        mode: 'mainnet',
+        transportProvider: 'NEAR_INTENTS_1CLICK',
+        executionEnabled: true,
+      },
+      simulation: { provider: 'DEBTSHIFT_SIMULATOR', mode: 'SIMULATED', warning: 'old' },
+    });
+    expect(result?.mode).toBe('testnet');
+    expect(result?.source).toBe('execution');
+  });
+
+  it('does not guess when a field is missing or of the wrong type', () => {
+    expect(readEnvironment(execution({ mode: 'production' }))).toBeUndefined();
+    expect(readEnvironment(execution({ fundedExecutionEnabled: 'true' }))).toBeUndefined();
+    expect(readEnvironment(execution({ simulatedTransport: undefined }))).toBeUndefined();
+    expect(readEnvironment(execution({ transportProvider: 'SOMETHING' }))).toBeUndefined();
+  });
+
+  it('does not fall back to an older shape when this one is malformed', () => {
+    const result = readEnvironment({
+      ...execution({ mode: 'nope' }),
+      simulation: { provider: 'DEBTSHIFT_SIMULATOR', mode: 'SIMULATED', warning: 'old' },
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it('blocks submission in any mode when the backend says funded execution is off', () => {
+    const off = readEnvironment(execution({ mode: 'testnet', fundedExecutionEnabled: false }));
+    expect(canSubmit(off)).toBe(false);
+    expect(submitBlockedReason(off)).toMatch(/funded execution as disabled/i);
+  });
+
+  it('trusts the backend on whether the transport is simulated', () => {
+    // On testnet the transport is simulated whatever the provider is called.
+    const testnet = readEnvironment(
+      execution({
+        mode: 'testnet',
+        transportProvider: 'NEAR_INTENTS_1CLICK',
+        simulatedTransport: true,
+      }),
+    );
+    expect(transportIsSimulated(testnet)).toBe(true);
+    const live = readEnvironment(
+      execution({
+        mode: 'mainnet',
+        transportProvider: 'NEAR_INTENTS_1CLICK',
+        simulatedTransport: false,
+      }),
+    );
+    expect(transportIsSimulated(live)).toBe(false);
+  });
+});
+
+describe('readEnvironment — the legacy shape, still in older recordings', () => {
+  it('reads a simulation block as the sandbox', () => {
+    const result = readEnvironment({
+      simulation: {
+        provider: 'DEBTSHIFT_SIMULATOR',
+        mode: 'SIMULATED',
+        warning: 'This route uses test assets and is not a 1Click testnet transaction.',
+      },
+    });
     expect(result).toEqual({
       mode: 'sandbox',
       transportProvider: 'DEBTSHIFT_SIMULATOR',
@@ -40,7 +143,7 @@ describe('readEnvironment — the legacy shape the API returns today', () => {
   });
 });
 
-describe('readEnvironment — the shape the contract now specifies', () => {
+describe('readEnvironment — the interim shape the handoff once specified', () => {
   it('reads every mode', () => {
     for (const mode of ['sandbox', 'testnet', 'mainnet-readonly', 'mainnet'] as const) {
       const result = readEnvironment({

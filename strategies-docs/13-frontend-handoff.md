@@ -37,8 +37,7 @@ rather than copy them into a second source of truth.
 
 ## Implementation baseline
 
-- Start from `main` at or after commit `f2e86f8` and pull the strategy update before changing
-  environment or execution UI.
+- Start from the latest `main` and pull before changing environment or execution UI.
 - Create a separate branch, for example `feat/frontend-product`.
 - The current `apps/web/src/components/debtshift-app.tsx` is a functional reference implementation,
   not a fixed design system.
@@ -57,11 +56,19 @@ Use the root setup rather than inventing a separate frontend fixture server:
 cp .env.example .env
 npm ci
 npm run infra:up
+npm run smoke:local
+```
+
+That command runs the complete built stack. For frontend hot reload, stop it with
+`npm run infra:down`, then run:
+
+```sh
+npm run infra:dependencies
 npm run db:migrate --workspace @debtshift/database
 npm run local:chains
 ```
 
-Keep `local:chains` running, then start the application in another terminal:
+Keep `local:chains` running and start the application in another terminal:
 
 ```sh
 npm run dev
@@ -474,7 +481,8 @@ prepared authorization payloads, user API keys, or provider secrets.
 - Compare at least two deterministic routes.
 - Prepare and review exact simulator terms.
 - Reject either signature without submitting.
-- Sign both payloads, start the migration, and reach `COMPLETED`.
+- Sign both payloads, start the migration, and reach financially final `SETTLED`; reach
+  `COMPLETED` when the NEAR registry is configured and its receipt is verified.
 - Exercise the refund/recovery scenario and reach `FAILED_SAFE` with recovery evidence.
 - Deteriorate destination liquidity before source close and reach `REQUOTE_REQUIRED`; verify that
   the UI asks for a fresh plan instead of showing recovery or retrying the signed plan.
@@ -499,15 +507,15 @@ Run the root `npm run check` before a release or when shared packages change.
 
 The frontend may proceed now, but these contracts are not yet production-final:
 
-| Dependency                              | Current state                                                  | Frontend preparation                                       |
-| --------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
-| Wallet challenge/session authentication | Not implemented                                                | Keep auth/session logic behind a dedicated boundary        |
-| Generated public API response DTOs      | Domain schemas exist; some controller bodies are still unknown | Centralize temporary response interfaces in the API client |
-| Live funded refinance                   | Production workflow/composition still incomplete               | Render backend capabilities; never infer availability      |
-| Smart-account preparation               | Verification exists; prepare currently emits EOA               | Do not claim EIP-1271 UX completion                        |
-| Streaming migration updates             | Not implemented                                                | Isolate polling so it can later be replaced                |
-| Explorer metadata                       | Not yet a frontend API contract                                | Use an environment map only for known chains               |
-| Mainnet readiness/enable state          | Server-side environment and operator responsibility            | Display read-only capability and exact preflight terms     |
+| Dependency                              | Current state                                                                  | Frontend preparation                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| Wallet challenge/session authentication | Not implemented                                                                | Keep auth/session logic behind a dedicated boundary        |
+| Generated public API response DTOs      | Domain schemas exist; some controller bodies are still unknown                 | Centralize temporary response interfaces in the API client |
+| Live funded refinance                   | Implemented behind server gates; credentialed validation and deployment remain | Render backend capabilities; never infer availability      |
+| Smart-account preparation               | Verification exists; prepare currently emits EOA                               | Do not claim EIP-1271 UX completion                        |
+| Streaming migration updates             | Not implemented                                                                | Isolate polling so it can later be replaced                |
+| Explorer metadata                       | Not yet a frontend API contract                                                | Use an environment map only for known chains               |
+| Mainnet readiness/enable state          | Server-side environment and operator responsibility                            | Display read-only capability and exact preflight terms     |
 
 Backend changes should preserve or version shared schemas. A breaking change must update this
 handoff, the shared type/schema package, tests, and the frontend owner in the same work period.

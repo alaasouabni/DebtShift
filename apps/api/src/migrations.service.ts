@@ -8,6 +8,7 @@ import {
   listWalletPositions,
 } from '@debtshift/database';
 import {
+  assertFundedExecutionEnabled,
   assertExecutionPlanIntegrity,
   computeMigrationId,
   executionPlanSchema,
@@ -18,6 +19,8 @@ import {
   providerQuoteSchema,
   refinanceIntentSchema,
   signatureSchema,
+  submittedSourceLendingAuthorizationSchema,
+  signedTargetLendingAuthorizationSchema,
   verifySignedExecutionPlan,
   verifySignedRefinanceIntent,
 } from '@debtshift/domain';
@@ -55,6 +58,8 @@ const executeMigrationRequestSchema = z
     signedPlan: signedPlanRequestSchema,
     quote: providerQuoteSchema,
     sourceSnapshot: positionSnapshotSchema,
+    sourceAuthorization: submittedSourceLendingAuthorizationSchema,
+    targetAuthorization: signedTargetLendingAuthorizationSchema,
   })
   .strict();
 
@@ -62,6 +67,11 @@ const executeMigrationRequestSchema = z
 export class MigrationsService {
   readonly #verifyingContract: Address;
   readonly #sourceClient;
+  readonly #sourceDebtBufferBps: number;
+  readonly #executionEnvironment: {
+    readonly DEBTSHIFT_MODE: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet';
+    readonly MAINNET_EXECUTION_ENABLED: boolean;
+  };
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -71,17 +81,22 @@ export class MigrationsService {
     @Inject(ConfigService) config: ConfigService,
   ) {
     this.#verifyingContract = config.getOrThrow<Address>('EIP712_VERIFYING_CONTRACT');
+    this.#executionEnvironment = {
+      DEBTSHIFT_MODE: config.getOrThrow<'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet'>(
+        'DEBTSHIFT_MODE',
+      ),
+      MAINNET_EXECUTION_ENABLED: config.getOrThrow<boolean>('MAINNET_EXECUTION_ENABLED'),
+    };
     this.#sourceClient = createPublicClient({
       transport: http(config.getOrThrow<string>('SOURCE_RPC_URL')),
     });
+    this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
   }
 
   async execute(input: unknown) {
     try {
       const parsed = executeMigrationRequestSchema.parse(input);
-      if (this.protocols.route.execution.kind !== 'SIMULATOR') {
-        throw new Error('Funded migration execution is disabled outside the simulator workflow.');
-      }
+      assertFundedExecutionEnabled(this.#executionEnvironment);
       const signedIntent = {
         ...parsed.signedIntent,
         intentHash: parsed.signedIntent.intentHash as Hex,
@@ -135,12 +150,23 @@ export class MigrationsService {
         ),
       ]);
       if (!intentValid || !planValid) throw new Error('Borrower authorization is invalid.');
+      const targetLendingAuthorization = await this.protocols.verifyTargetAuthorization(
+        parsed.targetAuthorization,
+        signedPlan.plan.borrower,
+        BigInt(signedPlan.plan.deadline),
+      );
+      const sourceLendingAuthorization = await this.protocols.verifySourceAuthorization(
+        parsed.sourceAuthorization,
+        signedPlan.plan,
+      );
 
       return await createAuthorizedMigration(this.database.db, {
         signedIntent,
         signedPlan,
         quote: parsed.quote,
         sourceSnapshot: parsed.sourceSnapshot,
+        sourceLendingAuthorization,
+        targetLendingAuthorization,
       });
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
@@ -190,21 +216,28 @@ export class MigrationsService {
     }
     const signed = plan.financing;
     const exactFields = [
-      'sourceDebtPayoffAssetUnits',
-      'sourceDebtPayoffUnits',
       'borrowerDebtPrepaymentUnits',
       'solverAdvancedCostUnits',
-      'solverPrincipalUnits',
       'solverFeeUnits',
       'capitalizedCostUnits',
       'separatelyPaidCostUnits',
-      'totalRequiredRepaymentAndFinancedCostUnits',
       'confirmedExternalFundingUnits',
-      'requiredDestinationBorrowUnits',
     ] as const;
     for (const field of exactFields) {
       if (current.financing[field] !== signed[field]) {
         throw new Error(`Financing revalidation changed signed field ${field}.`);
+      }
+    }
+    const boundedFields = [
+      'sourceDebtPayoffAssetUnits',
+      'sourceDebtPayoffUnits',
+      'solverPrincipalUnits',
+      'totalRequiredRepaymentAndFinancedCostUnits',
+      'requiredDestinationBorrowUnits',
+    ] as const;
+    for (const field of boundedFields) {
+      if (BigInt(current.financing[field]) > BigInt(signed[field])) {
+        throw new Error(`Financing revalidation exceeds signed field ${field}.`);
       }
     }
     if (
@@ -270,7 +303,7 @@ export class MigrationsService {
     ) {
       throw new Error('Transport destination receiver does not match the execution plan.');
     }
-    if (!isAddressEqual(signedPlan.plan.refundReceiver, quote.refundReceiver as Address)) {
+    if (!isAddressEqual(signedPlan.plan.transportRefundReceiver, quote.refundReceiver as Address)) {
       throw new Error('Transport refund receiver does not match the execution plan.');
     }
     if (hashSourcePosition(snapshot.position) !== signedPlan.plan.sourcePositionId) {
@@ -291,8 +324,15 @@ export class MigrationsService {
     ) {
       throw new Error('Execution plan target market is not authorized by the intent.');
     }
-    if (BigInt(snapshot.debtUnits) !== BigInt(signedPlan.plan.sourceRepaymentMaxUnits)) {
-      throw new Error('Source debt changed after the execution plan was prepared.');
+    const expectedSourceRepaymentMaximum = addBasisPointHeadroom(
+      BigInt(snapshot.debtUnits),
+      this.#sourceDebtBufferBps,
+    );
+    if (
+      BigInt(signedPlan.plan.sourceRepaymentMaxUnits) !== expectedSourceRepaymentMaximum ||
+      BigInt(signedIntent.intent.maxSourceDebtUnits) !== expectedSourceRepaymentMaximum
+    ) {
+      throw new Error('Source repayment cap does not match the configured debt-accrual headroom.');
     }
     if (BigInt(snapshot.collateralUnits) < BigInt(signedPlan.plan.sourceCollateralMinUnits)) {
       throw new Error('Source collateral is below the signed minimum.');
@@ -322,6 +362,9 @@ export class MigrationsService {
       BigInt(signedPlan.plan.principalMaxUnits) > BigInt(signedPlan.plan.sourceRepaymentMaxUnits)
     ) {
       throw new Error('Reserved principal exceeds the source repayment authorization.');
+    }
+    if (signedPlan.plan.principalMaxUnits !== signedPlan.plan.financing.solverPrincipalUnits) {
+      throw new Error('Reserved principal does not match the signed solver principal cap.');
     }
     if (!sameToken(signedPlan.plan.sourceDebtAsset, signedIntent.intent.sourcePosition.debtAsset)) {
       throw new Error('Execution plan source debt asset does not match the signed intent.');
@@ -370,4 +413,8 @@ function sameToken(
     left.address.toLowerCase() === right.address.toLowerCase() &&
     left.decimals === right.decimals
   );
+}
+
+function addBasisPointHeadroom(amount: bigint, basisPoints: number): bigint {
+  return (amount * BigInt(10_000 + basisPoints) + 9_999n) / 10_000n;
 }
