@@ -1512,6 +1512,10 @@ operative source of truth.
   finalized evidence records, 16 ledger entries, zero unexplained imbalance, and verified wallet
   session, SSE, and metrics. `17-sandbox-evidence-example.md` records every evidence and transaction
   hash and states why this is private-chain evidence rather than public execution proof.
+- GitHub Actions quality run `43409003610` passed TypeScript, the corrected Foundry/EVM and
+  deployment gates, NEAR format/test/clippy/WASM/sandbox checks, dependency and full-history secret
+  scans, production-container build and vulnerability scan, and runtime SBOM publication for
+  checkpoint `f0a807e`.
 
 ## Work-session handoff template
 
