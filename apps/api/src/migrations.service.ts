@@ -505,6 +505,12 @@ export class MigrationsService {
     if (!sameToken(quote.outputAsset, signedPlan.plan.destinationCollateralAsset)) {
       throw new Error('Transport output token does not match destination collateral.');
     }
+    const minimumOutputAllowedByIntent =
+      (BigInt(quote.expectedAmountOutUnits) * BigInt(10_000 - signedIntent.intent.maxSlippageBps)) /
+      10_000n;
+    if (BigInt(quote.minAmountOutUnits) < minimumOutputAllowedByIntent) {
+      throw new Error('Transport quote exceeds the signed slippage cap.');
+    }
     if (BigInt(quote.minAmountOutUnits) < BigInt(signedPlan.plan.minDestinationCollateralUnits)) {
       throw new Error('Transport minimum output is below the signed destination minimum.');
     }

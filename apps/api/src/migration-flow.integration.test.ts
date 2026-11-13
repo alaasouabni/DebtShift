@@ -5,8 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { debtShiftSchema, getMigrationDetails, type DebtShiftDatabase } from '@debtshift/database';
 import {
+  computeMigrationId,
+  computeRouteHash,
+  executionPlanSchema,
   getExecutionPlanTypedData,
   getRefinanceIntentTypedData,
+  hashExecutionPlan,
+  hashRefinanceIntent,
   parseDebtShiftEnvironment,
 } from '@debtshift/domain';
 import {
@@ -206,6 +211,60 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
       await expect(migrations.execute(request, deployment.deployer)).rejects.toThrow(
         'Wallet session does not match the signed borrower.',
       );
+
+      const zeroSlippageIntent = {
+        ...prepared.intent,
+        maxSlippageBps: 0,
+      };
+      const zeroSlippageIntentHash = hashRefinanceIntent(
+        zeroSlippageIntent,
+        prepared.verifyingContract,
+      );
+      const zeroSlippagePlan = executionPlanSchema.parse({
+        ...prepared.plan,
+        intentHash: zeroSlippageIntentHash,
+        migrationId: computeMigrationId(
+          zeroSlippageIntentHash,
+          prepared.quote.quoteHash,
+          BigInt(prepared.plan.nonce),
+        ),
+        routeHash: computeRouteHash(prepared.plan),
+      });
+      const [zeroSlippageIntentSignature, zeroSlippagePlanSignature] = await Promise.all([
+        borrower.signTypedData(
+          getRefinanceIntentTypedData(zeroSlippageIntent, prepared.verifyingContract),
+        ),
+        borrower.signTypedData(
+          getExecutionPlanTypedData(zeroSlippagePlan, prepared.verifyingContract),
+        ),
+      ]);
+      const zeroSlippageRequest = {
+        ...request,
+        signedIntent: {
+          intent: zeroSlippageIntent,
+          intentHash: zeroSlippageIntentHash,
+          signature: zeroSlippageIntentSignature,
+        },
+        signedPlan: {
+          plan: zeroSlippagePlan,
+          planHash: hashExecutionPlan(zeroSlippagePlan, prepared.verifyingContract),
+          signature: zeroSlippagePlanSignature,
+        },
+      };
+      await expect(migrations.execute(zeroSlippageRequest, deployment.borrower)).rejects.toThrow(
+        'Transport quote exceeds the signed slippage cap.',
+      );
+      const [rejectedMigrations, rejectedReservations, rejectedCommands] = await Promise.all([
+        database.select().from(debtShiftSchema.migrations),
+        database.select().from(debtShiftSchema.liquidityReservations),
+        database.select().from(debtShiftSchema.commands),
+      ]);
+      expect({ rejectedMigrations, rejectedReservations, rejectedCommands }).toEqual({
+        rejectedMigrations: [],
+        rejectedReservations: [],
+        rejectedCommands: [],
+      });
+
       const created = await migrations.execute(request, deployment.borrower);
       expect(created.created).toBe(true);
 

@@ -256,14 +256,38 @@ describe('canonical authorization hashing', () => {
     }).toEqual(canonicalFixture.outputs);
   });
 
-  it('rejects a route mutation against the signed route hash', () => {
+  it.each([
+    ['chain', (plan: ReturnType<typeof buildPlan>) => (plan.sourceMarket.chainId = 1)],
+    [
+      'market',
+      (plan: ReturnType<typeof buildPlan>) =>
+        (plan.targetMarket.deployment = '0x4100000000000000000000000000000000000004'),
+    ],
+    [
+      'token',
+      (plan: ReturnType<typeof buildPlan>) =>
+        (plan.destinationCollateralAsset.address = '0x6100000000000000000000000000000000000006'),
+    ],
+    [
+      'receiver',
+      (plan: ReturnType<typeof buildPlan>) =>
+        (plan.destinationReceiver = '0x7200000000000000000000000000000000000007'),
+    ],
+    [
+      'principal cap',
+      (plan: ReturnType<typeof buildPlan>) => (plan.principalMaxUnits = plan.targetDebtMaxUnits),
+    ],
+    [
+      'fee cap',
+      (plan: ReturnType<typeof buildPlan>) =>
+        (plan.feeMaxUnits = plan.financing.capitalizedCostUnits),
+    ],
+  ])('rejects a %s mutation against the signed route hash', (_field, mutate) => {
     const plan = buildPlan();
     assertExecutionPlanIntegrity(plan);
 
-    const mutated = executionPlanSchema.parse({
-      ...plan,
-      destinationReceiver: '0x7100000000000000000000000000000000000007',
-    });
+    const mutated = structuredClone(plan);
+    mutate(mutated);
     expect(() => assertExecutionPlanIntegrity(mutated)).toThrow('route hash');
   });
 
@@ -283,6 +307,18 @@ describe('canonical authorization hashing', () => {
     await expect(
       verifyExecutionPlanEoaSignature(plan, verifyingContract, planSignature),
     ).resolves.toBe(true);
+  });
+
+  it('rejects a slippage-cap mutation against the signed intent', async () => {
+    const intent = buildIntent();
+    const signature = await account.signTypedData(
+      getRefinanceIntentTypedData(intent, verifyingContract),
+    );
+    const mutated = refinanceIntentSchema.parse({ ...intent, maxSlippageBps: 51 });
+
+    await expect(
+      verifyRefinanceIntentEoaSignature(mutated, verifyingContract, signature),
+    ).resolves.toBe(false);
   });
 });
 

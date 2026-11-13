@@ -82,7 +82,7 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] TypeScript and Solidity hashes match fixed fixtures.
 - [x] EOA and EIP-1271 signatures are supported as designed.
 - [x] Nonce replay, expiry, and mutated route tests fail.
-- [ ] Chain, market, token, receiver, principal, fee, and slippage caps are enforced.
+- [x] Chain, market, token, receiver, principal, fee, and slippage caps are enforced.
 - [x] Supplementary-funding escrow enforces migration, asset, chain, amount, use, deadline, and refund
       receiver isolation.
 - [x] The liquidity vault rejects reservations with stale, mismatched, or non-zero-shortfall

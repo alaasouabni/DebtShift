@@ -1391,6 +1391,25 @@ operative source of truth.
 - The complete repository gate passes with 73 worker tests, including all five contract-backed local
   execution-port cases, plus the expanded optimizer matrix, OpenAPI drift, format, lint, type, and
   production-build checks.
+- GitHub Actions quality run `43397484435` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for supplementary-funding checkpoint `9bccca3`.
+
+### 2026-11-13 - Signed route and slippage caps enforced at execution
+
+- Audited the complete route commitment: chain and market identities, source/destination tokens,
+  deposit/destination/refund/payout receivers, principal, fee, financing, collateral bounds, quote,
+  and deadline are all included in the deterministic route hash signed by the borrower.
+- Added explicit mutation tests for chain, market, token, receiver, principal, and fee fields. Each
+  stale commitment is rejected before execution, and a separately mutated slippage limit invalidates
+  the signed refinance intent.
+- Closed an execute-time gap for externally assembled requests: the API now independently derives
+  the minimum output permitted by the signed slippage basis points and rejects a persisted provider
+  quote whose minimum output is weaker, even when both authorization layers are freshly re-signed.
+- The authenticated two-chain API flow proves a zero-slippage request against the normal 50-bps
+  quote creates no migration, reservation, or command; the original bounded request then succeeds.
+- The complete repository gate passes deterministic OpenAPI regeneration, formatting, lint, type
+  checks, all package tests (including 54 domain, 24 API, and 73 worker tests), and all ten
+  production builds.
 
 ## Work-session handoff template
 
