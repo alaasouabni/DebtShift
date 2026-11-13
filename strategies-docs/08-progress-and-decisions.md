@@ -12,7 +12,7 @@ This file is updated throughout implementation. It is the first place to inspect
 | M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                                                                                                      |
 | M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                                                                                                  |
 | M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                                                                                                   |
-| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                                       |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, safe cancellation/source-revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                              |
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains. |
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                                                                                              |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.                                                                                  |
@@ -1265,6 +1265,26 @@ operative source of truth.
   checks, all package tests (including 21 database, 24 API, and 60 worker tests), and all ten
   production builds. The aggregate run also verifies the bounded 30-second cold migration setup
   across all 13 migrations.
+- GitHub Actions quality run `43388863063` passed its TypeScript, EVM, NEAR, security, container,
+  and SBOM jobs for checkpoint `7ce52a3`. The pinned production Aave/Morpho fork also passed on that
+  exact commit against Base's official free RPC at block `55,600,000`.
+
+### 2026-11-13 - Safe source-close revert release completed
+
+- Classified source-close failures by transaction certainty. Only a failed pre-broadcast contract
+  simulation or an explicitly finalized reverted receipt is eligible for automatic release; an
+  unknown broadcast or receipt outcome cannot be treated as a revert.
+- After a proven safe revert, the execution adapter rechecks for an already-finalized source-close
+  event and confirms the source position remains open within the signed collateral/debt bounds before
+  releasing the undrawn vault reservation. The release receipt becomes finalized financing/requote
+  evidence and the signed plan cannot be silently reused.
+- Added a real two-Anvil scenario that pauses the source adapter after reservation. It proves the
+  close is never broadcast, the 10 WETH / 10,000 USDC source position is unchanged, no source-close
+  evidence exists, the vault reservation and reserved-undrawn balance are zeroed, and the workflow
+  terminates `REQUOTE_REQUIRED`.
+- Handler unit coverage and all 16 durable two-chain workflow scenarios pass after the change. The
+  complete repository gate passes OpenAPI drift, formatting, lint, types, all tests (62 worker
+  tests), and all production builds.
 
 ## Work-session handoff template
 

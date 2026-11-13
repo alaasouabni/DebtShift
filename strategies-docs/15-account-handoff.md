@@ -20,24 +20,23 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `635cdbd`.
+- Previous remote checkpoint before this handoff: `7ce52a3`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. Borrower-owned reads for persisted signed refinance intents and exact execution plans.
-2. Safe borrower cancellation: immediate before reservation and contract-backed vault release after
-   reservation, with a hard rejection once source closure may race.
-3. A terminal `CANCELLED` phase, request/completion evidence, durable `CANCEL_MIGRATION` command,
-   PostgreSQL migration `0012`, and compatible EVM/NEAR terminal enums.
-4. An outbox concurrency fix that dead-letters terminal-command messages instead of resurrecting a
-   cancelled financial command.
-5. A borrower cancel action plus regenerated OpenAPI 3.1 and TypeScript SDK contracts for artifact
-   reads, cancellation success, and cancellation conflict responses.
-6. Updated roadmap/progress evidence and complete domain, database, API, worker, EVM, and NEAR
-   validation for this checkpoint.
+1. Transaction-certainty classification for source-close failures: only pre-broadcast simulation
+   failures and finalized reverted receipts are automatically releasable.
+2. A fail-safe source-revert path that rechecks source-close evidence and proves the open position is
+   still within signed bounds before releasing the undrawn vault reservation and requiring a fresh quote.
+3. A real two-Anvil scenario proving a paused source adapter moves no borrower assets, releases the
+   reservation onchain, records no false source-close evidence, and ends `REQUOTE_REQUIRED`.
+4. Refactored borrower cancellation and source-revert handling through the same verified undrawn
+   reservation-release primitive without conflating their evidence reasons.
+5. Refreshed pinned Aave/Morpho fork evidence on pushed checkpoint `7ce52a3` using the official free
+   Base RPC, plus a fully green GitHub quality run `43388863063`.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -49,7 +48,7 @@ RPC URLs or secrets.
 | Gate                                      | Result                                                                                     |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Full `npm run check`                      | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds         |
-| Worker suite                              | Pass: 60 tests, including 15 durable two-chain workflows and reserved cancellation         |
+| Worker suite                              | Pass: 62 tests, including 16 durable workflows and safe source-revert release              |
 | Database suite and migration drill        | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified     |
 | API suite                                 | Pass: 24 tests, including owner-scoped artifacts, cancellation race rejection, and OpenAPI |
 | `npm run check:evm`                       | Pass: compiler, unit, fuzz, invariant, and lint gates                                      |

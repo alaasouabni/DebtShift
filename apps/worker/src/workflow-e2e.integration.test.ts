@@ -652,6 +652,62 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
     });
   }, 60_000);
 
+  it('releases the reservation and preserves the source position after a safe source-close revert', async () => {
+    await withWorkflow('SUCCESS', async ({ database, deployment, source, createProcessor }) => {
+      const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+      await runUntil(database, createProcessor, migrationId, 'RESERVED');
+      await setSourceAdapterPaused(deployment, source, true);
+
+      await runUntil(database, createProcessor, migrationId, 'REQUOTE_REQUIRED');
+      const details = await getMigrationDetails(database, migrationId);
+      const requote = details?.evidence.find(({ type }) => type === 'REQUOTE_REQUIRED');
+      expect(details?.migration.phase).toBe('REQUOTE_REQUIRED');
+      expect(details?.evidence.some(({ type }) => type === 'SOURCE_CLOSE')).toBe(false);
+      expect(details?.commands.find(({ type }) => type === 'CLOSE_SOURCE')?.status).toBe(
+        'SUCCEEDED',
+      );
+      expect(details?.reservations[0]?.status).toBe('RELEASED');
+      expect(requote?.normalizedPayload).toEqual(
+        expect.objectContaining({
+          action: 'releaseFailedSourceClose',
+          reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+          outcome: 'REQUOTE_REQUIRED',
+          failureStage: 'PRE_BROADCAST_SIMULATION',
+          sourcePosition: expect.objectContaining({ disposition: 'UNCHANGED' }),
+        }),
+      );
+
+      const [sourceArtifact, vaultArtifact] = await Promise.all([
+        loadFoundryArtifact('MockSourceLending'),
+        loadFoundryArtifact('LiquidityVault'),
+      ]);
+      const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
+        source.publicClient.readContract({
+          address: deployment.source.lending,
+          abi: sourceArtifact.abi,
+          functionName: 'positions',
+          args: [deployment.borrower],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservations',
+          args: [migrationId],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservedUndrawn',
+          args: [deployment.source.debtToken],
+        }),
+      ]);
+      expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+      expect(Array.isArray(reservation) ? reservation[6] : undefined).toBe(4);
+      expect(Array.isArray(reservation) ? reservation[8] : undefined).toBe(0n);
+      expect(reservedUndrawn).toBe(0n);
+    });
+  }, 60_000);
+
   for (const testCase of [
     {
       name: 'collateral price deteriorates before source close',
@@ -1142,6 +1198,28 @@ async function consumeDestinationLiquidity(
     deployment.destination.lending,
     'openPosition',
     [account.address, account.address, account.address, collateralUnits, 92_000_000_000n, '0x'],
+  );
+}
+
+async function setSourceAdapterPaused(
+  deployment: LocalDebtShiftDeployment,
+  source: LocalAnvilChain,
+  paused: boolean,
+): Promise<void> {
+  const account = privateKeyToAccount(DEFAULT_ANVIL_DEPLOYER_KEY);
+  const wallet = createWalletClient({
+    account,
+    chain: source.chain,
+    transport: http(source.rpcUrl),
+  });
+  const sourceAdapter = await loadFoundryArtifact('SourceAdapter');
+  await write(
+    wallet,
+    source.publicClient,
+    sourceAdapter.abi,
+    deployment.source.adapter,
+    'setPaused',
+    [paused],
   );
 }
 

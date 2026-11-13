@@ -36,7 +36,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 ## Failure behavior
 
 - [ ] Quote expiry before source closure moves no assets.
-- [ ] Source revert leaves the source position unchanged and releases reservation.
+- [x] A proven pre-broadcast source revert or finalized reverted receipt leaves the source position
+      unchanged, releases the undrawn reservation onchain, and requires a fresh quote; uncertain
+      broadcast/receipt failures never release optimistically.
 - [ ] Transport refund enters recovery and verifies actual custody.
 - [ ] Wrong destination token, amount, or receiver cannot open the target position.
 - [ ] Unsafe destination market state prevents target borrowing.

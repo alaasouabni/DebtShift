@@ -42,6 +42,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import {
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
+  PreSourceCloseFailureError,
   type ChainCanonicalityFailure,
   type FinalizedChainAction,
   type MigrationExecutionPort,
@@ -49,6 +50,25 @@ import {
 
 type EvmPublicClient = PublicClient<Transport, Chain>;
 type EvmWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
+
+class PreBroadcastSimulationError extends Error {
+  override readonly name = 'PreBroadcastSimulationError';
+
+  constructor(functionName: string, cause: unknown) {
+    super(`${functionName} failed during pre-broadcast simulation.`, { cause });
+  }
+}
+
+class FinalizedTransactionRevertError extends Error {
+  override readonly name = 'FinalizedTransactionRevertError';
+
+  constructor(
+    functionName: string,
+    readonly transactionHash: Hex,
+  ) {
+    super(`${functionName} reverted in finalized transaction ${transactionHash}.`);
+  }
+}
 
 interface ProductionArtifacts {
   readonly vault: FoundryArtifact;
@@ -440,39 +460,11 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
   async cancelBeforeSourceClose(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
     await this.#assertContext(context);
     const artifacts = await this.#artifacts;
-    const migrationId = context.migration.migrationId as Hex;
-    const existing = await this.#eventAction(
-      this.#sourcePublic,
-      this.#environment.SOURCE_CHAIN_ID,
-      this.#environment.SOURCE_VAULT_ADDRESS,
-      eventTopics.reservationReleased,
-      [migrationId],
-      {
-        action: 'cancelBeforeSourceClose',
-        reason: 'BORROWER_REQUESTED_CANCELLATION',
-        reconciled: true,
-      },
-    );
-    if (existing !== undefined) return existing;
-    const action = await this.#writeAction(
-      this.#sourceWallet,
-      this.#sourcePublic,
-      this.#environment.SOURCE_CHAIN_ID,
-      artifacts.vault,
-      this.#environment.SOURCE_VAULT_ADDRESS,
-      'release',
-      [migrationId],
-      {
-        action: 'cancelBeforeSourceClose',
-        reason: 'BORROWER_REQUESTED_CANCELLATION',
-        planHash: context.signedPlan.planHash,
-      },
-    );
-    const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
-    if (exposure.status !== 4 || exposure.principalUnits !== 0n) {
-      throw new Error('Borrower cancellation did not release the undrawn source reservation.');
-    }
-    return action;
+    return this.#releaseUndrawnReservation(context, artifacts, {
+      action: 'cancelBeforeSourceClose',
+      reason: 'BORROWER_REQUESTED_CANCELLATION',
+      planHash: context.signedPlan.planHash,
+    });
   }
 
   async closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
@@ -506,24 +498,74 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       plan,
       this.#environment.EIP712_VERIFYING_CONTRACT,
     ).message;
-    const action = await this.#writeAction(
-      this.#sourceWallet,
-      this.#sourcePublic,
-      this.#environment.SOURCE_CHAIN_ID,
-      artifacts.sourceAdapter,
-      this.#environment.SOURCE_ADAPTER_ADDRESS,
-      'closeSource',
-      [authorization, context.signedPlan.signature],
-      {
-        action: 'closeSource',
-        borrower: plan.borrower,
-        sourceRepaymentMaximumUnits: plan.sourceRepaymentMaxUnits,
-        sourceCollateralMinimumUnits: plan.sourceCollateralMinUnits,
-        feasibilityHash: proof.feasibilityHash,
-        feasibilityTransactionHash: proof.transactionHash,
-        financingRevalidation: revalidation,
-      },
-    );
+    let action: FinalizedChainAction;
+    try {
+      action = await this.#writeAction(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        artifacts.sourceAdapter,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        'closeSource',
+        [authorization, context.signedPlan.signature],
+        {
+          action: 'closeSource',
+          borrower: plan.borrower,
+          sourceRepaymentMaximumUnits: plan.sourceRepaymentMaxUnits,
+          sourceCollateralMinimumUnits: plan.sourceCollateralMinUnits,
+          feasibilityHash: proof.feasibilityHash,
+          feasibilityTransactionHash: proof.transactionHash,
+          financingRevalidation: revalidation,
+        },
+      );
+    } catch (error) {
+      if (
+        !(error instanceof PreBroadcastSimulationError) &&
+        !(error instanceof FinalizedTransactionRevertError)
+      ) {
+        throw error;
+      }
+      const reconciled = await this.#eventAction(
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        eventTopics.sourceClosed,
+        [migrationId, addressTopic(plan.borrower)],
+        { action: 'closeSource', reconciled: true },
+      );
+      if (reconciled !== undefined) {
+        return withRevalidation(reconciled, await this.#revalidate(context, 'AFTER_SOURCE_CLOSE'));
+      }
+      const sourcePosition = await this.#aave.readPosition(plan.borrower);
+      if (
+        sourcePosition === undefined ||
+        BigInt(sourcePosition.debtUnits) === 0n ||
+        BigInt(sourcePosition.debtUnits) > BigInt(plan.sourceRepaymentMaxUnits) ||
+        BigInt(sourcePosition.collateralUnits) < BigInt(plan.sourceCollateralMinUnits)
+      ) {
+        throw new Error('Source position changed after the failed source-close attempt.', {
+          cause: error,
+        });
+      }
+      throw new PreSourceCloseFailureError(
+        await this.#releaseUndrawnReservation(context, artifacts, {
+          action: 'releaseFailedSourceClose',
+          reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+          outcome: 'REQUOTE_REQUIRED',
+          failureStage:
+            error instanceof PreBroadcastSimulationError
+              ? 'PRE_BROADCAST_SIMULATION'
+              : 'FINALIZED_REVERT',
+          sourcePosition: {
+            borrower: plan.borrower,
+            snapshotId: sourcePosition.snapshotId,
+            disposition: 'UNCHANGED',
+          },
+          financingRevalidation: revalidation,
+        }),
+        error,
+      );
+    }
     if ((await this.#aave.readPosition(plan.borrower)) !== undefined) {
       throw new Error('Aave source position remains open after the finalized close transaction.');
     }
@@ -1401,6 +1443,39 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
     if (exposure.status !== 4) {
       throw new Error('Failed feasibility did not release the undrawn source reservation.');
+    }
+    return action;
+  }
+
+  async #releaseUndrawnReservation(
+    context: MigrationExecutionContext,
+    artifacts: ProductionArtifacts,
+    payload: Record<string, unknown>,
+  ): Promise<FinalizedChainAction> {
+    const migrationId = context.migration.migrationId as Hex;
+    const existing = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      eventTopics.reservationReleased,
+      [migrationId],
+      { ...payload, reconciled: true },
+    );
+    const action =
+      existing ??
+      (await this.#writeAction(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        artifacts.vault,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'release',
+        [migrationId],
+        payload,
+      ));
+    const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+    if (exposure.status !== 4 || exposure.principalUnits !== 0n) {
+      throw new Error('Reservation release did not clear the undrawn source exposure.');
     }
     return action;
   }
@@ -2326,17 +2401,21 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     args: readonly unknown[],
     payload: Record<string, unknown>,
   ): Promise<FinalizedChainAction> {
-    const simulation = await client.simulateContract({
-      account: this.#account,
-      address,
-      abi: artifact.abi,
-      functionName,
-      args,
-    });
+    const simulation = await client
+      .simulateContract({
+        account: this.#account,
+        address,
+        abi: artifact.abi,
+        functionName,
+        args,
+      })
+      .catch((error: unknown) => {
+        throw new PreBroadcastSimulationError(functionName, error);
+      });
     const hash = await wallet.writeContract(simulation.request);
     const confirmations = this.#confirmationsForClient(client);
     const receipt = await client.waitForTransactionReceipt({ hash, confirmations });
-    if (receipt.status !== 'success') throw new Error(`${functionName} reverted: ${hash}`);
+    if (receipt.status !== 'success') throw new FinalizedTransactionRevertError(functionName, hash);
     return finalizedAction(chainId, receipt, confirmations, payload);
   }
 

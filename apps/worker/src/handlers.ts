@@ -68,6 +68,17 @@ export class PreSourceCapacityDeteriorationError extends Error {
   }
 }
 
+export class PreSourceCloseFailureError extends Error {
+  override readonly name = 'PreSourceCloseFailureError';
+
+  constructor(
+    readonly action: FinalizedChainAction,
+    cause?: unknown,
+  ) {
+    super('Source closure failed before changing the source position.', { cause });
+  }
+}
+
 export interface MigrationExecutionPort {
   verifyCanonicalEvidence(
     records: readonly Evidence[],
@@ -194,7 +205,12 @@ export function createWorkflowHandlers({
         try {
           action = await execution.closeSource(context);
         } catch (error) {
-          if (!(error instanceof PreSourceCapacityDeteriorationError)) throw error;
+          if (
+            !(error instanceof PreSourceCapacityDeteriorationError) &&
+            !(error instanceof PreSourceCloseFailureError)
+          ) {
+            throw error;
+          }
           return [
             chainEvidence(
               context.migration.migrationId,

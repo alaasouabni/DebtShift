@@ -16,6 +16,7 @@ import {
   createWorkflowHandlers,
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
+  PreSourceCloseFailureError,
   type FinalizedChainAction,
   type MigrationExecutionPort,
   type WorkflowContextStore,
@@ -584,6 +585,42 @@ describe('simulated workflow handlers', () => {
           reservation: { status: 'RELEASED', principalReceivableUnits: '0' },
           sourcePosition: { disposition: 'UNCHANGED' },
         }),
+      }),
+    );
+  });
+
+  it('turns a safely reverted source close into released-reservation requote evidence', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const releasedAction: FinalizedChainAction = {
+      ...action(),
+      payload: {
+        action: 'releaseFailedSourceClose',
+        reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+        outcome: 'REQUOTE_REQUIRED',
+        failureStage: 'PRE_BROADCAST_SIMULATION',
+        sourcePosition: { disposition: 'UNCHANGED' },
+      },
+    };
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      closeSource: vi.fn(async () => {
+        throw new PreSourceCloseFailureError(releasedAction);
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'CLOSE_SOURCE').execute(command('CLOSE_SOURCE'));
+
+    expect(records.map((record) => record.type)).toEqual([
+      'FINANCING_REVALIDATION',
+      'REQUOTE_REQUIRED',
+    ]);
+    expect(records[1]?.normalizedPayload).toEqual(
+      expect.objectContaining({
+        reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+        failureStage: 'PRE_BROADCAST_SIMULATION',
+        sourcePosition: { disposition: 'UNCHANGED' },
       }),
     );
   });
