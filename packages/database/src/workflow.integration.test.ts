@@ -14,6 +14,7 @@ import {
   enqueueCommand,
   planNextCommand,
   publishPendingOutbox,
+  type OutboxEnvelope,
 } from './workflow.js';
 
 const migrationsDirectory = fileURLToPath(new URL('../migrations/', import.meta.url));
@@ -172,6 +173,42 @@ describe('durable workflow and transactional outbox', () => {
       status: 'DEAD_LETTER',
       last_error: 'Command is already terminal with status CANCELLED.',
     });
+    await postgres.exec(`
+      DELETE FROM outbox_messages WHERE command_id = '${commandId}';
+      DELETE FROM commands WHERE command_id = '${commandId}';
+    `);
+  });
+
+  it('carries only validated W3C context through the durable outbox envelope', async () => {
+    const migrationId = hash('5');
+    const traceContext = {
+      traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      tracestate: 'debtshift=workflow',
+    } as const;
+    const commandId = await enqueueCommand(
+      database,
+      migrationId,
+      {
+        type: 'CLOSE_SOURCE',
+        idempotencyKey: `trace-context:${migrationId}`,
+        payload: { migrationId },
+      },
+      traceContext,
+    );
+    let delivered: OutboxEnvelope | undefined;
+
+    await publishPendingOutbox(database, async (message) => {
+      if (message.commandId === commandId) delivered = message;
+    });
+
+    expect(delivered).toEqual(
+      expect.objectContaining({
+        commandId,
+        traceContext,
+        payload: { commandId, migrationId, type: 'CLOSE_SOURCE' },
+      }),
+    );
+    expect(delivered?.payload).not.toHaveProperty('traceContext');
     await postgres.exec(`
       DELETE FROM outbox_messages WHERE command_id = '${commandId}';
       DELETE FROM commands WHERE command_id = '${commandId}';

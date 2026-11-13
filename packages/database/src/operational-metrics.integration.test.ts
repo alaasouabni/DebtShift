@@ -69,6 +69,7 @@ describe('authoritative operational metrics', () => {
       count: 1,
       amountUnits: '100',
     });
+    expect(snapshot.unexplainedLedgerImbalanceUnits).toBe('7');
     expect(snapshot.phaseTransitions).toContainEqual({
       labels: { phase: 'RESERVED' },
       count: 1,
@@ -130,7 +131,11 @@ function seedSql(): string {
        verification_method, verifier_version)
     VALUES ('${hash('e')}', '${hash('5')}', 'LIQUIDITY_RESERVATION', 1, 'TEST',
             'anvil:31337', '${hash('f')}', '{}', '${NOW.toISOString()}', 'FINALIZED',
-            'TEST', '1');
+            'TEST', '1'),
+           ('${hash('f')}', '${hash('5')}', 'LEDGER_RECONCILIATION', 1, 'TEST',
+            'anvil:31338', '${hash('0')}',
+            '{"ledger":{"unexplainedImbalanceUnits":"7"}}',
+            '${NOW.toISOString()}', 'FINALIZED', 'TEST', '1');
     INSERT INTO ledger_entries
       (entry_id, migration_id, sequence, component_code, component_id, evidence_id,
        basis, chain_id, token, amount_units, debit_party, credit_party, category)

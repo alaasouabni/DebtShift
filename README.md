@@ -60,6 +60,20 @@ durable timeline, evidence, ledger, and recovery state. Live updates use the cur
 `GET /v1/migrations/:migrationId/stream` SSE endpoint and fall back to the last PostgreSQL audit
 sequence after a disconnect.
 
+Start the same stack with the optional local observability profile using:
+
+```sh
+npm run infra:observability:up
+```
+
+This selects the local OTLP collector for the API and worker, provisions Prometheus and the
+read-only DebtShift Grafana dashboard, and starts Jaeger. Grafana is bound to
+`http://127.0.0.1:3002`, Prometheus to `http://127.0.0.1:9090`, and Jaeger to
+`http://127.0.0.1:16686`. Use `npm run infra:observability:down` to stop the profile. Tracing is a
+deployment-selected feature and remains a no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is blank.
+Only W3C trace context and reviewed low-risk attributes are emitted; request bodies, wallet
+signatures, provider payloads, credentials, and raw URLs are excluded.
+
 Connecting a wallet also proves API identity through a five-minute, one-time EIP-4361 challenge.
 The API returns an eight-hour opaque `HttpOnly`, `SameSite=Strict` session cookie and persists only
 its SHA-256 hash. This login signature is not financial authorization: refinance execution still

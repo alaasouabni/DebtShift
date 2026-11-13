@@ -43,6 +43,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { compareRoutes } from '@debtshift/optimizer';
+import { captureTraceContext } from '@debtshift/observability';
 import { concatMap, from, mergeMap, timer, type Observable } from 'rxjs';
 import { createPublicClient, http, isAddressEqual, type Address, type Hex } from 'viem';
 import type { z } from 'zod';
@@ -150,14 +151,18 @@ export class MigrationsService {
         signedPlan.plan,
       );
 
-      const result = await createAuthorizedMigration(this.database.db, {
-        signedIntent,
-        signedPlan,
-        quote: parsed.quote,
-        sourceSnapshot: parsed.sourceSnapshot,
-        sourceLendingAuthorization,
-        targetLendingAuthorization,
-      });
+      const result = await createAuthorizedMigration(
+        this.database.db,
+        {
+          signedIntent,
+          signedPlan,
+          quote: parsed.quote,
+          sourceSnapshot: parsed.sourceSnapshot,
+          sourceLendingAuthorization,
+          targetLendingAuthorization,
+        },
+        captureTraceContext(),
+      );
       Logger.log(
         JSON.stringify({
           event: result.created ? 'workflow_migration_authorized' : 'workflow_migration_reconciled',
@@ -249,6 +254,7 @@ export class MigrationsService {
         this.database.db,
         record,
         authenticatedWallet,
+        captureTraceContext(),
       );
       return { migrationId, phase, cancellationRequested: true as const };
     } catch (error) {

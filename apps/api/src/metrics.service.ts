@@ -159,6 +159,13 @@ export function renderOperationalMetrics(
     'gauge',
     snapshot.ledger.map(({ labels, amountUnits }) => ({ labels, value: amountUnits })),
   );
+  appendMetric(
+    lines,
+    'debtshift_ledger_unexplained_imbalance_units',
+    'Absolute unexplained base-unit imbalance reported by finalized ledger reconciliations.',
+    'gauge',
+    [{ labels: {}, value: snapshot.unexplainedLedgerImbalanceUnits }],
+  );
   return `${lines.join('\n')}\n`;
 }
 

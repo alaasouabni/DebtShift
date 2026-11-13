@@ -17,6 +17,7 @@ import {
   type ProviderQuote,
   type SignedExecutionPlan,
   type SignedRefinanceIntent,
+  type TraceContextCarrier,
 } from '@debtshift/domain';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
 
@@ -60,6 +61,7 @@ export interface CreateAuthorizedMigrationResult {
 export async function createAuthorizedMigration(
   database: DebtShiftDatabase,
   input: CreateAuthorizedMigrationInput,
+  traceContext?: TraceContextCarrier,
 ): Promise<CreateAuthorizedMigrationResult> {
   const {
     signedIntent,
@@ -304,7 +306,12 @@ export async function createAuthorizedMigration(
 
       const planned = planNextCommand(migrationId, 'AUTHORIZED');
       if (planned === undefined) throw new Error('Authorized migration has no next command.');
-      const initialCommandId = await enqueueCommandInTransaction(transaction, migrationId, planned);
+      const initialCommandId = await enqueueCommandInTransaction(
+        transaction,
+        migrationId,
+        planned,
+        traceContext,
+      );
       return { created: true, migrationId, initialCommandId };
     },
     { isolationLevel: 'serializable', accessMode: 'read write', deferrable: false },

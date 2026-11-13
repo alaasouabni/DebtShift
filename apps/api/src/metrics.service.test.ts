@@ -26,6 +26,7 @@ describe('Prometheus operational metrics renderer', () => {
       alerts: [],
       outbox: [],
       ledger: [],
+      unexplainedLedgerImbalanceUnits: '0',
       phaseTransitions: [{ labels: { phase: 'ROUTING' }, count: 1 }],
     };
 
@@ -39,6 +40,7 @@ describe('Prometheus operational metrics renderer', () => {
       'debtshift_migration_phase_age_seconds_bucket{le="+Inf",phase="ROUTING"} 1',
     );
     expect(rendered).toContain('provider="provider\\"\\\\\\nname"');
+    expect(rendered).toContain('debtshift_ledger_unexplained_imbalance_units 0');
     expect(rendered).not.toContain('migration_id');
     expect(rendered.endsWith('\n')).toBe(true);
   });

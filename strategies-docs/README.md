@@ -54,6 +54,7 @@ Implementation must be understandable from this directory without relying on cha
 | [15-account-handoff.md](./15-account-handoff.md)                                           | Gives the next Codex account the exact verified checkpoint, blockers, and resume commands.       |
 | [16-operations-runbooks.md](./16-operations-runbooks.md)                                   | Gives executable containment, recovery, backup, pause, and key-rotation procedures.              |
 | [17-sandbox-evidence-example.md](./17-sandbox-evidence-example.md)                         | Records one reproducible local migration's exact transaction, evidence, image, and safety proof. |
+| [18-observability-deployment.md](./18-observability-deployment.md)                         | Defines trace safety, durable context propagation, dashboards, and operator verification.        |
 
 ## Work protocol
 

@@ -168,7 +168,32 @@ chain-action finality, transport state, reservation principal/fee caps, recovery
 operational alerts, transactional outbox state, and ledger count/volume. API preparation and
 authorization plus worker command/evidence/phase/retry outcomes emit structured JSON records with
 the migration/command correlation fields and chain context. Secret material and signed payloads are
-not logged.
+not logged. Finalized ledger reconciliation evidence also exports the direct
+`debtshift_ledger_unexplained_imbalance_units` gauge used by the operations dashboard.
+
+Distributed tracing is deployment-selected. A blank `OTEL_EXPORTER_OTLP_ENDPOINT` installs no SDK
+and performs no export. A configured endpoint enables manual OpenTelemetry spans for API requests
+and durable workflow commands. The API accepts only valid W3C `traceparent` and optional
+`tracestate`; baggage and unknown carrier fields are discarded. The transactional outbox persists
+that carrier separately from the hashed command payload, BullMQ receives it in a typed envelope,
+and each worker command propagates its active context to the next transactional outbox command.
+This produces one trace across the API, PostgreSQL outbox, Redis delivery, retries, and evidence
+transitions without changing authorization or idempotency hashes.
+
+Span attributes are fail-closed through an allowlist: execution mode, HTTP method/status, command
+type/attempt/final-attempt, and sanitized error class. Request paths, query strings, headers other
+than trace context, bodies, wallet and transaction identifiers, signatures, authorization tokens,
+provider responses, RPC URLs, and error messages are not recorded. Embedded collector credentials,
+query tokens, non-HTTP protocols, and insecure remote HTTP collectors are rejected. Local/private
+collectors may use HTTP; remote collectors require HTTPS. SDK shutdown is part of API and worker
+drain so queued spans are flushed before process exit.
+
+The optional Compose observability profile provisions pinned Prometheus, Grafana, and Jaeger
+versions. Its read-only Grafana dashboard covers API scrape health, snapshot freshness, migrations
+by phase, phase-age p95, command attempts/failures, outbox backlog, open alerts, and unexplained
+ledger imbalance. Ports bind to loopback only. Production deployment may select another OTLP and
+dashboard backend while preserving the same safe telemetry contract. Exact commands and operator
+checks are in `18-observability-deployment.md`.
 
 - Active migrations by phase and route.
 - Phase duration histogram.

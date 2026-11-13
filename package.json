@@ -34,6 +34,8 @@
     "format:check": "prettier --check .",
     "infra:down": "docker-compose -f infra/docker/docker-compose.yml down",
     "infra:dependencies": "docker-compose -f infra/docker/docker-compose.yml up -d postgres redis",
+    "infra:observability:down": "docker-compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.observability.yml --profile observability down",
+    "infra:observability:up": "docker-compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.observability.yml --profile observability up -d --build",
     "infra:up": "docker-compose -f infra/docker/docker-compose.yml up -d --build",
     "local:chains": "npm run check:evm && npm run build --workspace @debtshift/protocols && node packages/protocols/dist/local-stack.js",
     "openapi:check": "npm run openapi:generate && git diff --exit-code -- docs/openapi.json packages/sdk/src/generated/api.ts",

@@ -60,6 +60,7 @@ x-sandbox-environment: &sandbox-environment
   AGENT_MODE: DETERMINISTIC
   MAINNET_EXECUTION_ENABLED: 'false'
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
 services:
   postgres:
@@ -194,6 +195,52 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v3.13.5
+    profiles: ['observability']
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    ports:
+      - '127.0.0.1:${PROMETHEUS_PORT:-9090}:9090'
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - debtshift_prometheus:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0
+    profiles: ['observability']
+    ports:
+      - '127.0.0.1:${JAEGER_UI_PORT:-16686}:16686'
+      - '127.0.0.1:${OTLP_HTTP_PORT:-4318}:4318'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    profiles: ['observability']
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - '127.0.0.1:${GRAFANA_PORT:-3002}:3000'
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - debtshift_grafana:/var/lib/grafana
+    depends_on:
+      - jaeger
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   debtshift_postgres:
   debtshift_redis:
+  debtshift_prometheus:
+  debtshift_grafana:

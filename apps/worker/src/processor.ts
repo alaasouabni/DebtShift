@@ -8,6 +8,11 @@ import {
   type DebtShiftDatabase,
 } from '@debtshift/database';
 import type { Evidence, EvidenceType, MigrationPhase } from '@debtshift/domain';
+import {
+  captureTraceContext,
+  runWithSafeSpan,
+  type SafeSpanHandle,
+} from '@debtshift/observability';
 
 export class RetryableCommandError extends Error {
   override readonly name = 'RetryableCommandError';
@@ -41,7 +46,7 @@ export class PostgresCommandPersistence implements CommandPersistence {
   }
 
   advance(record: Evidence): Promise<MigrationPhase> {
-    return advanceMigrationWithEvidence(this.database, record, 'worker');
+    return advanceMigrationWithEvidence(this.database, record, 'worker', captureTraceContext());
   }
 
   complete(commandId: string): Promise<void> {
@@ -81,17 +86,39 @@ export class DurableCommandProcessor {
     private readonly persistence: CommandPersistence,
     private readonly handlers: ReadonlyMap<string, CommandHandler>,
     private readonly log: (event: WorkflowLogEvent) => void = () => undefined,
+    private readonly mode?: string,
   ) {}
 
   async process(message: OutboxEnvelope, finalAttempt = false): Promise<void> {
+    await runWithSafeSpan(
+      'debtshift.workflow.command',
+      {
+        attributes: {
+          'debtshift.command.final_attempt': finalAttempt,
+          ...(this.mode === undefined ? {} : { 'debtshift.mode': this.mode }),
+        },
+        ...(message.traceContext === undefined ? {} : { parentTraceContext: message.traceContext }),
+      },
+      async (span) => this.processWithinSpan(message, finalAttempt, span),
+    );
+  }
+
+  private async processWithinSpan(
+    message: OutboxEnvelope,
+    finalAttempt: boolean,
+    span: SafeSpanHandle,
+  ): Promise<void> {
     const command = await this.persistence.begin(message.commandId);
     if (command === undefined) return;
+    span.setAttribute('debtshift.command.type', command.type);
+    span.setAttribute('debtshift.command.logical_attempt', command.logicalAttempt);
     this.log(commandEvent('workflow_command_started', command, { finalAttempt }));
     const expectedEvidence = expectedEvidenceByCommand[command.type];
     if (expectedEvidence === undefined) {
       const error = new Error(`No evidence contract is defined for ${command.type}.`);
       await this.persistence.fail(command.commandId, error, false);
       this.log(commandEvent('workflow_command_failed', command, { retryable: false }));
+      span.fail('UndefinedEvidenceContract');
       return;
     }
     const handler = this.handlers.get(command.type);
@@ -99,6 +126,7 @@ export class DurableCommandProcessor {
       const error = new Error(`No command handler registered for ${command.type}.`);
       await this.persistence.fail(command.commandId, error, false);
       this.log(commandEvent('workflow_command_failed', command, { retryable: false }));
+      span.fail('MissingCommandHandler');
       return;
     }
 
@@ -169,10 +197,12 @@ export class DurableCommandProcessor {
             retryExhausted: true,
           }),
         );
+        span.fail('RetryExhausted');
         return;
       }
       await this.persistence.fail(command.commandId, error, retryable);
       this.log(commandEvent('workflow_command_failed', command, { retryable }));
+      span.fail(retryable ? 'RetryableCommandError' : 'CommandError');
       if (retryable) throw error;
     }
   }

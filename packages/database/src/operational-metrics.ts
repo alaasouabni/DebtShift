@@ -1,4 +1,4 @@
-import { count, eq, sum } from 'drizzle-orm';
+import { and, count, eq, sql, sum } from 'drizzle-orm';
 
 import type { DebtShiftDatabase } from './client.js';
 import {
@@ -59,6 +59,7 @@ export interface OperationalMetricsSnapshot {
   readonly alerts: readonly OperationalMetricCount[];
   readonly outbox: readonly OperationalMetricCount[];
   readonly ledger: readonly OperationalAmountMetric[];
+  readonly unexplainedLedgerImbalanceUnits: string;
   readonly phaseTransitions: readonly OperationalMetricCount[];
 }
 
@@ -77,6 +78,7 @@ export async function collectOperationalMetrics(
     alertRows,
     outboxRows,
     ledgerRows,
+    ledgerImbalanceRows,
     transitionRows,
   ] = await Promise.all([
     database.select({ phase: migrations.phase, updatedAt: migrations.updatedAt }).from(migrations),
@@ -143,6 +145,21 @@ export async function collectOperationalMetrics(
       })
       .from(ledgerEntries)
       .groupBy(ledgerEntries.category),
+    database
+      .select({
+        amountUnits: sql<string>`coalesce(sum(case
+          when (${evidence.normalizedPayload} -> 'ledger' ->> 'unexplainedImbalanceUnits') ~ '^[0-9]+$'
+          then abs((${evidence.normalizedPayload} -> 'ledger' ->> 'unexplainedImbalanceUnits')::numeric)
+          else 0
+        end), 0)::text`,
+      })
+      .from(evidence)
+      .where(
+        and(
+          eq(evidence.type, 'LEDGER_RECONCILIATION'),
+          eq(evidence.verificationState, 'FINALIZED'),
+        ),
+      ),
     database
       .select({ phase: auditEvents.phase, count: count() })
       .from(auditEvents)
@@ -250,6 +267,7 @@ export async function collectOperationalMetrics(
       count: row.count,
       amountUnits: numericAmount(row.amountUnits),
     })),
+    unexplainedLedgerImbalanceUnits: numericAmount(ledgerImbalanceRows[0]?.amountUnits),
     phaseTransitions: migrationPhaseEnum.enumValues.map((phase) => ({
       labels: { phase },
       count: transitionRows.find((row) => row.phase === phase)?.count ?? 0,

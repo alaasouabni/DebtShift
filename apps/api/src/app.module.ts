@@ -1,5 +1,5 @@
 import { parseDebtShiftEnvironment } from '@debtshift/domain';
-import { Module } from '@nestjs/common';
+import { Module, RequestMethod, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { AppController } from './app.controller.js';
@@ -10,6 +10,7 @@ import { MigrationsController } from './migrations.controller.js';
 import { MigrationsService } from './migrations.service.js';
 import { MetricsController } from './metrics.controller.js';
 import { MetricsService } from './metrics.service.js';
+import { HttpTracingMiddleware, TracingLifecycleService } from './observability.js';
 import { LiveMarketToolsService } from './live/live-market-tools.service.js';
 import { LiveProtocolService } from './live/live-protocol.service.js';
 import {
@@ -51,6 +52,7 @@ import { TransportService } from './transport.service.js';
     AuthenticationService,
     SessionGuard,
     MetricsService,
+    TracingLifecycleService,
     TransportService,
     {
       provide: PROTOCOL_DATA_PORT,
@@ -85,4 +87,8 @@ import { TransportService } from './transport.service.js';
     MigrationsService,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(HttpTracingMiddleware).forRoutes({ path: '{*path}', method: RequestMethod.ALL });
+  }
+}

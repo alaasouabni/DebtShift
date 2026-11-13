@@ -332,12 +332,12 @@ workflow.
 - [x] Complete the implementation security test matrix and reconcile risk-register evidence;
       deployment secret rotation and final mainnet authorization remain explicit external gates.
 - [x] Run static analysis and dependency vulnerability checks.
-- [ ] Add structured logs, traces, and Prometheus metrics.
+- [x] Add structured logs, traces, and Prometheus metrics.
   - [x] Add phase/command/evidence/chain structured workflow logs and low-cardinality Prometheus
         metrics backed by authoritative PostgreSQL state.
-  - [ ] Add deployment-selected distributed tracing without placing credentials or signed payloads
+  - [x] Add deployment-selected distributed tracing without placing credentials or signed payloads
         in spans.
-- [ ] Add dashboards for phases, latency, failures, health, and ledger imbalance.
+- [x] Add dashboards for phases, latency, failures, health, and ledger imbalance.
 - [x] Complete alerts for reservation shortfall, receipt mismatch, and accounting imbalance.
   - [x] Persist and exercise deadline-approach and stale-recovery alerts.
 - [x] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver

@@ -6,8 +6,10 @@ import {
   ledgerReconciliationSchema,
   phaseEvidenceFromRecords,
   recoveryOpeningPayloadSchema,
+  traceContextCarrierSchema,
   type Evidence,
   type MigrationPhase,
+  type TraceContextCarrier,
 } from '@debtshift/domain';
 import { and, asc, eq, inArray, lte, max, or } from 'drizzle-orm';
 
@@ -45,6 +47,7 @@ export interface OutboxEnvelope {
   readonly topic: string;
   readonly partitionKey: string;
   readonly payload: Record<string, unknown>;
+  readonly traceContext?: TraceContextCarrier;
 }
 
 export type OutboxPublisher = (message: OutboxEnvelope) => Promise<void>;
@@ -77,13 +80,21 @@ export async function enqueueCommand(
   database: DebtShiftDatabase,
   migrationId: string,
   command: PlannedCommand,
+  traceContext?: TraceContextCarrier,
 ): Promise<string> {
   const commandId = hashCanonicalText(`debtshift.command.v1:${command.idempotencyKey}`);
   const payloadHash = hashCanonicalText(canonicalJson(command.payload));
 
   await database.transaction(async (transaction) => {
     await lockMigration(transaction, migrationId);
-    await insertCommandInTransaction(transaction, migrationId, command, commandId, payloadHash);
+    await insertCommandInTransaction(
+      transaction,
+      migrationId,
+      command,
+      commandId,
+      payloadHash,
+      traceContext,
+    );
   });
   return commandId;
 }
@@ -92,6 +103,7 @@ export async function advanceMigrationWithEvidence(
   database: DebtShiftDatabase,
   record: Evidence,
   actor: string,
+  traceContext?: TraceContextCarrier,
 ): Promise<MigrationPhase> {
   const parsedEvidence = evidenceSchema.parse(record);
   return database.transaction(
@@ -330,6 +342,7 @@ export async function advanceMigrationWithEvidence(
             command,
             hashCanonicalText(`debtshift.command.v1:${command.idempotencyKey}`),
             hashCanonicalText(canonicalJson(command.payload)),
+            traceContext,
           );
         }
         return derivedPhase;
@@ -393,6 +406,7 @@ export async function advanceMigrationWithEvidence(
           nextCommand,
           commandId,
           hashCanonicalText(canonicalJson(nextCommand.payload)),
+          traceContext,
         );
       }
       return derivedPhase;
@@ -575,12 +589,16 @@ export async function publishPendingOutbox(
         return true;
       }
 
+      const traceContext = traceContextCarrierSchema.optional().parse(message.payload.traceContext);
+      const payload = { ...message.payload };
+      delete payload.traceContext;
       const envelope: OutboxEnvelope = {
         outboxId: message.outboxId,
         commandId: message.commandId,
         topic: message.topic,
         partitionKey: message.partitionKey,
-        payload: message.payload,
+        payload,
+        ...(traceContext === undefined ? {} : { traceContext }),
       };
       try {
         await publisher(envelope);
@@ -686,6 +704,7 @@ export async function enqueueCommandInTransaction(
   transaction: Parameters<Parameters<DebtShiftDatabase['transaction']>[0]>[0],
   migrationId: string,
   command: PlannedCommand,
+  traceContext?: TraceContextCarrier,
 ): Promise<string> {
   const commandId = hashCanonicalText(`debtshift.command.v1:${command.idempotencyKey}`);
   await insertCommandInTransaction(
@@ -694,6 +713,7 @@ export async function enqueueCommandInTransaction(
     command,
     commandId,
     hashCanonicalText(canonicalJson(command.payload)),
+    traceContext,
   );
   return commandId;
 }
@@ -704,6 +724,7 @@ async function insertCommandInTransaction(
   command: PlannedCommand,
   commandId: string,
   payloadHash: string,
+  traceContext?: TraceContextCarrier,
 ): Promise<void> {
   const inserted = await transaction
     .insert(commands)
@@ -719,11 +740,18 @@ async function insertCommandInTransaction(
     .returning({ commandId: commands.commandId });
   if (inserted.length === 0) return;
 
+  const parsedTraceContext = traceContextCarrierSchema.optional().parse(traceContext);
+
   await transaction.insert(outboxMessages).values({
     commandId,
     topic: 'debtshift.commands.v1',
     partitionKey: migrationId,
-    payload: { commandId, migrationId, type: command.type },
+    payload: {
+      commandId,
+      migrationId,
+      type: command.type,
+      ...(parsedTraceContext === undefined ? {} : { traceContext: parsedTraceContext }),
+    },
   });
 }
 

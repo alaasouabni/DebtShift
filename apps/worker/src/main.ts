@@ -18,6 +18,7 @@ import {
   OneClickCommittedClient,
   type OneClickClientConfig,
 } from '@debtshift/intents';
+import { initializeTracing } from '@debtshift/observability';
 import { Logger } from '@nestjs/common';
 import type { ConnectionOptions } from 'bullmq';
 
@@ -42,117 +43,132 @@ import {
 async function bootstrap(): Promise<void> {
   loadLocalEnvironment();
   const environment = parseDebtShiftEnvironment(process.env);
-  const databaseClient = createDebtShiftDatabaseFromUrl(environment.DATABASE_URL);
-  await databaseClient.pool.query('select 1');
-
-  const redis = redisConnection(environment.REDIS_URL);
-  const queue = createCommandQueue(redis);
-  const commandQueuePolicy = {
-    maximumAttempts: environment.WORKFLOW_COMMAND_MAX_ATTEMPTS,
-    retryDelayMs: environment.WORKFLOW_COMMAND_RETRY_DELAY_MS,
-    maximumRetryDelayMs: environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS,
-  } as const;
-  const publisher = new BullCommandPublisher(queue, commandQueuePolicy);
-  const handlers = composeWorkflowHandlers({
-    environment,
-    store: new PostgresWorkflowContextStore(databaseClient.db),
-    ...createModeAdapters(environment, databaseClient.db),
+  const tracing = initializeTracing({
+    ...(environment.OTEL_EXPORTER_OTLP_ENDPOINT.length === 0
+      ? {}
+      : { endpoint: environment.OTEL_EXPORTER_OTLP_ENDPOINT }),
+    serviceName: 'debtshift-worker',
+    serviceVersion: '0.1.0',
+    environment: environment.DEBTSHIFT_MODE,
   });
-  const processor = new DurableCommandProcessor(
-    new PostgresCommandPersistence(databaseClient.db),
-    handlers,
-    (event) => Logger.log(JSON.stringify(event), 'Workflow'),
-  );
-  const worker = createCommandWorker(redis, processor, commandQueuePolicy);
+  try {
+    const databaseClient = createDebtShiftDatabaseFromUrl(environment.DATABASE_URL);
+    await databaseClient.pool.query('select 1');
 
-  worker.on('failed', (job, error) => {
-    Logger.warn(
-      `Command job ${job?.id ?? 'unknown'} failed and will follow queue retry policy: ${error.message}`,
-      'CommandWorker',
+    const redis = redisConnection(environment.REDIS_URL);
+    const queue = createCommandQueue(redis);
+    const commandQueuePolicy = {
+      maximumAttempts: environment.WORKFLOW_COMMAND_MAX_ATTEMPTS,
+      retryDelayMs: environment.WORKFLOW_COMMAND_RETRY_DELAY_MS,
+      maximumRetryDelayMs: environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS,
+    } as const;
+    const publisher = new BullCommandPublisher(queue, commandQueuePolicy);
+    const handlers = composeWorkflowHandlers({
+      environment,
+      store: new PostgresWorkflowContextStore(databaseClient.db),
+      ...createModeAdapters(environment, databaseClient.db),
+    });
+    const processor = new DurableCommandProcessor(
+      new PostgresCommandPersistence(databaseClient.db),
+      handlers,
+      (event) => Logger.log(JSON.stringify(event), 'Workflow'),
+      environment.DEBTSHIFT_MODE,
     );
-  });
-  worker.on('error', (error) => Logger.error(error.message, error.stack, 'CommandWorker'));
+    const worker = createCommandWorker(redis, processor, commandQueuePolicy);
 
-  const recovered = await recoverStaleCommands(
-    databaseClient.db,
-    new Date(Date.now() - environment.WORKFLOW_COMMAND_STALE_AFTER_MS),
-  );
-  let closing = false;
-  let activePublication: Promise<void> = Promise.resolve();
-  let activeAlertScan: Promise<void> = Promise.resolve();
-  const publish = (): void => {
-    if (closing) return;
-    activePublication = activePublication
-      .then(async () => {
-        const count = await publishPendingOutbox(databaseClient.db, publisher.publish);
-        if (count > 0) Logger.debug(`Published ${count} durable command(s).`, 'Outbox');
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Unknown outbox failure';
-        Logger.error(message, undefined, 'Outbox');
-      });
-  };
-  publish();
-  const outboxTimer = setInterval(publish, 250);
-  const scanAlerts = (): void => {
-    if (closing) return;
-    activeAlertScan = activeAlertScan
-      .then(async () => {
-        const report = await scanOperationalAlerts(
-          databaseClient.db,
-          {
-            deadlineLeadMs: environment.ALERT_DEADLINE_LEAD_MS,
-            staleMigrationMs: environment.ALERT_STALE_MIGRATION_MS,
-            staleRecoveryMs: environment.ALERT_STALE_RECOVERY_MS,
-          },
-          new Date(),
-        );
-        if (report.openedCount > 0 || report.resolvedCount > 0) {
-          Logger.warn(
-            JSON.stringify({
-              event: 'operational_alert_scan',
-              openedCount: report.openedCount,
-              resolvedCount: report.resolvedCount,
-              active: report.active.map((alert) => ({
-                alertId: alert.alertId,
-                migrationId: alert.migrationId,
-                type: alert.type,
-                severity: alert.severity,
-                message: alert.message,
-              })),
-            }),
-            'OperationalAlerts',
+    worker.on('failed', (job, error) => {
+      Logger.warn(
+        `Command job ${job?.id ?? 'unknown'} failed and will follow queue retry policy: ${error.message}`,
+        'CommandWorker',
+      );
+    });
+    worker.on('error', (error) => Logger.error(error.message, error.stack, 'CommandWorker'));
+
+    const recovered = await recoverStaleCommands(
+      databaseClient.db,
+      new Date(Date.now() - environment.WORKFLOW_COMMAND_STALE_AFTER_MS),
+    );
+    let closing = false;
+    let activePublication: Promise<void> = Promise.resolve();
+    let activeAlertScan: Promise<void> = Promise.resolve();
+    const publish = (): void => {
+      if (closing) return;
+      activePublication = activePublication
+        .then(async () => {
+          const count = await publishPendingOutbox(databaseClient.db, publisher.publish);
+          if (count > 0) Logger.debug(`Published ${count} durable command(s).`, 'Outbox');
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : 'Unknown outbox failure';
+          Logger.error(message, undefined, 'Outbox');
+        });
+    };
+    publish();
+    const outboxTimer = setInterval(publish, 250);
+    const scanAlerts = (): void => {
+      if (closing) return;
+      activeAlertScan = activeAlertScan
+        .then(async () => {
+          const report = await scanOperationalAlerts(
+            databaseClient.db,
+            {
+              deadlineLeadMs: environment.ALERT_DEADLINE_LEAD_MS,
+              staleMigrationMs: environment.ALERT_STALE_MIGRATION_MS,
+              staleRecoveryMs: environment.ALERT_STALE_RECOVERY_MS,
+            },
+            new Date(),
           );
-        }
-      })
-      .catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : 'Unknown operational alert failure';
-        Logger.error(message, undefined, 'OperationalAlerts');
-      });
-  };
-  scanAlerts();
-  const alertTimer = setInterval(scanAlerts, environment.ALERT_SCAN_INTERVAL_MS);
+          if (report.openedCount > 0 || report.resolvedCount > 0) {
+            Logger.warn(
+              JSON.stringify({
+                event: 'operational_alert_scan',
+                openedCount: report.openedCount,
+                resolvedCount: report.resolvedCount,
+                active: report.active.map((alert) => ({
+                  alertId: alert.alertId,
+                  migrationId: alert.migrationId,
+                  type: alert.type,
+                  severity: alert.severity,
+                  message: alert.message,
+                })),
+              }),
+              'OperationalAlerts',
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : 'Unknown operational alert failure';
+          Logger.error(message, undefined, 'OperationalAlerts');
+        });
+    };
+    scanAlerts();
+    const alertTimer = setInterval(scanAlerts, environment.ALERT_SCAN_INTERVAL_MS);
 
-  const shutdown = async (signal: string): Promise<void> => {
-    if (closing) return;
-    closing = true;
-    clearInterval(outboxTimer);
-    clearInterval(alertTimer);
-    Logger.log(`Received ${signal}; draining the command worker.`, 'Bootstrap');
-    await activePublication;
-    await activeAlertScan;
-    await worker.close();
-    await queue.close();
-    await databaseClient.close();
-  };
-  process.once('SIGINT', () => void shutdown('SIGINT'));
-  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+    const shutdown = async (signal: string): Promise<void> => {
+      if (closing) return;
+      closing = true;
+      clearInterval(outboxTimer);
+      clearInterval(alertTimer);
+      Logger.log(`Received ${signal}; draining the command worker.`, 'Bootstrap');
+      await activePublication;
+      await activeAlertScan;
+      await worker.close();
+      await queue.close();
+      await databaseClient.close();
+      await tracing.shutdown();
+    };
+    process.once('SIGINT', () => void shutdown('SIGINT'));
+    process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
-  Logger.log(
-    `DebtShift worker ready in ${environment.DEBTSHIFT_MODE}; recovered ${recovered} stale command(s).`,
-    'Bootstrap',
-  );
+    Logger.log(
+      `DebtShift worker ready in ${environment.DEBTSHIFT_MODE}; recovered ${recovered} stale command(s).`,
+      'Bootstrap',
+    );
+  } catch (error) {
+    await tracing.shutdown();
+    throw error;
+  }
 }
 
 function createModeAdapters(

@@ -125,6 +125,11 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Low-cardinality Prometheus metrics enumerate every migration phase and durable operational
       state; structured JSON logs cover preparation, authorization, commands, evidence-derived phase
       changes, retries, failures, and chain context without signed payloads or secrets.
+- [x] Deployment-selected OpenTelemetry spans preserve W3C context across the transactional outbox
+      and queue using an explicit attribute allowlist; tracing remains disabled when no endpoint is
+      configured.
+- [x] A provisioned dashboard covers phase state/age, command failures and attempts, API/metrics
+      health, outbox/alert backlog, and direct unexplained ledger imbalance.
 - [x] Critical alerts are exercised.
 - [x] Recovery and key-rotation runbooks are documented; the isolated database restore drill
       verifies every public table, exact row count, and migration history without mutating source.

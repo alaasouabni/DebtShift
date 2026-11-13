@@ -218,22 +218,22 @@ NEAR testnet deployment uses test tokens. Local chains, simulators, PostgreSQL, 
 
 ## Implementation checklist
 
-- [ ] Create typed provider interfaces and normalized response schemas.
-- [ ] Implement official Base and Arbitrum RPC adapters.
+- [x] Create typed provider interfaces and normalized response schemas.
+- [x] Implement official Base and Arbitrum RPC adapters.
 - [ ] Implement Aave GraphQL discovery and direct-read verification.
 - [ ] Implement Morpho REST discovery and direct-read verification.
-- [ ] Implement 1Click catalog/dry-quote reads and the committed quote, deposit, status, refund, and
+- [x] Implement 1Click catalog/dry-quote reads and the committed quote, deposit, status, refund, and
       receipt adapter used by the complete `mainnet` workflow.
 - [ ] Implement NEAR testnet RPC failover.
 - [ ] Add provider health, caching, rate limiting, and circuit breakers.
-- [ ] Implement the canonical sources-and-uses feasibility analysis and exclusive cost-component
+- [x] Implement the canonical sources-and-uses feasibility analysis and exclusive cost-component
       classification.
-- [ ] Implement direct capacity, confirmed-funding, required-borrow, and zero-shortfall tools with
+- [x] Implement direct capacity, confirmed-funding, required-borrow, and zero-shortfall tools with
       checkpoint revalidation.
 - [x] Implement Route/Risk Agent tools and capability tests.
 - [x] Implement deterministic, Ollama, and user-API explanation providers behind one interface.
 - [x] Implement provider selection and memory-only credential UI.
 - [x] Add API-key redaction, payload allowlisting, endpoint validation, and SSRF tests.
 - [ ] Pin the model digest and document minimum resource expectations.
-- [ ] Add stale, mismatch, outage, malformed-response, and rate-limit tests.
+- [x] Add stale, mismatch, outage, malformed-response, and rate-limit tests.
 - [x] Demonstrate the full project without any paid API credentials.

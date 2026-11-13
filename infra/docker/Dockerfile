@@ -28,6 +28,7 @@ COPY packages/database/package.json ./packages/database/package.json
 COPY packages/domain/package.json ./packages/domain/package.json
 COPY packages/intents/package.json ./packages/intents/package.json
 COPY packages/optimizer/package.json ./packages/optimizer/package.json
+COPY packages/observability/package.json ./packages/observability/package.json
 COPY packages/protocols/package.json ./packages/protocols/package.json
 COPY packages/sdk/package.json ./packages/sdk/package.json
 
