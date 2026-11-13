@@ -26,10 +26,10 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Verified pushed checkpoint: `50699af`, including both-chain public feed provenance, exact manifest
-  binding, deterministic executable-route generation, oracle hardening, corrected Aave
-  reserve-token resolution, strict testnet/mainnet provider-asset boundaries, and the credential-free
-  public funding/account preflight.
+- Verified pushed implementation checkpoint: `b13c467`, including both-chain public feed
+  provenance, deterministic executable-route generation, strict public funding/account preflight,
+  guarded manifested source-vault funding, keyless funded readiness, emergency allowance cleanup,
+  and worker startup funding attestation.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
@@ -118,6 +118,7 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | GitHub quality run `43460754238`      | Pass: complete quality workflow for synchronized strategy checkpoint `a6fae68`         |
 | GitHub quality run `43465347172`      | Pass: complete quality workflow for manifested route generator checkpoint `f73b9df`    |
 | GitHub quality run `43471678265`      | Pass: complete quality workflow for funding preflight checkpoint `50699af`             |
+| GitHub quality run `43480858737`      | Pass: complete quality workflow for source-vault funding checkpoint `b13c467`          |
 | `npm run check:public-testnet-route`  | Pass: dependency hash `0x2186…7f17`; both source/destination feed rounds finalized     |
 | Public-testnet funding dry exercise   | Correct fail-closed report: all 20 deficiencies at finalized public blocks             |
 | `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |

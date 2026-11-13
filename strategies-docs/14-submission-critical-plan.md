@@ -25,6 +25,11 @@ the deadline plan survives chat compaction, a new work session, or a contributor
   `50699afa6e18c026aea59b70633482122b5ed41a`. The credential-free gate reads finalized Aave,
   EVM-balance, and NEAR account/key state, enforces distinct roles, and reports every unmet
   prerequisite without loading a key or broadcasting.
+- **Verified source-vault funding checkpoint:** `b13c467` on `main`; GitHub quality run
+  `43480858737` passed every job for exact commit
+  `b13c467ad388ca44246eb4d856e25d181ad72bd4`. Exact approval/deposit/revocation evidence,
+  emergency cleanup, keyless funded readiness, and worker startup attestation are implemented and
+  validated without a public write.
 - **Verified production/fork foundation:** checkpoint `b7413ec`; GitHub quality run `43409934145`
   passed every job and the pinned Base block `55,600,000` fork passed against the official free RPC.
 - **Primary objective:** finish normal, functional production-oriented code for one complete

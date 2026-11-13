@@ -475,6 +475,9 @@ operative source of truth.
 - Domain tests pass 125 cases and the dual-Anvil EVM/Morpho/funding deployment suite passes all nine
   cases, including input-hash tamper and newly introduced residual-allowance rejection. No public
   transaction, external deployment, token movement, registry write, or mainnet action occurred.
+- GitHub Actions quality run `43480858737` passed TypeScript, pinned EVM/Morpho/deployment and demo,
+  Linux NEAR, production dependency, changed/full-history secret, production-container, and runtime
+  SBOM gates for exact checkpoint `b13c467ad388ca44246eb4d856e25d181ad72bd4`.
 
 ### 2026-11-13 - Credential-free public-testnet funding gate implemented
 
