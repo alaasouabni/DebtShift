@@ -20,21 +20,19 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `4ab2ad3`.
+- Previous remote checkpoint before this handoff: `9745a49`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. Three durable provider-adversary scenarios for a wrong destination token, wrong receiver, and
-   below-minimum amount.
-2. Exact mismatch reasons in durable recovery-opening evidence and absence of both destination
-   delivery and target-position evidence.
-3. Direct two-chain reads proving zero destination escrow balance and zero target position in every
-   invalid-delivery scenario.
-4. Full source-collateral return through the controlled simulator recovery boundary.
-5. Closure of risk R-05 and the invalid destination delivery acceptance item.
+1. Direct target-lending contract assertions for post-delivery collateral-price, target-rate, and
+   protocol-LTV deterioration scenarios.
+2. Reconciled acceptance evidence covering liquidity, price, rate, and LTV deterioration at the
+   exact `BEFORE_TARGET_BORROW` checkpoint.
+3. Closure of the unsafe-destination-market acceptance item with zero target position in every
+   contract-backed adversary scenario.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -52,7 +50,7 @@ RPC URLs or secrets.
 | `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                      |
 | `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                                   |
 | NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                     |
-| GitHub quality run `43393718314`      | Pass for interruption checkpoint `003235d`                                                 |
+| GitHub quality run `43394483172`      | Pass for refund-custody checkpoint `4ab2ad3`                                               |
 | `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push     |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                                  |
 

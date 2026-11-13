@@ -1329,6 +1329,8 @@ operative source of truth.
 - The production execution path independently verifies the finalized refund transaction's exact
   token, source escrow receiver, amount, block, and confirmation depth before registering custody;
   provider status alone is never sufficient.
+- GitHub Actions quality run `43394483172` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for refund-custody checkpoint `4ab2ad3`.
 
 ### 2026-11-13 - Invalid destination delivery evidence stopped before chain movement
 
@@ -1345,6 +1347,18 @@ operative source of truth.
   tests, in addition to OpenAPI drift, format, lint, type, and production-build checks.
 - GitHub Actions quality run `43393718314` passed the TypeScript, EVM, NEAR,
   security/container-scanning, and SBOM gates for interruption checkpoint `003235d`.
+
+### 2026-11-13 - Unsafe destination market acceptance evidence completed
+
+- Existing contract-backed scenarios mutate live destination liquidity, collateral price, borrow
+  APR, and protocol maximum LTV after destination funding but before target borrowing. Each exact
+  revalidation records the safe capacity and shortfall and enters failed-safe recovery without
+  emitting target-position evidence.
+- Strengthened the price, rate, and LTV scenarios with direct lending-contract reads proving the
+  borrower target position remains exactly zero after recovery. The liquidity case already carried
+  the same direct assertion plus exact collateral custody and solver exposure checks.
+- Pre-source variants continue to prove that price, rate, or liquidity deterioration releases the
+  reservation with the source position unchanged and requires a fresh quote.
 
 ## Work-session handoff template
 

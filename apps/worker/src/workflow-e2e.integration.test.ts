@@ -1102,6 +1102,14 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
               }),
             ]),
           );
+          const targetArtifact = await loadFoundryArtifact('MockTargetLending');
+          const targetPosition = await destination.publicClient.readContract({
+            address: deployment.destination.lending,
+            abi: targetArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          });
+          expect(targetPosition).toEqual([0n, 0n]);
         },
       );
     }, 60_000);

@@ -47,7 +47,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Wrong destination token, below-minimum amount, or wrong receiver fails before destination
       chain assignment; durable recovery evidence records the exact mismatch and direct chain reads
       prove empty destination escrow and zero target position.
-- [ ] Unsafe destination market state prevents target borrowing.
+- [x] Unsafe destination liquidity, collateral price, borrow APR, or protocol LTV prevents target
+      borrowing; exact pre-borrow revalidation enters recovery and direct contract reads prove zero
+      target position.
 - [ ] Insufficient quote-time capacity rejects the migration before reservation or source movement.
 - [ ] Missing, pending, mismatched, expired, or unconfirmed supplementary funding cannot satisfy the
       feasibility predicate.
