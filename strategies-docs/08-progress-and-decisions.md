@@ -1345,6 +1345,8 @@ operative source of truth.
   Production then independently verifies finalized chain delivery before target borrowing.
 - The complete repository gate passes with all 21 durable two-chain scenarios and all 71 worker
   tests, in addition to OpenAPI drift, format, lint, type, and production-build checks.
+- GitHub Actions quality run `43395136633` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for invalid-delivery checkpoint `9745a49`.
 - GitHub Actions quality run `43393718314` passed the TypeScript, EVM, NEAR,
   security/container-scanning, and SBOM gates for interruption checkpoint `003235d`.
 
@@ -1359,6 +1361,16 @@ operative source of truth.
   the same direct assertion plus exact collateral custody and solver exposure checks.
 - Pre-source variants continue to prove that price, rate, or liquidity deterioration releases the
   reservation with the source position unchanged and requires a fresh quote.
+
+### 2026-11-13 - Quote-time capacity rejection proven before commitment
+
+- Strengthened the authenticated preparation integration flow by reducing the live target market's
+  protocol LTV until every deterministic route has a non-zero funding shortfall.
+- Preparation rejects before requesting a transport quote. The test proves there are no provider
+  quote, migration, reservation, or command rows and directly reads the source position unchanged
+  with zero vault `reservedUndrawn` balance.
+- The fixture then restores safe market state and completes the existing signed prepare/execute flow,
+  proving the rejection is capacity-specific rather than a poisoned service or database state.
 
 ## Work-session handoff template
 

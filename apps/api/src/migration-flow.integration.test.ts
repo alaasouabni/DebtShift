@@ -13,13 +13,16 @@ import {
   DEFAULT_ANVIL_BORROWER_KEY,
   DEFAULT_ANVIL_DEPLOYER_KEY,
   deployLocalDebtShift,
+  loadFoundryArtifact,
   resolveAnvilPath,
   startAnvil,
+  write,
 } from '@debtshift/protocols';
 import { ConfigService } from '@nestjs/config';
 import { drizzle as createPgliteDrizzle } from 'drizzle-orm/pglite';
+import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DatabaseService } from './database.service.js';
 import { LocalMarketToolsService } from './simulator/local-market-tools.service.js';
@@ -84,21 +87,83 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
       const protocols = new LocalProtocolService(config);
       const marketTools = new LocalMarketToolsService(protocols, config);
       const routeAnalysis = new RouteAnalysisService(marketTools, config);
+      const transport = new TransportService();
+      const transportQuote = vi.spyOn(transport, 'getQuote');
       const preparation = new PreparationService(
         databaseService,
         protocols,
         marketTools,
         routeAnalysis,
-        new TransportService(),
+        transport,
         config,
       );
       await expect(
         preparation.prepare({ borrower: deployment.borrower }, deployment.deployer),
       ).rejects.toThrow('Wallet session does not match the requested borrower.');
+
+      const [targetArtifact, sourceArtifact, vaultArtifact] = await Promise.all([
+        loadFoundryArtifact('MockTargetLending'),
+        loadFoundryArtifact('MockSourceLending'),
+        loadFoundryArtifact('LiquidityVault'),
+      ]);
+      const destinationWallet = createWalletClient({
+        account: privateKeyToAccount(DEFAULT_ANVIL_DEPLOYER_KEY),
+        chain: destination.chain,
+        transport: http(destination.rpcUrl),
+      });
+      await write(
+        destinationWallet,
+        destination.publicClient,
+        targetArtifact.abi,
+        deployment.destination.lending,
+        'setMarketState',
+        [2_000n * 10n ** 18n, 100, 500],
+      );
+      await expect(
+        preparation.prepare({ borrower: deployment.borrower }, deployment.borrower),
+      ).rejects.toThrow('No approved executable route satisfies the deterministic policy.');
+      expect(transportQuote).not.toHaveBeenCalled();
+      const [quotes, migrationRows, reservations, commands, sourcePosition, reservedUndrawn] =
+        await Promise.all([
+          database.select().from(debtShiftSchema.providerQuotes),
+          database.select().from(debtShiftSchema.migrations),
+          database.select().from(debtShiftSchema.liquidityReservations),
+          database.select().from(debtShiftSchema.commands),
+          source.publicClient.readContract({
+            address: deployment.source.lending,
+            abi: sourceArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+          source.publicClient.readContract({
+            address: deployment.source.vault,
+            abi: vaultArtifact.abi,
+            functionName: 'reservedUndrawn',
+            args: [deployment.source.debtToken],
+          }),
+        ]);
+      expect({ quotes, migrationRows, reservations, commands }).toEqual({
+        quotes: [],
+        migrationRows: [],
+        reservations: [],
+        commands: [],
+      });
+      expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+      expect(reservedUndrawn).toBe(0n);
+      await write(
+        destinationWallet,
+        destination.publicClient,
+        targetArtifact.abi,
+        deployment.destination.lending,
+        'setMarketState',
+        [2_000n * 10n ** 18n, 7_500, 500],
+      );
+
       const prepared = await preparation.prepare(
         { borrower: deployment.borrower },
         deployment.borrower,
       );
+      expect(transportQuote).toHaveBeenCalledOnce();
       const borrower = privateKeyToAccount(DEFAULT_ANVIL_BORROWER_KEY);
       const [intentSignature, planSignature] = await Promise.all([
         borrower.signTypedData(

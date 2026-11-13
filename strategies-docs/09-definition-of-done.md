@@ -50,7 +50,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Unsafe destination liquidity, collateral price, borrow APR, or protocol LTV prevents target
       borrowing; exact pre-borrow revalidation enters recovery and direct contract reads prove zero
       target position.
-- [ ] Insufficient quote-time capacity rejects the migration before reservation or source movement.
+- [x] Insufficient quote-time capacity rejects preparation before a transport quote is requested;
+      no migration, reservation, or command exists, and direct chain reads prove the source position
+      unchanged with zero reserved liquidity.
 - [ ] Missing, pending, mismatched, expired, or unconfirmed supplementary funding cannot satisfy the
       feasibility predicate.
 - [x] Collateral-price or liquidity deterioration before source close releases the reservation and
