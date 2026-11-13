@@ -16,13 +16,16 @@ before changing code.
   signatures, and the project owner's explicit final authorization.
 - The only submission-critical route is configured in
   `config/routes/base-aave-v3-to-arbitrum-morpho-blue.v1.json`.
+- The write-disabled public-testnet dependency candidate is separately frozen in
+  `config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json`;
+  it is not an executable route or evidence of deployment.
 
 ## Git checkpoint
 
 - Branch: `main`.
-- Verified pushed base checkpoint: `ecc6417`. The canonical Morpho deployment increment is locally
-  verified but remains unpushed at this handoff edit; use the newest pushed commit containing this
-  file once its Linux quality workflow passes.
+- Verified pushed checkpoint: `7b59a4f`, including the frozen public-testnet dependencies, live
+  validator, exact manifest binding, oracle hardening, corrected Aave reserve-token resolution, and
+  narrow public-address Gitleaks policy.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
@@ -45,7 +48,11 @@ before changing code.
 6. The public-testnet destination path now compiles exact canonical Morpho/AdaptiveCurveIrm source,
    creates and funds a real market through a guarded deployer, and chains its manifest into worker
    startup. No public deployment has occurred.
-7. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
+7. The exact public candidate is official Aave V3 on Ethereum Sepolia to a DebtShift-operated
+   canonical-source Morpho market on Base Sepolia. A credential-free validator pins official
+   provenance and live state; the route dependency hash is chained through both deployment
+   manifests, readiness, and worker startup.
+8. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
    no credentialed or write-capable external action was attempted.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
@@ -64,16 +71,16 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, scripts, lint/types, all tests, and all 11 builds         |
 | Worker suite                          | Pass: 85 tests, including adapter startup ordering and exact final registry state      |
-| Domain suite                          | Pass: 111 tests, including mode/manifest/failover schemas and all transition pairs     |
+| Domain suite                          | Pass: 114 tests, including route/deployment manifests, modes, and transition pairs     |
 | Database suite and migration drill    | Pass: 22 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
 | API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
 | Agent and web suites                  | Pass: 9 agent/security tests and 4 browser tests                                       |
 | `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, lint, and taxed-token rollback gates            |
-| `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                               |
-| Pinned canonical Morpho Foundry gate  | Pass: 25 files compile; 3 oracle price/stale/sequencer tests pass                      |
-| Canonical Morpho deployment suite     | Pass: real market/seed liquidity/readiness plus input-provenance tamper rejection      |
+| `npm run check:evm-deployment`        | Pass: seven DebtShift/Morpho deployment, readiness, and tamper tests                   |
+| Pinned canonical Morpho Foundry gate  | Pass: 25 files compile; 4 oracle cross-price/age/stale/sequencer tests pass            |
+| Canonical Morpho deployment suite     | Pass: real market/seed liquidity plus provenance and route-hash tamper rejection       |
 | Vendored Morpho provenance            | Pass: all 28 files match pinned upstream Git blob IDs                                  |
-| Production runtime image              | Pass: both Solidity domains, 11 builds, pinned artifacts/provenance, no build tooling  |
+| Production runtime image              | Pass: `sha256:f69bfc…ea0a`, non-root, pinned artifacts, no npm/npx/Forge               |
 | Production dependency audit           | Pass: zero vulnerabilities with development dependencies omitted                       |
 | `npm run check:live-route`            | Pass: public Base `56,863,212`, Arbitrum `523,828,471`, and 1Click catalog reads       |
 | `npm run check:one-click-spec`        | Pass: official quote, status, and deposit schema SHA-256 recorded below                |
@@ -90,6 +97,9 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | GitHub quality run `43433864649`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `aa07317`                |
 | GitHub quality run `43434997971`      | Pass: complete quality workflow for documentation checkpoint `f0c94c1`                 |
 | GitHub quality run `43435798717`      | Pass: complete quality workflow for funded transport checkpoint `ecc6417`              |
+| GitHub quality run `43446037695`      | Pass: complete quality workflow for canonical Morpho checkpoint `435c351`              |
+| GitHub quality run `43459443566`      | Pass: complete quality workflow for public-testnet route checkpoint `7b59a4f`          |
+| `npm run check:public-testnet-route`  | Pass: dependency hash `0x323c…39ca`; finalized Sepolia/Base Sepolia reads              |
 | `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
@@ -102,25 +112,23 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Push the locally verified canonical Morpho checkpoint and require its Linux quality workflow,
-   NEAR sandbox, image scan, and SBOM jobs to pass; do not substitute a mock protocol or call
-   simulated transport official 1Click.
-2. Revalidate official Aave Sepolia and candidate destination testnet token/feed/sequencer
-   addresses, acquire funded signers and test assets, then follow
+1. Acquire funded Ethereum Sepolia/Base Sepolia/NEAR testnet signers and the reviewed test assets,
+   rerun `npm run check:public-testnet-route`, then follow
    `21-public-testnet-morpho-deployment.md` for the reviewed irreversible deployment.
-3. Create and commit the exact public-testnet route from the dependency manifest, deploy the seven
+2. Create and commit the executable public-testnet route only from the resulting dependency
+   manifest, deploy the seven
    DebtShift EVM contracts, and configure both manifests for startup attestation.
-4. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
+3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
-5. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
+4. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
    storage, and sandbox/testnet evidence.
-6. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
+5. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
    web UI with `NEXT_PUBLIC_API_URL` set at image build time.
-7. Run the public-testnet workflow with only the unavailable 1Click boundary explicitly simulated,
+6. Run the public-testnet workflow with only the unavailable 1Click boundary explicitly simulated,
    then execute the full acceptance and security gate from a clean checkout.
-8. Only after those gates, prepare external production deployment with
+7. Only after those gates, prepare external production deployment with
    `MAINNET_EXECUTION_ENABLED=false`, generate real manifests, and run `npm run check:deployment`.
-9. Treat a real mainnet refinance as a separate final authorization event.
+8. Treat a real mainnet refinance as a separate final authorization event.
 
 ## Required external inputs
 
