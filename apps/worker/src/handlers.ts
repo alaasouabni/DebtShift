@@ -85,6 +85,10 @@ export interface MigrationExecutionPort {
   ): Promise<readonly ChainCanonicalityFailure[]>;
   reserve(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   cancelBeforeSourceClose(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
+  expireBeforeSourceClose(
+    context: MigrationExecutionContext,
+    reason: string,
+  ): Promise<FinalizedChainAction>;
   closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   dispatchTransport(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   deliverDestination(
@@ -157,6 +161,7 @@ export interface WorkflowHandlerDependencies {
   readonly transport: TransportExecutionPort;
   readonly registry: ReceiptRegistryPort;
   readonly evidenceProviders: WorkflowEvidenceProviders;
+  readonly now?: () => number;
 }
 
 export function createWorkflowHandlers({
@@ -165,11 +170,16 @@ export function createWorkflowHandlers({
   transport,
   registry,
   evidenceProviders,
+  now = Date.now,
 }: WorkflowHandlerDependencies): ReadonlyMap<string, CommandHandler> {
   return new Map<string, CommandHandler>([
     [
       'RESERVE_LIQUIDITY',
       handler(store, execution, async (context) => {
+        const expiration = preSourceExpiration(context, now());
+        if (expiration !== undefined) {
+          return [preReservationExpirationEvidence(context, expiration)];
+        }
         const action = await execution.reserve(context);
         return [
           chainEvidence(
@@ -201,6 +211,17 @@ export function createWorkflowHandlers({
     [
       'CLOSE_SOURCE',
       handler(store, execution, async (context) => {
+        const expiration = preSourceExpiration(context, now());
+        if (expiration !== undefined) {
+          return [
+            chainEvidence(
+              context.migration.migrationId,
+              'MIGRATION_EXPIRED',
+              evidenceProviders.liquidity,
+              await execution.expireBeforeSourceClose(context, expiration.reason),
+            ),
+          ];
+        }
         let action: FinalizedChainAction;
         try {
           action = await execution.closeSource(context);
@@ -1572,6 +1593,57 @@ function expirationEvidence(
     observedAt: observation.observedAt,
     verificationState: 'FINALIZED',
     verificationMethod: 'SIGNED_DEADLINE_AND_PROVIDER_STATE',
+    verifierVersion: 'debtshift-worker-v1',
+  });
+}
+
+interface PreSourceExpiration {
+  readonly reason: 'SIGNED_EXECUTION_DEADLINE_EXCEEDED' | 'TRANSPORT_QUOTE_EXPIRED';
+  readonly observedAt: string;
+}
+
+function preSourceExpiration(
+  context: MigrationExecutionContext,
+  observedAtMilliseconds: number,
+): PreSourceExpiration | undefined {
+  const observedAtSeconds = BigInt(Math.floor(observedAtMilliseconds / 1_000));
+  const reason =
+    observedAtSeconds > BigInt(context.signedPlan.plan.deadline)
+      ? 'SIGNED_EXECUTION_DEADLINE_EXCEEDED'
+      : observedAtMilliseconds >= Date.parse(context.quote.expiresAt)
+        ? 'TRANSPORT_QUOTE_EXPIRED'
+        : undefined;
+  if (reason === undefined) return undefined;
+  return { reason, observedAt: new Date(observedAtMilliseconds).toISOString() };
+}
+
+function preReservationExpirationEvidence(
+  context: MigrationExecutionContext,
+  expiration: PreSourceExpiration,
+): Evidence {
+  const payload = {
+    reason: expiration.reason,
+    deadline: context.signedPlan.plan.deadline,
+    quoteExpiresAt: context.quote.expiresAt,
+    sourcePosition: { disposition: 'NOT_TOUCHED_BY_DEBTSHIFT' },
+    reservation: { disposition: 'NOT_COMMITTED' },
+  };
+  const evidenceId = hashCanonicalText(
+    `debtshift.evidence.v1:${context.migration.migrationId}:MIGRATION_EXPIRED:${expiration.reason}`,
+  );
+  return evidenceSchema.parse({
+    evidenceId,
+    migrationId: context.migration.migrationId,
+    type: 'MIGRATION_EXPIRED',
+    schemaVersion: 1,
+    provider: 'DEBTSHIFT_DEADLINE_POLICY',
+    network: 'debtshift:workflow',
+    providerReference: evidenceId,
+    rawObservationHash: hashCanonicalText(canonicalJson(payload)),
+    normalizedPayload: payload,
+    observedAt: expiration.observedAt,
+    verificationState: 'FINALIZED',
+    verificationMethod: 'SIGNED_DEADLINE_AND_PERSISTED_QUOTE',
     verifierVersion: 'debtshift-worker-v1',
   });
 }

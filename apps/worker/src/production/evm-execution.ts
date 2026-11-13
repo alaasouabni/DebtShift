@@ -467,6 +467,49 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     });
   }
 
+  async expireBeforeSourceClose(
+    context: MigrationExecutionContext,
+    reason: string,
+  ): Promise<FinalizedChainAction> {
+    await this.#assertContext(context);
+    const artifacts = await this.#artifacts;
+    const plan = context.signedPlan.plan;
+    const migrationId = context.migration.migrationId as Hex;
+    const sourceClose = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_ADAPTER_ADDRESS,
+      eventTopics.sourceClosed,
+      [migrationId, addressTopic(plan.borrower)],
+      { action: 'closeSource', reconciled: true },
+    );
+    if (sourceClose !== undefined) {
+      throw new Error('An expired pre-source migration cannot release after source closure.');
+    }
+    const sourcePosition = await this.#aave.readPosition(plan.borrower);
+    if (
+      sourcePosition === undefined ||
+      BigInt(sourcePosition.debtUnits) === 0n ||
+      BigInt(sourcePosition.debtUnits) > BigInt(plan.sourceRepaymentMaxUnits) ||
+      BigInt(sourcePosition.collateralUnits) < BigInt(plan.sourceCollateralMinUnits)
+    ) {
+      throw new Error('Source position changed before the expired reservation could be released.');
+    }
+    return this.#releaseUndrawnReservation(context, artifacts, {
+      action: 'expireBeforeSourceClose',
+      reason,
+      outcome: 'EXPIRED',
+      planHash: context.signedPlan.planHash,
+      deadline: plan.deadline,
+      quoteExpiresAt: context.quote.expiresAt,
+      sourcePosition: {
+        borrower: plan.borrower,
+        snapshotId: sourcePosition.snapshotId,
+        disposition: 'UNCHANGED',
+      },
+    });
+  }
+
   async closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
     await this.#assertContext(context);
     const artifacts = await this.#artifacts;

@@ -182,6 +182,9 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Add transport polling with strict unknown-status behavior.
 - [x] Add destination balance and receipt reconciliation.
 - [x] Add retry budgets and deadline-aware scheduling.
+- [x] Enforce pre-source quote/authorization expiry as a terminal fail-safe outcome: before
+      reservation it performs no chain write; after reservation it releases the undrawn vault
+      allocation onchain, proves the source position unchanged, and never calls source closure.
 - [x] Add each recovery policy and operator escalation state.
   - [x] Every recovery opening records a typed policy, exact residual assets, the single next
         permitted action, action deadline, escalation owner, and either automated-pending or

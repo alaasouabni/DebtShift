@@ -35,7 +35,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 
 ## Failure behavior
 
-- [ ] Quote expiry before source closure moves no assets.
+- [x] Quote or signed-plan expiry before source closure moves no borrower assets: pre-reservation
+      expiry performs no chain write, while post-reservation expiry releases the undrawn allocation
+      onchain and proves the source position unchanged before terminating `EXPIRED`.
 - [x] A proven pre-broadcast source revert or finalized reverted receipt leaves the source position
       unchanged, releases the undrawn reservation onchain, and requires a fresh quote; uncertain
       broadcast/receipt failures never release optimistically.

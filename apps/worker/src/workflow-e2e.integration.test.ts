@@ -708,6 +708,64 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
     });
   }, 60_000);
 
+  it('expires before source closure and releases the active reservation without moving borrower assets', async () => {
+    await withWorkflow(
+      'SUCCESS',
+      async ({ database, deployment, source, createProcessor, expireBeforeSource }) => {
+        const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+        await runUntil(database, createProcessor, migrationId, 'RESERVED');
+        expireBeforeSource();
+
+        await runUntil(database, createProcessor, migrationId, 'EXPIRED');
+        const details = await getMigrationDetails(database, migrationId);
+        const expiration = details?.evidence.find(({ type }) => type === 'MIGRATION_EXPIRED');
+        expect(details?.migration.phase).toBe('EXPIRED');
+        expect(details?.evidence.some(({ type }) => type === 'SOURCE_CLOSE')).toBe(false);
+        expect(details?.commands.find(({ type }) => type === 'CLOSE_SOURCE')?.status).toBe(
+          'SUCCEEDED',
+        );
+        expect(details?.reservations[0]?.status).toBe('EXPIRED');
+        expect(expiration?.normalizedPayload).toEqual(
+          expect.objectContaining({
+            action: 'expireBeforeSourceClose',
+            reason: 'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+            outcome: 'EXPIRED',
+            sourcePosition: expect.objectContaining({ disposition: 'UNCHANGED' }),
+          }),
+        );
+
+        const [sourceArtifact, vaultArtifact] = await Promise.all([
+          loadFoundryArtifact('MockSourceLending'),
+          loadFoundryArtifact('LiquidityVault'),
+        ]);
+        const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
+          source.publicClient.readContract({
+            address: deployment.source.lending,
+            abi: sourceArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+          source.publicClient.readContract({
+            address: deployment.source.vault,
+            abi: vaultArtifact.abi,
+            functionName: 'reservations',
+            args: [migrationId],
+          }),
+          source.publicClient.readContract({
+            address: deployment.source.vault,
+            abi: vaultArtifact.abi,
+            functionName: 'reservedUndrawn',
+            args: [deployment.source.debtToken],
+          }),
+        ]);
+        expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+        expect(Array.isArray(reservation) ? reservation[6] : undefined).toBe(4);
+        expect(Array.isArray(reservation) ? reservation[8] : undefined).toBe(0n);
+        expect(reservedUndrawn).toBe(0n);
+      },
+    );
+  }, 60_000);
+
   for (const testCase of [
     {
       name: 'collateral price deteriorates before source close',
@@ -871,6 +929,7 @@ interface WorkflowFixture {
     overrides?: Partial<MigrationExecutionPort>,
   ) => DurableCommandProcessor;
   readonly expireTransport: () => void;
+  readonly expireBeforeSource: () => void;
 }
 
 async function withWorkflow(
@@ -881,6 +940,7 @@ async function withWorkflow(
   const destination = await startAnvil({ chainId: 31_338, port: 19_556, anvilPath: ANVIL_PATH });
   const postgres = new PGlite();
   let transportClockOffsetMs = 0;
+  let workflowClockOffsetMs = 0;
   try {
     for (const migrationFile of migrationFiles) {
       await postgres.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
@@ -928,6 +988,7 @@ async function withWorkflow(
           transport: new SimulatedTransportExecutionPort(simulator),
           registry: new PendingSandboxRegistryPort(),
           evidenceProviders: sandboxEvidenceProviders,
+          now: () => Date.now() + workflowClockOffsetMs,
         }),
       );
     };
@@ -939,6 +1000,9 @@ async function withWorkflow(
       createProcessor,
       expireTransport: () => {
         transportClockOffsetMs = 360_000;
+      },
+      expireBeforeSource: () => {
+        workflowClockOffsetMs = 360_000;
       },
     });
   } finally {
@@ -957,6 +1021,9 @@ function withExecutionOverrides(
     reserve: overrides.reserve ?? ((context) => base.reserve(context)),
     cancelBeforeSourceClose:
       overrides.cancelBeforeSourceClose ?? ((context) => base.cancelBeforeSourceClose(context)),
+    expireBeforeSourceClose:
+      overrides.expireBeforeSourceClose ??
+      ((context, reason) => base.expireBeforeSourceClose(context, reason)),
     closeSource: overrides.closeSource ?? ((context) => base.closeSource(context)),
     dispatchTransport:
       overrides.dispatchTransport ?? ((context) => base.dispatchTransport(context)),

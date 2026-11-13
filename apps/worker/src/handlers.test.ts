@@ -59,6 +59,78 @@ class MemoryContextStore implements WorkflowContextStore {
 }
 
 describe('simulated workflow handlers', () => {
+  it('expires before reservation without executing a chain action', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, false));
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(
+      store,
+      execution,
+      simulator,
+      () => 2_000_000_000_000,
+    );
+
+    const records = await getHandler(handlers, 'RESERVE_LIQUIDITY').execute(
+      command('RESERVE_LIQUIDITY'),
+    );
+
+    expect(execution.reserve).not.toHaveBeenCalled();
+    expect(records).toEqual([
+      expect.objectContaining({
+        type: 'MIGRATION_EXPIRED',
+        normalizedPayload: expect.objectContaining({
+          reason: 'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+          sourcePosition: { disposition: 'NOT_TOUCHED_BY_DEBTSHIFT' },
+          reservation: { disposition: 'NOT_COMMITTED' },
+        }),
+      }),
+    ]);
+    expect(records[0]).not.toHaveProperty('chainId');
+  });
+
+  it('releases an active reservation instead of closing the source after expiry', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, false));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      closeSource: vi.fn(async () => action()),
+      expireBeforeSourceClose: vi.fn(async () => ({
+        ...action(),
+        payload: {
+          action: 'expireBeforeSourceClose',
+          reason: 'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+          outcome: 'EXPIRED',
+          sourcePosition: { disposition: 'UNCHANGED' },
+        },
+      })),
+    };
+    const handlers = createSandboxWorkflowHandlers(
+      store,
+      execution,
+      simulator,
+      () => 2_000_000_000_000,
+    );
+
+    const records = await getHandler(handlers, 'CLOSE_SOURCE').execute(command('CLOSE_SOURCE'));
+
+    expect(execution.closeSource).not.toHaveBeenCalled();
+    expect(execution.expireBeforeSourceClose).toHaveBeenCalledWith(
+      store.context,
+      'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+    );
+    expect(records).toEqual([
+      expect.objectContaining({
+        type: 'MIGRATION_EXPIRED',
+        transactionHash: ACTION_TRANSACTION,
+        normalizedPayload: expect.objectContaining({
+          action: 'expireBeforeSourceClose',
+          outcome: 'EXPIRED',
+          sourcePosition: { disposition: 'UNCHANGED' },
+        }),
+      }),
+    ]);
+  });
+
   it('emits finalized cancellation evidence only after the reservation release action', async () => {
     const simulator = new DeterministicTransportSimulator();
     const store = settlementStore(await buildContext(simulator, true));
@@ -853,6 +925,7 @@ function fakeExecution(): MigrationExecutionPort {
     verifyCanonicalEvidence: vi.fn(async () => []),
     reserve: perform,
     cancelBeforeSourceClose: perform,
+    expireBeforeSourceClose: perform,
     closeSource: perform,
     dispatchTransport: perform,
     deliverDestination: perform,
@@ -866,6 +939,7 @@ function createSandboxWorkflowHandlers(
   store: WorkflowContextStore,
   execution: MigrationExecutionPort,
   simulator: DeterministicTransportSimulator,
+  now?: () => number,
 ): ReadonlyMap<string, CommandHandler> {
   return createWorkflowHandlers({
     store,
@@ -873,6 +947,7 @@ function createSandboxWorkflowHandlers(
     transport: new SimulatedTransportExecutionPort(simulator),
     registry: new PendingSandboxRegistryPort(),
     evidenceProviders: sandboxEvidenceProviders,
+    ...(now === undefined ? {} : { now }),
   });
 }
 

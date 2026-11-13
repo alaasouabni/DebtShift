@@ -428,6 +428,54 @@ export class DualAnvilSandboxExecutionPort implements MigrationExecutionPort {
     });
   }
 
+  async expireBeforeSourceClose(
+    context: MigrationExecutionContext,
+    reason: string,
+  ): Promise<FinalizedChainAction> {
+    this.#assertContext(context);
+    const artifacts = await this.#artifacts;
+    const plan = context.signedPlan.plan;
+    const migrationId = context.migration.migrationId as Hex;
+    const sourceClose = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_ADAPTER_ADDRESS,
+      eventTopics.sourceClosed,
+      [migrationId, addressTopic(plan.borrower)],
+      { action: 'closeSource', reconciled: true },
+    );
+    if (sourceClose !== undefined) {
+      throw new Error('An expired pre-source migration cannot release after source closure.');
+    }
+    const sourcePosition = await this.#readPosition(
+      this.#sourcePublic,
+      artifacts.sourceLending,
+      this.#environment.SOURCE_LENDING_ADDRESS,
+      plan.borrower,
+    );
+    if (
+      sourcePosition[1] === 0n ||
+      sourcePosition[0] < BigInt(plan.sourceCollateralMinUnits) ||
+      sourcePosition[1] > BigInt(plan.sourceRepaymentMaxUnits)
+    ) {
+      throw new Error('Source position changed before the expired reservation could be released.');
+    }
+    return this.#releaseUndrawnReservation(context, artifacts, {
+      action: 'expireBeforeSourceClose',
+      reason,
+      outcome: 'EXPIRED',
+      planHash: context.signedPlan.planHash,
+      deadline: plan.deadline,
+      quoteExpiresAt: context.quote.expiresAt,
+      sourcePosition: {
+        borrower: plan.borrower,
+        collateralUnits: sourcePosition[0].toString(),
+        debtUnits: sourcePosition[1].toString(),
+        disposition: 'UNCHANGED',
+      },
+    });
+  }
+
   async closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
     this.#assertContext(context);
     const artifacts = await this.#artifacts;

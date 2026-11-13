@@ -153,6 +153,7 @@ function fakeExecution(): MigrationExecutionPort {
     verifyCanonicalEvidence: vi.fn(async () => []),
     reserve: action,
     cancelBeforeSourceClose: action,
+    expireBeforeSourceClose: action,
     closeSource: action,
     dispatchTransport: action,
     deliverDestination: action,

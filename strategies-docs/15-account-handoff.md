@@ -20,23 +20,22 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `7ce52a3`.
+- Previous remote checkpoint before this handoff: `f3cfb89`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. Transaction-certainty classification for source-close failures: only pre-broadcast simulation
-   failures and finalized reverted receipts are automatically releasable.
-2. A fail-safe source-revert path that rechecks source-close evidence and proves the open position is
-   still within signed bounds before releasing the undrawn vault reservation and requiring a fresh quote.
-3. A real two-Anvil scenario proving a paused source adapter moves no borrower assets, releases the
-   reservation onchain, records no false source-close evidence, and ends `REQUOTE_REQUIRED`.
-4. Refactored borrower cancellation and source-revert handling through the same verified undrawn
-   reservation-release primitive without conflating their evidence reasons.
-5. Refreshed pinned Aave/Morpho fork evidence on pushed checkpoint `7ce52a3` using the official free
-   Base RPC, plus a fully green GitHub quality run `43388863063`.
+1. A deterministic pre-source deadline and transport-quote expiry guard shared by reservation and
+   source-close command handlers.
+2. Expiry before reservation produces terminal evidence without a chain write or asset movement.
+3. Expiry after reservation proves there is no source-close event and that the source position is
+   still within signed bounds, releases the undrawn allocation onchain, and terminates `EXPIRED`.
+4. A real two-Anvil scenario proving the source position remains 10 WETH / 10,000 USDC, no false
+   source-close evidence is recorded, and vault receivable/reserved-undrawn balances are zero.
+5. Processor evidence contracts and handler tests for both `RESERVE_LIQUIDITY` and `CLOSE_SOURCE`
+   expiration alternatives.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -45,18 +44,18 @@ RPC URLs or secrets.
 
 ## Verified evidence at handoff
 
-| Gate                                      | Result                                                                                     |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Full `npm run check`                      | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds         |
-| Worker suite                              | Pass: 62 tests, including 16 durable workflows and safe source-revert release              |
-| Database suite and migration drill        | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified     |
-| API suite                                 | Pass: 24 tests, including owner-scoped artifacts, cancellation race rejection, and OpenAPI |
-| `npm run check:evm`                       | Pass: compiler, unit, fuzz, invariant, and lint gates                                      |
-| `npm run check:evm-deployment`            | Pass: two-node deployment/readiness and tamper rejection                                   |
-| NEAR format/test/clippy/sandbox gates     | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                     |
-| Previous GitHub quality run `43383946262` | Pass for recovery checkpoint `635cdbd`                                                     |
-| `npm run check:forks`                     | Not rerun: `BASE_FORK_RPC_URL` is required                                                 |
-| Credentialed 1Click dry quote             | Not run: `INTENTS_AUTH_TOKEN` is required                                                  |
+| Gate                                  | Result                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds         |
+| Worker suite                          | Pass: 67 tests, including 17 durable workflows and asset-safe pre-source expiry            |
+| Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified     |
+| API suite                             | Pass: 24 tests, including owner-scoped artifacts, cancellation race rejection, and OpenAPI |
+| `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                      |
+| `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                                   |
+| NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                     |
+| GitHub quality run `43391247803`      | Pass for source-revert checkpoint `f3cfb89`                                                |
+| `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push     |
+| Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                                  |
 
 The live route observation used Base block `56,649,525` and Arbitrum block `523,682,852`. The
 official 1Click schema hash observed during this session was

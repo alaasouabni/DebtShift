@@ -226,4 +226,18 @@ describe('durable command processor', () => {
     expect(store.complete).toHaveBeenCalledWith(COMMAND_ID);
     expect(store.fail).not.toHaveBeenCalled();
   });
+
+  for (const commandType of ['RESERVE_LIQUIDITY', 'CLOSE_SOURCE'] as const) {
+    it(`accepts expiration as the terminal alternative for ${commandType}`, async () => {
+      const store = persistence({ begin: vi.fn(async () => command(commandType)) });
+      const execute = vi.fn(async () => [evidence('MIGRATION_EXPIRED')]);
+      const processor = new DurableCommandProcessor(store, new Map([[commandType, { execute }]]));
+
+      await processor.process(envelope());
+
+      expect(store.advance).toHaveBeenCalledOnce();
+      expect(store.complete).toHaveBeenCalledWith(COMMAND_ID);
+      expect(store.fail).not.toHaveBeenCalled();
+    });
+  }
 });
