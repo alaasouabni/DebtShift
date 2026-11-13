@@ -104,7 +104,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
       also publishes the runtime CycloneDX SBOM.
 - [ ] Metrics and structured logs cover all migration phases.
 - [x] Critical alerts are exercised.
-- [ ] Recovery and key-rotation runbooks are documented.
+- [x] Recovery and key-rotation runbooks are documented; the isolated database restore drill
+      verifies every public table, exact row count, and migration history without mutating source.
 - [x] Deployment manifests identify every contract artifact and configuration.
 - [x] Known limitations and deferred production requirements are documented.
 

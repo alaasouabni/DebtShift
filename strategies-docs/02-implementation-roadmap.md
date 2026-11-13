@@ -323,7 +323,9 @@ workflow.
 - [x] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
       exposure, and payout failure after collateral delivery.
 - [ ] Add database backup/restore and migration rollback drills.
-- [ ] Add secret rotation and relayer-key replacement procedures.
+  - [x] Add and execute an isolated full-database backup/restore verification drill.
+  - [ ] Add a checked-in migration rollback/forward-recovery drill.
+- [x] Add secret rotation and relayer-key replacement procedures.
 - [ ] Generate an SBOM and container provenance metadata.
 
 ### Exit criteria

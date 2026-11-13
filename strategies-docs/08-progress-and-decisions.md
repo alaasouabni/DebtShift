@@ -16,7 +16,7 @@ This file is updated throughout implementation. It is the first place to inspect
 | M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                               |
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                        |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.            |
-| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | All required durable alert classes pass deterministic drills. Full-history secret scanning, production dependency audit, built-image vulnerability enforcement, and CycloneDX SBOM publication are wired into CI; metrics, recovery/backup/key-rotation drills, and broader provenance remain.                  |
+| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | All required alert and security gates pass. Recovery, pause, RPC/Redis, funding, solver, evidence, and add-before-remove key-rotation runbooks are documented; an isolated exact database restore drill passes. Metrics, migration rollback, and broader provenance remain.                                     |
 | M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                             |
 
 ## Submission-critical mode
@@ -345,6 +345,23 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Operator runbooks and isolated database restore drill
+
+- Added executable runbooks for containment, worker restart, RPC failover, Redis reconstruction,
+  stuck reservations, transport refunds/unknown custody, destination recovery, capacity loss,
+  supplementary funding, solver payout failure, emergency pause, evidence mismatch, and closure.
+- Documented add-before-remove EVM relayer and NEAR verifier rotation while preserving the actual
+  contract boundary: the first EVM deployment requires a stable owner multisig and does not claim a
+  universal ownership-transfer path.
+- Added `npm run ops:drill:database-restore`. It creates a custom-format PostgreSQL backup, restores
+  only into a randomly named sibling database, verifies the public table set, exact row counts, and
+  Drizzle migration history, and removes the isolated database and temporary artifact.
+- The drill passed against the preserved Docker stack: 21 public tables, 386 rows, 153,366 backup
+  bytes, SHA-256 `2cddef6e57012668c3d8b147eb08c9763212ac0ae6065002fbdb87fb0ab13e60`,
+  and no source-database mutation.
+- Mainnet execution remained disabled; no deployment, credential use, broadcast, or real-fund
+  movement occurred.
 
 ### 2026-11-13 - Fail-closed security scans and minimized runtime image
 

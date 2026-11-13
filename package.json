@@ -36,6 +36,7 @@
     "infra:dependencies": "docker-compose -f infra/docker/docker-compose.yml up -d postgres redis",
     "infra:up": "docker-compose -f infra/docker/docker-compose.yml up -d --build",
     "local:chains": "npm run check:evm && npm run build --workspace @debtshift/protocols && node packages/protocols/dist/local-stack.js",
+    "ops:drill:database-restore": "node scripts/drill-database-restore.mjs",
     "smoke:local": "node scripts/smoke-local-stack.mjs",
     "lint": "turbo run lint",
     "test": "turbo run test",

@@ -52,6 +52,7 @@ Implementation must be understandable from this directory without relying on cha
 | [13-frontend-handoff.md](./13-frontend-handoff.md)                                         | Defines frontend ownership, API and signing contracts, user journeys, safety labels, and tests.  |
 | [14-submission-critical-plan.md](./14-submission-critical-plan.md)                         | Defines the two-day P0 delivery order, ownership, deferrals, safety rules, and submission gates. |
 | [15-account-handoff.md](./15-account-handoff.md)                                           | Gives the next Codex account the exact verified checkpoint, blockers, and resume commands.       |
+| [16-operations-runbooks.md](./16-operations-runbooks.md)                                   | Gives executable containment, recovery, backup, pause, and key-rotation procedures.              |
 
 ## Work protocol
 
