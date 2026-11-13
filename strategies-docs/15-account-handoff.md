@@ -20,23 +20,23 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `ddec917`.
+- Previous remote checkpoint before this handoff: `b7783a0`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
-## What this checkpoint adds
+## What the pending checkpoint adds
 
-1. A strict, versioned EVM deployment manifest schema in
-   `packages/domain/src/config/deployment-manifest.ts`.
-2. Production deployment and wallet-free verification in
-   `packages/protocols/src/production-deployment.ts`.
-3. A two-Anvil production deployment integration test in
-   `packages/protocols/src/production-deployment.integration.test.ts`.
-4. A guarded external deployment entry point in `scripts/deploy-production-evm.mjs`.
-5. A read-only post-deployment verifier in `scripts/check-deployment-readiness.mjs`.
-6. A portable deployment test gate in `scripts/check-evm-deployment.mjs` and CI coverage.
-7. A local-only Aave data-provider fixture used solely to exercise production deployment wiring.
+1. A complete Docker sandbox stack for chains, migrations, API, worker, web, PostgreSQL, and Redis.
+2. A checksum-pinned Node/Foundry Linux image that compiles contracts/apps and prunes development
+   dependencies before runtime.
+3. Container-addressable, interval-mined local chains with an explicit post-deployment readiness gate.
+4. A current signed smoke client that submits both lending authorizations and waits for bounded
+   asynchronous settlement.
+5. `near-api-js` 7.2.0 with the v7 registry-provider boundary and a zero-vulnerability production
+   dependency audit.
+6. Preserved production deployment manifests, guarded deployment CLI, wallet-free readiness checks,
+   and two-Anvil production deployment tests from the prior checkpoint.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -45,16 +45,17 @@ RPC URLs or secrets.
 
 ## Verified evidence at handoff
 
-| Gate                           | Result                                                                                |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
-| `npm run format:check`         | Pass                                                                                  |
-| `npm run check`                | Pass: formatting, lint, typecheck, package tests, workflow/recovery tests, and builds |
-| `npm run check:evm`            | Pass: 33 tests, including fuzz and three invariant suites                             |
-| `npm run check:evm-deployment` | Pass: two-node deployment/readiness and tamper rejection                              |
-| `npm run check:live-route`     | Pass against current Base, Arbitrum, Chainlink, Morpho, and 1Click catalog state      |
-| `npm run check:one-click-spec` | Pass against the official 1Click OpenAPI document                                     |
-| `npm run check:near`           | Not rerun locally: Cargo is absent on this Windows host                               |
-| `npm run check:forks`          | Not rerun: `BASE_FORK_RPC_URL` is required                                            |
+| Gate                                       | Result                                                                             |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Forced workspace lint/typecheck/test/build | Pass: 40/40 tasks, zero cache replay                                               |
+| Worker suite                               | Pass: 40 tests including happy, refund, timeout, reorg, and deterioration recovery |
+| Full Docker sandbox smoke                  | Pass: migration `0x4fa3...88c8`, `SETTLED`, 17 evidence records                    |
+| Pruned production dependency audit         | Pass: zero vulnerabilities at the low-severity threshold                           |
+| `npm run check:evm`                        | Pass: 33 tests, including fuzz and three invariant suites                          |
+| `npm run check:evm-deployment`             | Pass: two-node deployment/readiness and tamper rejection                           |
+| `npm run check:near`                       | Not rerun locally: Cargo is absent on this Windows host                            |
+| `npm run check:forks`                      | Not rerun: `BASE_FORK_RPC_URL` is required                                         |
+| Credentialed 1Click dry quote              | Not run: `INTENTS_AUTH_TOKEN` is required                                          |
 
 The live route observation used Base block `56,649,525` and Arbitrum block `523,682,852`. The
 official 1Click schema hash observed during this session was
@@ -65,14 +66,15 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Push this checkpoint and confirm CI, especially the EVM deployment job and Linux NEAR sandbox
-   test.
+1. Push this pending checkpoint and confirm CI, especially the EVM deployment job and Linux NEAR
+   sandbox test.
 2. Supply a trusted archival `BASE_FORK_RPC_URL` and run `npm run check:forks` on this commit.
 3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
 4. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
    storage, and sandbox/testnet evidence.
-5. Deploy and publish the hosted contract-backed sandbox, API, worker, database/queue, and web UI.
+5. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
+   web UI with `NEXT_PUBLIC_API_URL` set at image build time.
 6. Deploy the public EVM testnet path if suitable Aave/Morpho test markets and funding exist; keep
    the unavailable 1Click boundary explicitly simulated.
 7. Run the full acceptance and security gate from a clean checkout.

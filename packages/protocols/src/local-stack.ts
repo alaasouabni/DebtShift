@@ -1,9 +1,27 @@
 import { deployLocalDebtShift } from './local-deployment.js';
 import { startAnvil } from './local-chain.js';
+import { rm, writeFile } from 'node:fs/promises';
 
 async function main(): Promise<void> {
-  const source = await startAnvil({ chainId: 31_337, port: 8_545 });
-  const destination = await startAnvil({ chainId: 31_338, port: 8_546 });
+  const readyFile = process.env.DEBTSHIFT_LOCAL_STACK_READY_FILE;
+  if (readyFile !== undefined) await rm(readyFile, { force: true });
+  const bindHost = process.env.ANVIL_BIND_HOST ?? '127.0.0.1';
+  const blockTimeSeconds = parsePositiveInteger(
+    process.env.ANVIL_BLOCK_TIME_SECONDS ?? '1',
+    'ANVIL_BLOCK_TIME_SECONDS',
+  );
+  const source = await startAnvil({
+    chainId: 31_337,
+    port: 8_545,
+    bindHost,
+    blockTimeSeconds,
+  });
+  const destination = await startAnvil({
+    chainId: 31_338,
+    port: 8_546,
+    bindHost,
+    blockTimeSeconds,
+  });
   try {
     const deployment = await deployLocalDebtShift(
       source.chain,
@@ -25,10 +43,26 @@ async function main(): Promise<void> {
         2,
       )}\n`,
     );
+    if (readyFile !== undefined) {
+      await writeFile(
+        readyFile,
+        `${JSON.stringify({ status: 'ready', borrower: deployment.borrower })}\n`,
+        { encoding: 'utf8', mode: 0o600 },
+      );
+    }
     await waitForShutdown();
   } finally {
+    if (readyFile !== undefined) await rm(readyFile, { force: true });
     await Promise.all([source.stop(), destination.stop()]);
   }
+}
+
+function parsePositiveInteger(value: string, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return parsed;
 }
 
 function waitForShutdown(): Promise<void> {

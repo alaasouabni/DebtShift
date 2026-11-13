@@ -17,7 +17,7 @@ This file is updated throughout implementation. It is the first place to inspect
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and a compiling sandbox test exist; the supported Linux sandbox run and CI remain.                                                                 |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains. |
 | M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                    |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, canonical receipt/runtime-code verification, guarded deployment CLI, and CI deployment test exist. External deployment manifests and hosted release evidence remain.                                                                                                 |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, CI deployment tests, and a full readiness-gated Docker sandbox stack pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                           |
 
 ## Submission-critical mode
 
@@ -35,12 +35,12 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Current active task
 
-- **Task:** P0.6/P0.7 - finish credentialed provider/NEAR validation, external deployments, hosted
-  deployment, and release evidence for the single allowlisted route.
+- **Task:** P0.6/P0.7 - finish credentialed provider/NEAR validation and deploy the already verified
+  full sandbox image, registry, and public testnet evidence for the single allowlisted route.
 - **Status:** IN_PROGRESS
 - **Next verification:** Run the NEAR sandbox gate in the supported Linux CI environment, rerun the
   pinned protocol fork with `BASE_FORK_RPC_URL`, perform an official 1Click dry quote when a token is
-  available, deploy the registry-backed hosted sandbox/testnet stack, and execute acceptance.
+  available, supply hosting/NEAR credentials to the verified stack, and execute acceptance.
 
 ## Decision log
 
@@ -318,6 +318,34 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Full hosted-sandbox image and signed HTTP-to-chain workflow verified
+
+- Replaced the database-only Compose definition with a complete stack: PostgreSQL, Redis, two
+  private Anvil chains, one-shot migrations, API, durable worker, and web. Service startup is ordered
+  by health and migration completion rather than timing assumptions.
+- Added a reproducible Linux image pinned to Node `22.16.0` and checksum-verified Foundry `1.5.1`.
+  It builds Solidity artifacts and all ten workspaces from a clean context, then removes development
+  dependencies. The pruned runtime dependency graph reports zero npm advisories.
+- Made the long-running sandbox chains network-addressable without changing the loopback default
+  used by tests. One-second private-chain block production preserves the production freshness policy;
+  an explicit ready marker prevents API/worker startup until contract deployment, source-position
+  seeding, vault funding, and destination liquidity are complete.
+- Updated the external smoke client for the current authorization contract: it submits both prepared
+  source and target lending authorizations and uses a bounded 120-second settlement deadline suitable
+  for interval-mined receipts and provider polling.
+- Upgraded `near-api-js` from `6.5.1` to `7.2.0`, adapted the v7 provider API, and removed the
+  production transitive crypto advisory. Worker type checking/build, all 40 worker tests, and the
+  production audit pass.
+- Fresh cache-bypassed workspace validation passed all 40 lint/typecheck/test/build tasks. The full
+  pruned stack then completed signed migration
+  `0x4fa345b2ec07e5a014f215036b8ede2b910dcdc9a5dfbcfdb61999b789bc88c8` to `SETTLED` with 17
+  persisted evidence records.
+- This was local disposable sandbox activity only. No external deployment, public-chain transaction,
+  1Click committed request, NEAR registry write, mainnet write, or real-fund movement occurred.
+- Still required: Linux CI/NEAR proof, trusted pinned-fork rerun, credentialed official 1Click dry
+  quote, NEAR sandbox/testnet deployment, public hosting, public EVM testnet exercise where feasible,
+  acceptance, and mainnet-disabled production deployment.
 
 ### 2026-11-12 - Production deployment evidence and account handoff checkpoint
 

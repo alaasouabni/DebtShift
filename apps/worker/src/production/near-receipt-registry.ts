@@ -6,7 +6,7 @@ import {
   type Evidence,
   type EvidenceType,
 } from '@debtshift/domain';
-import { Account, KeyPairSigner, providers } from 'near-api-js';
+import { Account, JsonRpcProvider, KeyPairSigner } from 'near-api-js';
 
 import type { ReceiptRegistryPort } from '../handlers.js';
 
@@ -210,7 +210,7 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
 }
 
 class NearApiRegistryClient implements NearRegistryClient {
-  readonly #provider: InstanceType<typeof providers.JsonRpcProvider>;
+  readonly #provider: JsonRpcProvider;
   readonly #account: Account;
 
   constructor(private readonly environment: RegistryEnvironment) {
@@ -221,7 +221,7 @@ class NearApiRegistryClient implements NearRegistryClient {
     ) {
       throw new Error('NEAR registry writes require registry and verifier signer configuration.');
     }
-    this.#provider = new providers.JsonRpcProvider({ url: environment.NEAR_RPC_URL });
+    this.#provider = new JsonRpcProvider({ url: environment.NEAR_RPC_URL });
     const signer = KeyPairSigner.fromSecretKey(
       environment.NEAR_SIGNER_PRIVATE_KEY as Parameters<typeof KeyPairSigner.fromSecretKey>[0],
     );
@@ -229,12 +229,12 @@ class NearApiRegistryClient implements NearRegistryClient {
   }
 
   async view(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {
-    return this.#provider.callFunction(
-      this.environment.NEAR_REGISTRY_ACCOUNT,
-      methodName,
-      { ...args },
-      { finality: 'final' },
-    );
+    return this.#provider.callFunction({
+      contractId: this.environment.NEAR_REGISTRY_ACCOUNT,
+      method: methodName,
+      args: { ...args },
+      blockQuery: { finality: 'final' },
+    });
   }
 
   call(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {

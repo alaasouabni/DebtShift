@@ -40,19 +40,22 @@ const execution = await request('/v1/migrations/execute', {
     },
     quote: prepared.quote,
     sourceSnapshot: prepared.sourceSnapshot,
+    sourceAuthorization: prepared.sourceAuthorization,
+    targetAuthorization: prepared.targetAuthorization,
   }),
 });
 
 let details;
-for (let attempt = 0; attempt < 80; attempt += 1) {
+const settlementDeadline = Date.now() + 120_000;
+while (Date.now() < settlementDeadline) {
   details = await request(`/v1/migrations/${execution.migrationId}`);
-  if (details.migration?.phase === 'SETTLED') break;
+  if (details.migration?.phase === 'SETTLED' || details.migration?.phase === 'COMPLETED') break;
   if (details.migration?.phase === 'RECOVERY' || details.migration?.phase === 'FAILED_SAFE') {
     throw new Error(`Local happy-path smoke test entered ${details.migration.phase}.`);
   }
-  await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
 }
-if (details?.migration?.phase !== 'SETTLED') {
+if (details?.migration?.phase !== 'SETTLED' && details?.migration?.phase !== 'COMPLETED') {
   throw new Error(`Migration did not settle; current phase is ${details?.migration?.phase}.`);
 }
 const evidenceTypes = new Set(details.evidence.map((record) => record.type));
@@ -66,10 +69,13 @@ for (const type of [
 ]) {
   if (!evidenceTypes.has(type)) throw new Error(`Missing finalized ${type} evidence.`);
 }
+if (details.migration.phase === 'COMPLETED' && !evidenceTypes.has('NEAR_RECEIPT')) {
+  throw new Error('Completed migration is missing finalized NEAR receipt evidence.');
+}
 
 process.stdout.write(
   `${JSON.stringify({
-    status: 'settled',
+    status: details.migration.phase === 'COMPLETED' ? 'completed' : 'settled',
     migrationId: execution.migrationId,
     phase: details.migration.phase,
     evidenceCount: details.evidence.length,
