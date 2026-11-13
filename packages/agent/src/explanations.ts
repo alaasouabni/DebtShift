@@ -59,6 +59,15 @@ export interface ExplainedRoute {
   readonly explanation: RouteExplanation;
 }
 
+export const explainedRouteSchema = z
+  .object({
+    decisionHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+    provider: z.enum(['DETERMINISTIC', 'LOCAL_AI', 'USER_API']),
+    fallbackUsed: z.boolean(),
+    explanation: explanationSchema,
+  })
+  .strict();
+
 export interface ExplanationServiceOptions {
   readonly allowCustomEndpoints?: boolean;
   readonly timeoutMs?: number;

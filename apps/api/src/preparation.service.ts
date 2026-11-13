@@ -11,7 +11,6 @@ import {
   hashRefinanceIntent,
   hashSourcePosition,
   refinanceIntentSchema,
-  evmAddressSchema,
 } from '@debtshift/domain';
 import { transportQuoteRequestSchema } from '@debtshift/intents';
 import {
@@ -23,9 +22,9 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isAddressEqual, type Address } from 'viem';
-import { z } from 'zod';
 
 import { DatabaseService } from './database.service.js';
+import { preparationRequestSchema } from './http-contracts.js';
 import {
   MARKET_INTELLIGENCE_PORT,
   PROTOCOL_DATA_PORT,
@@ -34,8 +33,6 @@ import {
 } from './market-data/ports.js';
 import { RouteAnalysisService } from './route-analysis.service.js';
 import { TransportService } from './transport.service.js';
-
-const preparationRequestSchema = z.object({ borrower: evmAddressSchema }).strict();
 
 @Injectable()
 export class PreparationService {

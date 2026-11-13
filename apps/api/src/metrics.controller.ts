@@ -12,7 +12,10 @@ export class MetricsController {
   @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
   @ApiOperation({ summary: 'Read low-cardinality Prometheus operational metrics' })
   @ApiProduces('text/plain')
-  @ApiOkResponse({ description: 'Prometheus text exposition backed by PostgreSQL.' })
+  @ApiOkResponse({
+    description: 'Prometheus text exposition backed by PostgreSQL.',
+    content: { 'text/plain': { schema: { type: 'string' } } },
+  })
   render(): Promise<string> {
     return this.metrics.render();
   }

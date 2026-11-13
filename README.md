@@ -52,6 +52,9 @@ This builds and starts PostgreSQL, Redis, both private chains, migrations, the A
 application. Open `http://localhost:3000`; API documentation is at
 `http://localhost:3001/docs`; Prometheus text metrics are at
 `http://localhost:3001/v1/metrics`. Stop the stack with `npm run infra:down`.
+The checked-in OpenAPI 3.1 contract is `docs/openapi.json`; deterministic operation, request, and
+response types are exported by `@debtshift/sdk`. Run `npm run openapi:generate` after changing an API
+contract, or `npm run openapi:check` to reject generated-artifact drift.
 An authorized migration is placed in the page URL as `?migration=0x...`, so reload restores its
 durable timeline, evidence, ledger, and recovery state. Live updates use the cursor-resumable
 `GET /v1/migrations/:migrationId/stream` SSE endpoint and fall back to the last PostgreSQL audit

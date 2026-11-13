@@ -1166,8 +1166,32 @@ operative source of truth.
 - The isolated migration recovery drill applied all 11 checked-in migrations, verified 24 public
   tables, rolled back a failed transactional candidate, restored the pre-change backup, and proved
   the migrator idempotent without accessing the source database.
-- GitHub Actions run `43372781927` for the preceding reload-safe evidence checkpoint passed the
-  TypeScript, EVM, NEAR, and security/container jobs.
+- GitHub Actions run `43375948258` passed the TypeScript, EVM, NEAR, and security/container jobs for
+  this durable wallet-session checkpoint.
+
+### 2026-11-13 - OpenAPI 3.1 and generated SDK contracts completed
+
+- Added runtime-backed request and response contracts for every public REST/SSE route: health,
+  wallet challenge/session/logout, borrower positions and history, market discovery, deterministic
+  analysis and optional explanation configuration, transport quotes, exact preparation and
+  execution authorization bundles, migration details/events/evidence, SSE cursors, and metrics.
+- Centralized OpenAPI document creation, stable operation IDs, the `debtshift_session` cookie
+  security scheme, response errors, cookie headers, and the explicit separation between API login
+  and EIP-712 financial authorization. The document uses OpenAPI 3.1 because its schemas use native
+  JSON Schema 2020-12 constructs.
+- Added a dependency-free deterministic generator that checks in `docs/openapi.json` and strongly
+  typed operation/request/response mappings under `@debtshift/sdk`. `npm run openapi:check` now
+  regenerates both artifacts and rejects drift as part of the normal repository gate.
+- Added output schemas at the optimizer and read-only agent boundaries and validate calculated
+  feasibility, route comparison, and wallet analysis results at runtime before exposing them.
+- Added API contract tests proving unique stable operation IDs, explicit success responses, public
+  challenge creation, HttpOnly-cookie documentation without session-hash exposure, complete
+  execution authorization fields, valid cookie security references, and authenticated evidence.
+- Rejected third-party generators that introduced an avoidable high-severity development
+  dependency; the repository retains zero production audit findings and no new generator package.
+- `npm run check` passed across all ten packages, including OpenAPI drift detection, formatting,
+  lint, type checks, all tests, and production builds. Independent repeated regeneration produced
+  byte-for-byte identical specification and SDK artifacts.
 
 ## Work-session handoff template
 

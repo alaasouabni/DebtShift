@@ -2,10 +2,10 @@ import 'reflect-metadata';
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module.js';
-import { SESSION_COOKIE_NAME } from './authentication.service.js';
+import { createDebtShiftOpenApiDocument } from './openapi.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -16,13 +16,7 @@ async function bootstrap(): Promise<void> {
   });
   app.setGlobalPrefix('v1');
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('DebtShift API')
-    .setDescription('Deterministic refinance analysis and evidence-driven migration orchestration.')
-    .setVersion('0.1.0')
-    .addCookieAuth(SESSION_COOKIE_NAME)
-    .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  SwaggerModule.setup('docs', app, createDebtShiftOpenApiDocument(app));
 
   const port = Number(process.env.API_PORT ?? 3001);
   await app.listen(port, '0.0.0.0');

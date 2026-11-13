@@ -220,7 +220,7 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 ### Tasks
 
 - [x] Implement wallet challenge/session authentication.
-- [ ] Complete OpenAPI schemas and generated client types.
+- [x] Complete OpenAPI schemas and generated client types.
 - [ ] Complete positions, markets, quotes, intents, plans, execute, cancel, events, and evidence endpoints.
 - [x] Implement SSE reconnect and cursor recovery.
 - [x] Build source position and risk views.

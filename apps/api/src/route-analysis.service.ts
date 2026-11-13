@@ -1,22 +1,10 @@
-import {
-  DeterministicRouteRiskAgent,
-  explanationConfigurationSchema,
-  RouteExplanationService,
-} from '@debtshift/agent';
-import { evmAddressSchema } from '@debtshift/domain';
+import { DeterministicRouteRiskAgent, RouteExplanationService } from '@debtshift/agent';
 import { BadRequestException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isAddressEqual, type Address } from 'viem';
-import { z } from 'zod';
 
+import { routeAnalysisRequestSchema } from './http-contracts.js';
 import { MARKET_INTELLIGENCE_PORT, type MarketIntelligencePort } from './market-data/ports.js';
-
-const routeAnalysisRequestSchema = z
-  .object({
-    wallet: evmAddressSchema,
-    explanation: explanationConfigurationSchema.optional(),
-  })
-  .strict();
 
 @Injectable()
 export class RouteAnalysisService {

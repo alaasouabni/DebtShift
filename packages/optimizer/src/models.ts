@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 import {
   feasibilityRejectionCodes,
+  refinancingFeasibilityResultSchema,
   refinancingFeasibilityInputSchema,
   type RefinancingFeasibilityResult,
 } from './feasibility.js';
@@ -196,3 +197,82 @@ export interface RouteComparison {
   readonly selectedCandidateId?: string;
   readonly evaluations: readonly RouteEvaluation[];
 }
+
+const signedIntegerTextSchema = z.string().regex(/^-?(0|[1-9][0-9]*)$/);
+
+export const routeRejectionSchema = z
+  .object({ code: rejectionCodeSchema, message: z.string() })
+  .strict();
+
+export const routeEconomicsSchema = z
+  .object({
+    sourceAprBps: z.number().int(),
+    targetAprBeforeBps: z.number().int(),
+    targetAprAfterBps: z.number().int(),
+    targetRateImpactBps: z.number().int(),
+    aprReductionBps: z.number().int(),
+    stressTargetAprBps: z.number().int(),
+    allInCostUsdMicro: baseUnitAmountSchema,
+    carryingCostUsdMicro: baseUnitAmountSchema,
+    grossSavingsUsdMicro: signedIntegerTextSchema,
+    stressGrossSavingsUsdMicro: signedIntegerTextSchema,
+    netBenefitUsdMicro: signedIntegerTextSchema,
+    stressNetBenefitUsdMicro: signedIntegerTextSchema,
+    annualGrossSavingsUsdMicro: signedIntegerTextSchema,
+    breakEvenSeconds: baseUnitAmountSchema.optional(),
+  })
+  .strict();
+
+export const routeSafetySchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('MAX_LTV_BPS'),
+      postLtvBps: z.number().int(),
+      stressLtvBps: z.number().int(),
+      maximumLtvBps: z.number().int(),
+      stressMaximumLtvBps: z.number().int(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('MIN_HEALTH_FACTOR_WAD'),
+      postHealthFactorWad: baseUnitAmountSchema,
+      stressHealthFactorWad: baseUnitAmountSchema,
+      minimumWad: baseUnitAmountSchema,
+      stressMinimumWad: baseUnitAmountSchema,
+      riskLimitBps: z.number().int().optional(),
+    })
+    .strict(),
+]);
+
+export const routeEvaluationSchema = z
+  .object({
+    candidateId: z.string(),
+    eligible: z.boolean(),
+    rank: z.number().int().positive().optional(),
+    scoreUsdMicro: signedIntegerTextSchema,
+    economics: routeEconomicsSchema,
+    safety: routeSafetySchema,
+    financing: refinancingFeasibilityResultSchema,
+    rejections: z.array(routeRejectionSchema),
+    provenance: z
+      .object({
+        sourceSnapshotId: z.string(),
+        marketSnapshotId: z.string(),
+        marketBlockNumber: z.string(),
+        marketBlockHash: z.string(),
+        oracleUpdatedAt: z.iso.datetime({ offset: true }),
+        evaluatedAt: z.iso.datetime({ offset: true }),
+        rateProjection: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const routeComparisonSchema = z
+  .object({
+    policyVersion: z.literal(1),
+    selectedCandidateId: z.string().optional(),
+    evaluations: z.array(routeEvaluationSchema),
+  })
+  .strict() as z.ZodType<RouteComparison>;

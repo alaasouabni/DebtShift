@@ -13,18 +13,18 @@ import {
   assertFundedExecutionEnabled,
   assertExecutionPlanIntegrity,
   computeMigrationId,
-  executionPlanSchema,
   hashExecutionPlan,
   hashRefinanceIntent,
   hashSourcePosition,
-  positionSnapshotSchema,
-  providerQuoteSchema,
-  refinanceIntentSchema,
-  signatureSchema,
-  submittedSourceLendingAuthorizationSchema,
-  signedTargetLendingAuthorizationSchema,
   verifySignedExecutionPlan,
   verifySignedRefinanceIntent,
+} from '@debtshift/domain';
+import type {
+  executionPlanSchema,
+  positionSnapshotSchema,
+  providerQuoteSchema,
+  SignedExecutionPlan,
+  SignedRefinanceIntent,
 } from '@debtshift/domain';
 import {
   BadRequestException,
@@ -39,40 +39,16 @@ import { ConfigService } from '@nestjs/config';
 import { compareRoutes } from '@debtshift/optimizer';
 import { concatMap, from, mergeMap, timer, type Observable } from 'rxjs';
 import { createPublicClient, http, isAddressEqual, type Address, type Hex } from 'viem';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 import { DatabaseService } from './database.service.js';
+import { executeMigrationRequestSchema } from './http-contracts.js';
 import {
   MARKET_INTELLIGENCE_PORT,
   PROTOCOL_DATA_PORT,
   type MarketIntelligencePort,
   type ProtocolDataPort,
 } from './market-data/ports.js';
-
-const signedIntentRequestSchema = z
-  .object({
-    intent: refinanceIntentSchema,
-    intentHash: z.string(),
-    signature: signatureSchema,
-  })
-  .strict();
-const signedPlanRequestSchema = z
-  .object({
-    plan: executionPlanSchema,
-    planHash: z.string(),
-    signature: signatureSchema,
-  })
-  .strict();
-const executeMigrationRequestSchema = z
-  .object({
-    signedIntent: signedIntentRequestSchema,
-    signedPlan: signedPlanRequestSchema,
-    quote: providerQuoteSchema,
-    sourceSnapshot: positionSnapshotSchema,
-    sourceAuthorization: submittedSourceLendingAuthorizationSchema,
-    targetAuthorization: signedTargetLendingAuthorizationSchema,
-  })
-  .strict();
 
 @Injectable()
 export class MigrationsService {
@@ -111,14 +87,8 @@ export class MigrationsService {
         throw new ForbiddenException('Wallet session does not match the signed borrower.');
       }
       assertFundedExecutionEnabled(this.#executionEnvironment);
-      const signedIntent = {
-        ...parsed.signedIntent,
-        intentHash: parsed.signedIntent.intentHash as Hex,
-      };
-      const signedPlan = {
-        ...parsed.signedPlan,
-        planHash: parsed.signedPlan.planHash as Hex,
-      };
+      const signedIntent = parsed.signedIntent;
+      const signedPlan = parsed.signedPlan;
       assertExecutionPlanIntegrity(signedPlan.plan);
       this.assertBindings(signedIntent, signedPlan, parsed.quote, parsed.sourceSnapshot);
       const preparedQuote = await getProviderQuote(this.database.db, parsed.quote.quoteHash);
@@ -329,8 +299,8 @@ export class MigrationsService {
   }
 
   private assertBindings(
-    signedIntent: z.infer<typeof signedIntentRequestSchema> & { intentHash: Hex },
-    signedPlan: z.infer<typeof signedPlanRequestSchema> & { planHash: Hex },
+    signedIntent: SignedRefinanceIntent,
+    signedPlan: SignedExecutionPlan,
     quote: z.infer<typeof providerQuoteSchema>,
     snapshot: z.infer<typeof positionSnapshotSchema>,
   ): void {

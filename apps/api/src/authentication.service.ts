@@ -7,7 +7,6 @@ import {
   storeWalletAuthChallenge,
   touchActiveWalletSession,
 } from '@debtshift/database';
-import { evmAddressSchema } from '@debtshift/domain';
 import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, getAddress, http, verifyMessage, type Address, type Hex } from 'viem';
@@ -17,25 +16,18 @@ import {
   validateSiweMessage,
   verifySiweMessage,
 } from 'viem/siwe';
-import { z } from 'zod';
 
 import { DatabaseService } from './database.service.js';
+import {
+  walletChallengeRequestSchema,
+  walletChallengeVerificationRequestSchema,
+} from './http-contracts.js';
 
 export const SESSION_COOKIE_NAME = 'debtshift_session';
 const challengeLifetimeMs = 5 * 60 * 1_000;
 const sessionLifetimeMs = 8 * 60 * 60 * 1_000;
 const signInStatement =
   'Sign in to DebtShift. This proves wallet control and does not authorize a refinance or transaction.';
-const challengeRequestSchema = z.object({ wallet: evmAddressSchema }).strict();
-const verifyRequestSchema = z
-  .object({
-    challengeId: z.uuid(),
-    signature: z
-      .string()
-      .regex(/^0x(?:[0-9a-fA-F]{2})+$/, 'Expected a non-empty even-length hex signature.')
-      .max(8_194),
-  })
-  .strict();
 const sessionTokenPattern = /^[a-zA-Z0-9_-]{43}$/;
 
 export interface AuthenticatedWalletSession {
@@ -71,7 +63,7 @@ export class AuthenticationService {
   }
 
   async createChallenge(input: unknown) {
-    const parsed = challengeRequestSchema.safeParse(input);
+    const parsed = walletChallengeRequestSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException('Wallet must be a valid checksummed or lowercase EVM address.');
     }
@@ -111,7 +103,7 @@ export class AuthenticationService {
   }
 
   async verifyChallenge(input: unknown) {
-    const parsed = verifyRequestSchema.safeParse(input);
+    const parsed = walletChallengeVerificationRequestSchema.safeParse(input);
     if (!parsed.success)
       throw new BadRequestException(parsed.error.issues.map(({ message }) => message));
 

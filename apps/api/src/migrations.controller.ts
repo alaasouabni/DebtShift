@@ -12,17 +12,49 @@ import {
   UseGuards,
   type MessageEvent,
 } from '@nestjs/common';
-import { ApiCookieAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiCookieAuth,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiHeader,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiProduces,
+  ApiQuery,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import type { Observable } from 'rxjs';
 import { getAddress } from 'viem';
 
 import { SESSION_COOKIE_NAME, type AuthenticatedWalletSession } from './authentication.service.js';
+import {
+  bytes32ContractSchema,
+  errorResponseSchema,
+  evmAddressContractSchema,
+  executeMigrationRequestSchema,
+  executeMigrationResponseSchema,
+  marketListResponseSchema,
+  migrationDetailsResponseSchema,
+  migrationEvidenceResponseSchema,
+  migrationEventsResponseSchema,
+  persistedPositionListResponseSchema,
+  positionSnapshotListResponseSchema,
+  preparationRequestSchema,
+  preparationResponseSchema,
+  toOpenApiSchema,
+} from './http-contracts.js';
 import { MigrationsService } from './migrations.service.js';
 import { PreparationService } from './preparation.service.js';
 import { assertSessionWallet, CurrentSession, SessionGuard } from './session.guard.js';
 
 @ApiTags('migrations')
 @ApiCookieAuth(SESSION_COOKIE_NAME)
+@ApiUnauthorizedResponse({ schema: toOpenApiSchema(errorResponseSchema) })
 @UseGuards(SessionGuard)
 @Controller()
 export class MigrationsController {
@@ -33,6 +65,10 @@ export class MigrationsController {
 
   @Get('positions/:wallet')
   @ApiOperation({ summary: 'List persisted lending positions for a wallet' })
+  @ApiParam({ name: 'wallet', schema: toOpenApiSchema(evmAddressContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(positionSnapshotListResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   async listPositions(
     @Param('wallet') wallet: string,
     @CurrentSession() session: AuthenticatedWalletSession,
@@ -44,6 +80,10 @@ export class MigrationsController {
 
   @Get('positions/:wallet/history')
   @ApiOperation({ summary: 'List persisted source position history for a wallet' })
+  @ApiParam({ name: 'wallet', schema: toOpenApiSchema(evmAddressContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(persistedPositionListResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   listPersistedPositions(
     @Param('wallet') wallet: string,
     @CurrentSession() session: AuthenticatedWalletSession,
@@ -55,24 +95,36 @@ export class MigrationsController {
 
   @Get('markets')
   @ApiOperation({ summary: 'List enabled destination and source markets' })
+  @ApiOkResponse({ schema: toOpenApiSchema(marketListResponseSchema) })
   listMarkets() {
     return this.migrations.listMarkets();
   }
 
   @Post('migrations/execute')
   @ApiOperation({ summary: 'Validate authorizations and durably start a migration' })
+  @ApiBody({ schema: toOpenApiSchema(executeMigrationRequestSchema) })
+  @ApiCreatedResponse({ schema: toOpenApiSchema(executeMigrationResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   execute(@Body() body: unknown, @CurrentSession() session: AuthenticatedWalletSession) {
     return this.migrations.execute(body, session.walletAddress);
   }
 
   @Post('migrations/prepare')
   @ApiOperation({ summary: 'Prepare an exact local route for borrower EIP-712 review' })
+  @ApiBody({ schema: toOpenApiSchema(preparationRequestSchema) })
+  @ApiCreatedResponse({ schema: toOpenApiSchema(preparationResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   prepare(@Body() body: unknown, @CurrentSession() session: AuthenticatedWalletSession) {
     return this.preparation.prepare(body, session.walletAddress);
   }
 
   @Get('migrations/:migrationId')
   @ApiOperation({ summary: 'Read migration state, evidence, events, commands, and ledger' })
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(migrationDetailsResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   getMigration(
     @Param('migrationId') migrationId: string,
     @CurrentSession() session: AuthenticatedWalletSession,
@@ -82,6 +134,9 @@ export class MigrationsController {
 
   @Get('migrations/:migrationId/events')
   @ApiOperation({ summary: 'Read authoritative migration event history' })
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(migrationEventsResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   async getEvents(
     @Param('migrationId') migrationId: string,
     @CurrentSession() session: AuthenticatedWalletSession,
@@ -92,6 +147,22 @@ export class MigrationsController {
   @Sse('migrations/:migrationId/stream')
   @ApiOperation({ summary: 'Stream cursor-resumable authoritative migration events' })
   @ApiProduces('text/event-stream')
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiQuery({
+    name: 'after',
+    required: false,
+    schema: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' },
+  })
+  @ApiHeader({
+    name: 'Last-Event-ID',
+    required: false,
+    schema: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' },
+  })
+  @ApiOkResponse({
+    content: { 'text/event-stream': { schema: { type: 'string' } } },
+  })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   streamEvents(
     @Param('migrationId') migrationId: string,
     @Query('after') after: string | undefined,
@@ -107,6 +178,9 @@ export class MigrationsController {
 
   @Get('migrations/:migrationId/evidence')
   @ApiOperation({ summary: 'Read normalized migration evidence' })
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(migrationEvidenceResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   async getEvidence(
     @Param('migrationId') migrationId: string,
     @CurrentSession() session: AuthenticatedWalletSession,

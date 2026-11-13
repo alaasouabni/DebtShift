@@ -1,5 +1,6 @@
 import {
   compareRoutesInputSchema,
+  routeComparisonSchema,
   type RouteCandidate,
   type RouteComparison,
   type RouteEvaluation,
@@ -33,11 +34,11 @@ export function compareRoutes(input: unknown): RouteComparison {
       return left.candidateId.localeCompare(right.candidateId);
     });
   const selectedCandidateId = eligible[0]?.candidateId;
-  return {
+  return routeComparisonSchema.parse({
     policyVersion: 1,
     ...(selectedCandidateId === undefined ? {} : { selectedCandidateId }),
     evaluations: ordered,
-  };
+  });
 }
 
 function evaluateRoute(

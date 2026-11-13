@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "check": "npm run openapi:check && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "check:all": "npm run check && npm run check:contracts",
     "check:contracts": "npm run check:evm && npm run check:evm-deployment && npm run check:near",
     "check:evm": "node scripts/check-evm.mjs",
@@ -36,6 +36,8 @@
     "infra:dependencies": "docker-compose -f infra/docker/docker-compose.yml up -d postgres redis",
     "infra:up": "docker-compose -f infra/docker/docker-compose.yml up -d --build",
     "local:chains": "npm run check:evm && npm run build --workspace @debtshift/protocols && node packages/protocols/dist/local-stack.js",
+    "openapi:check": "npm run openapi:generate && git diff --exit-code -- docs/openapi.json packages/sdk/src/generated/api.ts",
+    "openapi:generate": "turbo run build --filter=...@debtshift/api && node scripts/generate-openapi.mjs && prettier --write docs/openapi.json packages/sdk/src/generated/api.ts",
     "ops:drill:database-migration-recovery": "node scripts/drill-database-migration-recovery.mjs",
     "ops:drill:database-restore": "node scripts/drill-database-restore.mjs",
     "smoke:local": "node scripts/smoke-local-stack.mjs",

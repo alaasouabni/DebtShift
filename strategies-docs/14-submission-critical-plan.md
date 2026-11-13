@@ -8,8 +8,8 @@ the deadline plan survives chat compaction, a new work session, or a contributor
 - **Plan revised:** 2026-11-13
 - **Time remaining:** one final development/deployment day, as confirmed by the project owner
 - **Portal cutoff:** exact date, time, and timezone still require confirmation
-- **Latest pushed checkpoint before current work:** `de6e2cd` on `main`, containing the reload-safe
-  borrower evidence stream and UI.
+- **Latest pushed checkpoint before current work:** `f2affae` on `main`, containing durable wallet
+  challenge/session authentication and borrower ownership enforcement.
 - **Primary objective:** finish normal, functional production-oriented code for one complete
   Aave-to-Morpho refinance through official NEAR Intents/1Click, prove that code with contract-backed
   sandbox, testnet, fork, and integration tests, then deploy and attempt one small mainnet refinance

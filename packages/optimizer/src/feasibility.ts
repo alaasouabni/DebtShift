@@ -191,6 +191,74 @@ export interface RefinancingFeasibilityResult {
   readonly rejections: readonly FeasibilityRejection[];
 }
 
+export const feasibilityRejectionSchema = z
+  .object({
+    code: feasibilityRejectionCodeSchema,
+    message: z.string(),
+    reference: z.string().optional(),
+  })
+  .strict();
+
+export const financingComponentResultSchema = z
+  .object({
+    componentId: z.string(),
+    kind: financingCostKindSchema,
+    financingClass: financingClassSchema,
+    asset: tokenReferenceSchema,
+    amountUnits: baseUnitAmountSchema,
+    settlementAmountUnits: baseUnitAmountSchema,
+    conversionQuoteHash: bytes32Schema.optional(),
+    counted: z.boolean(),
+  })
+  .strict();
+
+export const externalFundingResultSchema = z
+  .object({
+    fundingId: z.string(),
+    evidenceId: bytes32Schema,
+    migrationId: bytes32Schema,
+    asset: tokenReferenceSchema,
+    amountUnits: baseUnitAmountSchema,
+    escrow: evmAddressSchema,
+    refundReceiver: evmAddressSchema,
+    authorizedUse: z.string(),
+    verificationState: evidenceVerificationStateSchema,
+    expiresAt: isoTimestampSchema,
+    counted: z.boolean(),
+    exclusionCodes: z.array(feasibilityRejectionCodeSchema),
+  })
+  .strict();
+
+export const refinancingFeasibilityResultSchema = z
+  .object({
+    modelVersion: z.literal(1),
+    eligible: z.boolean(),
+    settlementAsset: tokenReferenceSchema,
+    sourceDebtPayoffAssetUnits: baseUnitAmountSchema,
+    sourceDebtPayoffUnits: baseUnitAmountSchema,
+    sourceConversionQuoteHash: bytes32Schema.optional(),
+    borrowerDebtPrepaymentUnits: baseUnitAmountSchema,
+    borrowerDebtPrepaymentEvidenceId: bytes32Schema.optional(),
+    solverAdvancedCostUnits: baseUnitAmountSchema,
+    solverPrincipalUnits: baseUnitAmountSchema,
+    solverFeeUnits: baseUnitAmountSchema,
+    capitalizedCostUnits: baseUnitAmountSchema,
+    separatelyPaidCostUnits: baseUnitAmountSchema,
+    totalRequiredRepaymentAndFinancedCostUnits: baseUnitAmountSchema,
+    confirmedExternalFundingUnits: baseUnitAmountSchema,
+    protocolBorrowCapacityUnits: baseUnitAmountSchema,
+    policyBorrowCapacityUnits: baseUnitAmountSchema,
+    liquidityBorrowCapacityUnits: baseUnitAmountSchema,
+    signedBorrowCapacityUnits: baseUnitAmountSchema,
+    maximumSafeBorrowingCapacityUnits: baseUnitAmountSchema,
+    requiredDestinationBorrowUnits: baseUnitAmountSchema,
+    fundingShortfallUnits: baseUnitAmountSchema,
+    components: z.array(financingComponentResultSchema),
+    externalFunding: z.array(externalFundingResultSchema),
+    rejections: z.array(feasibilityRejectionSchema),
+  })
+  .strict() as z.ZodType<RefinancingFeasibilityResult>;
+
 /**
  * Reconciles every temporary-liquidity use against secured funding and the
  * independently bounded destination borrowing capacity. All arithmetic uses
@@ -411,7 +479,7 @@ export function evaluateRefinancingFeasibility(input: unknown): RefinancingFeasi
     );
   }
 
-  return {
+  return refinancingFeasibilityResultSchema.parse({
     modelVersion: 1,
     eligible: rejections.length === 0,
     settlementAsset: parsed.settlementAsset,
@@ -441,7 +509,7 @@ export function evaluateRefinancingFeasibility(input: unknown): RefinancingFeasi
     components,
     externalFunding: fundingResults,
     rejections,
-  };
+  });
 }
 
 function validSettlementValuation(
