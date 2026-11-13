@@ -20,21 +20,20 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `b5c1fc2`.
+- Previous remote checkpoint before this handoff: `253eca1`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. An authenticated preparation integration adversary that drives all quote-time routes into a
-   deterministic funding shortfall by mutating live target market capacity.
-2. Proof that rejection occurs before any transport quote request or provider-quote, migration,
-   reservation, and command persistence.
-3. Direct source-lending and vault reads proving the borrower position is unchanged and no liquidity
-   is reserved.
-4. Safe-state restoration followed by the normal signed prepare/execute path, ruling out poisoned
-   fixture state.
+1. Contract-backed proof that exact supplementary fee funding is locked in migration-specific escrow
+   before liquidity reservation and consumed only by exact settlement.
+2. Fail-closed reservation cases for absent onchain funding, mismatched evidence, and expiry, with
+   direct proof that the source position and vault balances remain unchanged.
+3. Deterministic feasibility exclusions for every non-final verification state, asset/migration
+   mismatch, and expired funding, all retaining the exact shortfall.
+4. Closure of both supplementary-funding definition-of-done items.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -46,13 +45,13 @@ RPC URLs or secrets.
 | Gate                                  | Result                                                                                  |
 | ------------------------------------- | --------------------------------------------------------------------------------------- |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds      |
-| Worker suite                          | Pass: 71 tests, including 21 durable workflows and 3 invalid-delivery adversary cases   |
+| Worker suite                          | Pass: 73 tests, including 21 durable workflows and 5 local execution-port cases         |
 | Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified  |
 | API suite                             | Pass: 24 tests, including quote-time fail-closed and authenticated execute/cancel flows |
 | `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                   |
 | `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                                |
 | NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                  |
-| GitHub quality run `43395136633`      | Pass for invalid-delivery checkpoint `9745a49`                                          |
+| GitHub quality run `43396276721`      | Pass for quote-capacity checkpoint `253eca1`                                            |
 | `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push  |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                               |
 

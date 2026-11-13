@@ -1361,6 +1361,8 @@ operative source of truth.
   the same direct assertion plus exact collateral custody and solver exposure checks.
 - Pre-source variants continue to prove that price, rate, or liquidity deterioration releases the
   reservation with the source position unchanged and requires a fresh quote.
+- GitHub Actions quality run `43395731931` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for unsafe-target checkpoint `b5c1fc2`.
 
 ### 2026-11-13 - Quote-time capacity rejection proven before commitment
 
@@ -1371,6 +1373,24 @@ operative source of truth.
   with zero vault `reservedUndrawn` balance.
 - The fixture then restores safe market state and completes the existing signed prepare/execute flow,
   proving the rejection is capacity-specific rather than a poisoned service or database state.
+- GitHub Actions quality run `43396276721` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for quote-capacity checkpoint `253eca1`.
+
+### 2026-11-13 - Supplementary funding gating completed
+
+- The contract-backed positive path now proves the exact fee commitment is already `LOCKED` in the
+  migration-specific destination escrow before source liquidity reservation. It then proves the
+  reservation becomes active, the destination borrow is reduced by the funded fee, settlement pays
+  the complete obligation, and the funding record becomes `SPENT`.
+- Added fail-closed execution cases for signed-but-absent escrow funding, mismatched evidence hash,
+  and expired funding. Every case rejects before source reservation, leaves the source loan
+  unchanged, and proves reservation status, principal receivable, and `reservedUndrawn` remain zero.
+- Expanded deterministic feasibility coverage so `PROVISIONAL`, `CONFIRMED`, `RETRACTED`, and
+  `REJECTED` observations, wrong settlement asset, wrong migration binding, and expired authorization
+  are never counted. Each invalid candidate retains its funding shortfall.
+- The complete repository gate passes with 73 worker tests, including all five contract-backed local
+  execution-port cases, plus the expanded optimizer matrix, OpenAPI drift, format, lint, type, and
+  production-build checks.
 
 ## Work-session handoff template
 

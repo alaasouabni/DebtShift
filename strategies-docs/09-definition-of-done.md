@@ -22,8 +22,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Every route displays reconciled obligations, financing classifications, maximum safe capacity,
       required destination borrow, confirmed external funding, and exact shortfall.
 - [x] No route can become `RESERVED` unless its current feasibility evidence proves zero shortfall.
-- [ ] Borrower-funded fees or other supplementary funds are finalized in migration-specific escrow
-      before temporary liquidity is committed.
+- [x] Borrower-funded fees are finalized and locked in migration-specific escrow before temporary
+      liquidity is reserved; the complete path consumes the exact commitment during settlement.
 - [x] Borrower reviews and signs bounded intent and execution-plan data.
 - [x] Source debt closes and collateral release is independently verified.
 - [x] Transport origin and destination receipts are distinct and visible.
@@ -53,8 +53,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Insufficient quote-time capacity rejects preparation before a transport quote is requested;
       no migration, reservation, or command exists, and direct chain reads prove the source position
       unchanged with zero reserved liquidity.
-- [ ] Missing, pending, mismatched, expired, or unconfirmed supplementary funding cannot satisfy the
-      feasibility predicate.
+- [x] Missing, provisional, confirmed-but-not-finalized, retracted, rejected, asset/migration
+      mismatched, expired, or absent-onchain supplementary funding cannot satisfy feasibility or
+      create a liquidity reservation.
 - [x] Collateral-price or liquidity deterioration before source close releases the reservation and
       requires a requote.
   - [x] Destination-liquidity deterioration is verified end to end with an atomic proof/release,

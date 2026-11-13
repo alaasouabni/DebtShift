@@ -153,7 +153,32 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil contract sandbox execution port', 
   it('uses finalized supplementary fee funding to reduce the destination borrow', async () => {
     await withDeployment(
       async ({ source, destination, deployment, execution, context, simulator }) => {
+        const fundingBeforeReservation = await readFundingRecord(
+          destination,
+          deployment.destination.escrow,
+          context.migration.migrationId as Hex,
+        );
+        expect(fundingBeforeReservation).toMatchObject({
+          evidenceHash: context.signedPlan.plan.financing.externalFunding[0]?.evidenceId,
+          amountUnits: FEE_UNITS,
+          status: 1,
+        });
+        expect(
+          await readBigInt(
+            destination,
+            'MigrationEscrow',
+            deployment.destination.escrow,
+            'balances',
+            [context.migration.migrationId, deployment.destination.debtToken],
+          ),
+        ).toBe(FEE_UNITS);
         await execution.reserve(context);
+        const reservation = await readReservation(
+          source,
+          deployment.source.vault,
+          context.migration.migrationId as Hex,
+        );
+        expect(reservation.status).toBe(1);
         await execution.closeSource(context);
         const dispatch = await execution.dispatchTransport(context);
         await simulator.submitOrigin({
@@ -191,9 +216,63 @@ describe.skipIf(!ANVIL_AVAILABLE)('dual-Anvil contract sandbox execution port', 
         expect(destinationPosition).toEqual([9_900_000_000_000_000_000n, BORROW_UNITS]);
         expect(payout).toBe(BORROW_UNITS + FEE_UNITS);
         expect(receivable).toBe(0n);
+        expect(
+          await readFundingRecord(
+            destination,
+            deployment.destination.escrow,
+            context.migration.migrationId as Hex,
+          ),
+        ).toMatchObject({ amountUnits: FEE_UNITS, status: 2 });
       },
       'SUCCESS',
-      true,
+      'FINALIZED',
+    );
+  }, 60_000);
+
+  it('rejects signed but absent supplementary funding before liquidity reservation', async () => {
+    await withDeployment(
+      async ({ source, destination, deployment, execution, context }) => {
+        await expect(execution.reserve(context)).rejects.toThrow(
+          'Supplementary funding escrow evidence does not match the signed plan.',
+        );
+        await expectNoReservation(source, deployment, context);
+        expect(
+          await readFundingRecord(
+            destination,
+            deployment.destination.escrow,
+            context.migration.migrationId as Hex,
+          ),
+        ).toMatchObject({ amountUnits: 0n, status: 0 });
+      },
+      'SUCCESS',
+      'MISSING',
+    );
+  }, 60_000);
+
+  it('rejects mismatched or expired supplementary funding before liquidity reservation', async () => {
+    await withDeployment(
+      async ({ source, deployment, execution, context }) => {
+        const funding = context.signedPlan.plan.financing.externalFunding[0];
+        if (funding === undefined) throw new Error('Expected signed supplementary funding.');
+        await expect(
+          execution.reserve(
+            withExternalFunding(context, { ...funding, evidenceId: `0x${'99'.repeat(32)}` }),
+          ),
+        ).rejects.toThrow('Supplementary funding escrow evidence does not match the signed plan.');
+        await expectNoReservation(source, deployment, context);
+
+        await expect(
+          execution.reserve(
+            withExternalFunding(context, {
+              ...funding,
+              expiresAt: '1' as typeof funding.expiresAt,
+            }),
+          ),
+        ).rejects.toThrow(`Supplementary funding ${funding.fundingId} expired.`);
+        await expectNoReservation(source, deployment, context);
+      },
+      'SUCCESS',
+      'FINALIZED',
     );
   }, 60_000);
 });
@@ -210,7 +289,7 @@ interface DeploymentFixture {
 async function withDeployment(
   test: (fixture: DeploymentFixture) => Promise<void>,
   outcome: 'SUCCESS' | 'REFUNDED' = 'SUCCESS',
-  supplementaryFunding = false,
+  supplementaryFunding: 'NONE' | 'FINALIZED' | 'MISSING' = 'NONE',
 ): Promise<void> {
   const source = await startAnvil({ chainId: 31_337, port: 19_545, anvilPath: ANVIL_PATH });
   const destination = await startAnvil({ chainId: 31_338, port: 19_546, anvilPath: ANVIL_PATH });
@@ -244,7 +323,8 @@ async function withDeployment(
     const context = await buildContext(
       deployment,
       simulator,
-      supplementaryFunding ? destination : undefined,
+      supplementaryFunding === 'NONE' ? undefined : destination,
+      supplementaryFunding !== 'MISSING',
     );
     await test({
       source,
@@ -263,6 +343,7 @@ async function buildContext(
   deployment: LocalDebtShiftDeployment,
   simulator: DeterministicTransportSimulator,
   fundingChain?: LocalAnvilChain,
+  secureFunding = true,
 ): Promise<MigrationExecutionContext> {
   const quote = await simulator.getQuote(
     transportQuoteRequestSchema.parse({
@@ -290,7 +371,7 @@ async function buildContext(
   const now = new Date();
   const deadline = Math.floor(Date.now() / 1000) + 3_600;
   const externalFunding = fundingChain
-    ? await secureSupplementaryFee(deployment, fundingChain, migrationId, deadline)
+    ? await secureSupplementaryFee(deployment, fundingChain, migrationId, deadline, secureFunding)
     : undefined;
   const plan = {
     intentHash,
@@ -435,6 +516,7 @@ async function secureSupplementaryFee(
   destination: LocalAnvilChain,
   migrationId: Hex,
   deadline: number,
+  secureFunding: boolean,
 ) {
   const [escrow, token] = await Promise.all([
     loadFoundryArtifact('MigrationEscrow'),
@@ -485,30 +567,32 @@ async function secureSupplementaryFee(
   if (typeof evidenceId !== 'string') {
     throw new Error('Unexpected funding-evidence hash response.');
   }
-  await write(
-    wallet,
-    destination.publicClient,
-    token.abi,
-    deployment.destination.debtToken,
-    'mint',
-    [deployment.deployer, FEE_UNITS],
-  );
-  await write(
-    wallet,
-    destination.publicClient,
-    token.abi,
-    deployment.destination.debtToken,
-    'approve',
-    [deployment.destination.escrow, FEE_UNITS],
-  );
-  await write(
-    wallet,
-    destination.publicClient,
-    escrow.abi,
-    deployment.destination.escrow,
-    'secureSupplementaryFunding',
-    [commitment],
-  );
+  if (secureFunding) {
+    await write(
+      wallet,
+      destination.publicClient,
+      token.abi,
+      deployment.destination.debtToken,
+      'mint',
+      [deployment.deployer, FEE_UNITS],
+    );
+    await write(
+      wallet,
+      destination.publicClient,
+      token.abi,
+      deployment.destination.debtToken,
+      'approve',
+      [deployment.destination.escrow, FEE_UNITS],
+    );
+    await write(
+      wallet,
+      destination.publicClient,
+      escrow.abi,
+      deployment.destination.escrow,
+      'secureSupplementaryFunding',
+      [commitment],
+    );
+  }
 
   return {
     fundingId: `escrow:${migrationId}:supplementary-fee`,
@@ -541,6 +625,92 @@ function observedContext(
       destinationTransactionHash: observation.destinationTransactionHash ?? null,
     },
   };
+}
+
+function withExternalFunding(
+  context: MigrationExecutionContext,
+  funding: MigrationExecutionContext['signedPlan']['plan']['financing']['externalFunding'][number],
+): MigrationExecutionContext {
+  return {
+    ...context,
+    signedPlan: {
+      ...context.signedPlan,
+      plan: {
+        ...context.signedPlan.plan,
+        financing: {
+          ...context.signedPlan.plan.financing,
+          externalFunding: [funding],
+        },
+      },
+    },
+  };
+}
+
+async function expectNoReservation(
+  source: LocalAnvilChain,
+  deployment: LocalDebtShiftDeployment,
+  context: MigrationExecutionContext,
+): Promise<void> {
+  const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
+    readTuple(source, 'MockSourceLending', deployment.source.lending, 'positions', [
+      deployment.borrower,
+    ]),
+    readReservation(source, deployment.source.vault, context.migration.migrationId as Hex),
+    readBigInt(source, 'LiquidityVault', deployment.source.vault, 'reservedUndrawn', [
+      deployment.source.debtToken,
+    ]),
+  ]);
+  expect(sourcePosition).toEqual([COLLATERAL_UNITS, BORROW_UNITS]);
+  expect(reservation.status).toBe(0);
+  expect(reservation.principalReceivableUnits).toBe(0n);
+  expect(reservedUndrawn).toBe(0n);
+}
+
+async function readFundingRecord(
+  chain: LocalAnvilChain,
+  escrow: Address,
+  migrationId: Hex,
+): Promise<{
+  readonly evidenceHash: string;
+  readonly amountUnits: bigint;
+  readonly status: number;
+}> {
+  const artifact = await loadFoundryArtifact('MigrationEscrow');
+  const result = await read(chain.publicClient, artifact.abi, escrow, 'fundingRecord', [
+    migrationId,
+  ]);
+  const record =
+    result !== null && typeof result === 'object' && !Array.isArray(result)
+      ? (result as Record<string, unknown>)
+      : undefined;
+  const evidenceHash = Array.isArray(result) ? result[0] : record?.['evidenceHash'];
+  const amountUnits = Array.isArray(result) ? result[5] : record?.['amountUnits'];
+  const status = Array.isArray(result) ? result[8] : record?.['status'];
+  if (
+    typeof evidenceHash !== 'string' ||
+    typeof amountUnits !== 'bigint' ||
+    (typeof status !== 'number' && typeof status !== 'bigint')
+  ) {
+    throw new Error('Unexpected supplementary-funding record.');
+  }
+  return { evidenceHash, amountUnits, status: Number(status) };
+}
+
+async function readReservation(
+  chain: LocalAnvilChain,
+  vault: Address,
+  migrationId: Hex,
+): Promise<{ readonly status: number; readonly principalReceivableUnits: bigint }> {
+  const artifact = await loadFoundryArtifact('LiquidityVault');
+  const result = await read(chain.publicClient, artifact.abi, vault, 'reservations', [migrationId]);
+  if (
+    !Array.isArray(result) ||
+    (typeof result[6] !== 'number' && typeof result[6] !== 'bigint') ||
+    typeof result[8] !== 'bigint'
+  ) {
+    throw new Error('Unexpected liquidity reservation record.');
+  }
+  return { status: Number(result[6]), principalReceivableUnits: result[8] };
 }
 
 async function readBigInt(

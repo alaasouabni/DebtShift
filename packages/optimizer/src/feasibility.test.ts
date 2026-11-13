@@ -122,24 +122,68 @@ describe('refinancing financing feasibility', () => {
     expect(result.fundingShortfallUnits).toBe('0');
   });
 
-  it('does not count pending supplementary funding', () => {
+  it.each(['PROVISIONAL', 'CONFIRMED', 'RETRACTED', 'REJECTED'] as const)(
+    'does not count %s supplementary funding as finalized',
+    (verificationState) => {
+      const input = baseInput();
+      input.migrationId = MIGRATION_ID;
+      input.solverFee.amountUnits = '100000000';
+      input.capacities = equalCapacities('10000000000');
+      input.externalFunding = [externalFunding('100000000', verificationState)];
+
+      const result = evaluateRefinancingFeasibility(input);
+
+      expect(result.confirmedExternalFundingUnits).toBe('0');
+      expect(result.externalFunding[0]).toMatchObject({
+        counted: false,
+        exclusionCodes: ['EXTERNAL_FUNDING_UNCONFIRMED'],
+      });
+      expect(result.fundingShortfallUnits).toBe('100000000');
+      expect(codes(result)).toEqual(
+        expect.arrayContaining(['EXTERNAL_FUNDING_UNCONFIRMED', 'FUNDING_SHORTFALL']),
+      );
+    },
+  );
+
+  it.each([
+    {
+      name: 'settlement asset mismatch',
+      mutate: (funding: ReturnType<typeof externalFunding>) => ({
+        ...funding,
+        asset: SOURCE_ASSET,
+      }),
+      code: 'EXTERNAL_FUNDING_ASSET_MISMATCH',
+    },
+    {
+      name: 'migration mismatch',
+      mutate: (funding: ReturnType<typeof externalFunding>) => ({
+        ...funding,
+        migrationId: `0x${'99'.repeat(32)}`,
+      }),
+      code: 'EXTERNAL_FUNDING_NOT_MIGRATION_BOUND',
+    },
+    {
+      name: 'expired authorization',
+      mutate: (funding: ReturnType<typeof externalFunding>) => ({
+        ...funding,
+        expiresAt: EVALUATED_AT,
+      }),
+      code: 'EXTERNAL_FUNDING_EXPIRED',
+    },
+  ] as const)('does not count supplementary funding with $name', ({ mutate, code }) => {
     const input = baseInput();
     input.migrationId = MIGRATION_ID;
     input.solverFee.amountUnits = '100000000';
     input.capacities = equalCapacities('10000000000');
-    input.externalFunding = [externalFunding('100000000', 'CONFIRMED')];
+    input.externalFunding = [mutate(externalFunding('100000000', 'FINALIZED'))];
 
     const result = evaluateRefinancingFeasibility(input);
 
     expect(result.confirmedExternalFundingUnits).toBe('0');
-    expect(result.externalFunding[0]).toMatchObject({
-      counted: false,
-      exclusionCodes: ['EXTERNAL_FUNDING_UNCONFIRMED'],
-    });
+    expect(result.externalFunding[0]).toMatchObject({ counted: false });
+    expect(result.externalFunding[0]?.exclusionCodes).toContain(code);
     expect(result.fundingShortfallUnits).toBe('100000000');
-    expect(codes(result)).toEqual(
-      expect.arrayContaining(['EXTERNAL_FUNDING_UNCONFIRMED', 'FUNDING_SHORTFALL']),
-    );
+    expect(codes(result)).toEqual(expect.arrayContaining([code, 'FUNDING_SHORTFALL']));
   });
 
   it('rejects duplicate cost identifiers and never counts the duplicate twice', () => {
@@ -228,7 +272,10 @@ function conversion(amountUnits: string) {
   };
 }
 
-function externalFunding(amountUnits: string, verificationState: 'CONFIRMED' | 'FINALIZED') {
+function externalFunding(
+  amountUnits: string,
+  verificationState: 'PROVISIONAL' | 'CONFIRMED' | 'FINALIZED' | 'RETRACTED' | 'REJECTED',
+) {
   return {
     fundingId: 'borrower-fee-escrow',
     migrationId: MIGRATION_ID,
