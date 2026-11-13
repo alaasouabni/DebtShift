@@ -318,9 +318,9 @@ workflow.
 - [ ] Run static analysis and dependency vulnerability checks.
 - [ ] Add structured logs, traces, and Prometheus metrics.
 - [ ] Add dashboards for phases, latency, failures, health, and ledger imbalance.
-- [ ] Complete alerts for reservation shortfall, receipt mismatch, and accounting imbalance.
+- [x] Complete alerts for reservation shortfall, receipt mismatch, and accounting imbalance.
   - [x] Persist and exercise deadline-approach and stale-recovery alerts.
-- [ ] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
+- [x] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
       exposure, and payout failure after collateral delivery.
 - [ ] Add database backup/restore and migration rollback drills.
 - [ ] Add secret rotation and relayer-key replacement procedures.
