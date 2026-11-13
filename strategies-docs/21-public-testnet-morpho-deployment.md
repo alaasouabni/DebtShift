@@ -138,21 +138,24 @@ The manifest never contains the RPC URL or private key.
 
 ## Preflight checklist
 
-1. Run `MAINNET_EXECUTION_ENABLED=false npm run check:public-testnet-route` and preserve the complete
+1. Run `npm run check:public-testnet-funding` with the reviewed public identities and release-sized
+   floors. Require both deployer gas checks and the exact Base Sepolia Circle USDC seed-balance
+   check to pass before injecting `DEPLOYER_PRIVATE_KEY`.
+2. Run `MAINNET_EXECUTION_ENABLED=false npm run check:public-testnet-route` and preserve the complete
    JSON observation. Any failure requires review; do not override it with environment variables.
-2. Read bytecode, token symbols/decimals, feed decimals, latest round values, round timestamps, and
+3. Read bytecode, token symbols/decimals, feed decimals, latest round values, round timestamps, and
    the L2 sequencer status directly from the configured RPC.
-3. Confirm both tokens have standard exact-transfer ERC-20 behavior suitable for Morpho; do not use
+4. Confirm both tokens have standard exact-transfer ERC-20 behavior suitable for Morpho; do not use
    fee-on-transfer, rebasing, callback, or permissionlessly burnable assets.
-4. Review the oracle pair direction. The collateral feed is the base side and the loan feed is the
+5. Review the oracle pair direction. The collateral feed is the base side and the loan feed is the
    quote side. Confirm the expected Morpho-scaled price independently.
-5. Select an LLTV whose liquidation margin remains safe under testnet oracle volatility. The
+6. Select an LLTV whose liquidation margin remains safe under testnet oracle volatility. The
    deployment script rejects zero or `>= 1e18` but cannot replace risk review.
-6. Confirm the seed amount is large enough for the signed demonstration borrow plus interest,
+7. Confirm the seed amount is large enough for the signed demonstration borrow plus interest,
    solver fee, and safety buffer. It is a real test-token transfer, not a UI number.
-7. Fund the deployer with destination gas and the exact loan-token amount. Keep the deployer,
+8. Fund the deployer with destination gas and the exact loan-token amount. Keep the deployer,
    operational executor, and final owner distinct where the account model permits it.
-8. Run all local checks from the exact clean commit intended for deployment.
+9. Run all local checks from the exact clean commit intended for deployment.
 
 ## Local validation before broadcast
 

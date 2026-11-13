@@ -38,11 +38,12 @@ This file is updated throughout implementation. It is the first place to inspect
 - **Task:** P0.7 - finish the reproducible public-testnet dependency/deployment path, then deploy the
   verified public validation environments and collect evidence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Obtain funded Ethereum Sepolia/Base Sepolia/NEAR testnet signers and the
-  reviewed test assets, rerun the frozen dependency validator, then execute the guarded canonical
-  Morpho, DebtShift EVM, and NEAR deployment runbooks. Derive the executable route only from those
-  manifested deployments and run the complete public workflow with the unavailable 1Click testnet
-  boundary explicitly simulated. No external write occurred in the completed internal checkpoint.
+- **Next verification:** Complete the guarded manifest-bound source-vault funding path, then obtain
+  the distinct public accounts/assets and require `npm run check:public-testnet-funding` to pass.
+  Rerun the frozen dependency validator before executing the guarded canonical Morpho, DebtShift
+  EVM, and NEAR deployment runbooks. Derive the executable route only from those manifested
+  deployments and run the complete public workflow with the unavailable 1Click testnet boundary
+  explicitly simulated. No external write occurred in the completed internal checkpoint.
 
 ## Decision log
 
@@ -428,6 +429,28 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Credential-free public-testnet funding gate implemented
+
+- Added a strict domain model for the distinct borrower, EVM deployer, source-vault funder,
+  executor, NEAR registry, owner, and verifier identities plus every positive release-sized asset,
+  gas, and yoctoNEAR floor. It rejects identity reuse, vault/Morpho funding below the borrower debt
+  floor, and transport collateral above the borrower collateral floor.
+- Added `npm run check:public-testnet-funding`. It never accepts a private key or broadcasts. It
+  hashes the exact frozen dependency file; reads the Aave position, native balances, and ERC-20
+  balances at finalized Ethereum/Base Sepolia blocks; and reads final NEAR account, code, balance,
+  and deployment-key permission state through free default RPCs.
+- The report evaluates all nineteen predicates without short-circuiting and exits non-zero with a
+  complete deficiency list. RPC ambiguity remains an error rather than being mislabeled as missing
+  funds. Output contains no RPC URL or deployment key.
+- A live read-only exercise with deliberately unfunded placeholder identities correctly returned
+  `PUBLIC_TESTNET_FUNDING_NOT_READY` at Ethereum Sepolia block `12127276` and Base Sepolia block
+  `58333379`, bound to dependency hash
+  `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`. No key, transaction,
+  public-chain write, or token movement occurred.
+- The complete repository gate passes OpenAPI drift, formatting, script validation, all workspace
+  lint/type checks, 123 domain tests, every remaining package suite, the real dual-Anvil workflow,
+  and all eleven production builds.
 
 ### 2026-11-13 - Public-testnet source feeds and deterministic route generation hardened
 

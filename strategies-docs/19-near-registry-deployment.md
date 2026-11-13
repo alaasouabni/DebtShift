@@ -29,18 +29,21 @@ removal of the final verifier.
 
 ## Pre-deployment gate
 
-1. Work from the exact pushed commit intended for deployment and require a clean worktree.
-2. Confirm the corresponding GitHub quality run is green, including the Linux NEAR unit, Clippy,
+1. Run `npm run check:public-testnet-funding` with the reviewed release floors and public identities.
+   Require the registry/owner/verifier existence, registry balance/empty-code/full-access-key, and
+   verifier-balance checks to pass before injecting the deployment private key.
+2. Work from the exact pushed commit intended for deployment and require a clean worktree.
+3. Confirm the corresponding GitHub quality run is green, including the Linux NEAR unit, Clippy,
    WASM, and sandbox tests.
-3. Run `npm ci` and `npm run check:near` on Linux. On Windows, rely on the green Linux CI sandbox
+4. Run `npm ci` and `npm run check:near` on Linux. On Windows, rely on the green Linux CI sandbox
    job in addition to the host format/unit/Clippy/WASM checks.
-4. Reconfirm the selected RPC provider currently reports `testnet`. Configure zero to four approved
+5. Reconfirm the selected RPC provider currently reports `testnet`. Configure zero to four approved
    independent fallback URLs; do not discover or add endpoints automatically.
-5. Confirm the registry account exists, has enough test NEAR for deployment, and has no contract
+6. Confirm the registry account exists, has enough test NEAR for deployment, and has no contract
    code. The deployer intentionally refuses to overwrite an account whose `code_hash` is non-empty.
-6. Confirm the registry deployment key is full-access, the owner and verifier accounts exist, and
+7. Confirm the registry deployment key is full-access, the owner and verifier accounts exist, and
    the registry, owner, and verifier identities are all distinct.
-7. Record the intended registry, owner, and verifier account IDs out of band. Confirm
+8. Record the intended registry, owner, and verifier account IDs out of band. Confirm
    `MAINNET_EXECUTION_ENABLED=false`.
 
 ## Deployment command

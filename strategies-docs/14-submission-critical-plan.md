@@ -190,6 +190,8 @@ while a safe actionable item remains in this list.
    - Pinned Aave/Morpho fork tests, official 1Click schema/fixture tests, live dry quote, and
      non-broadcast transaction simulation.
 7. **Deploy public validation environments**
+   - Run the credential-free funding/account gate and require every borrower, deployer, vault,
+     executor, gas, transport, and NEAR prerequisite to pass before loading any deployment key.
    - Deploy and attest the pinned canonical-source, DebtShift-operated Morpho destination and real
      public-testnet market before deploying the DebtShift testnet contracts.
    - Deploy and exercise the testnet contracts/registry; only the unavailable 1Click boundary may

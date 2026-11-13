@@ -4,6 +4,7 @@ export * from './config/environment.js';
 export * from './config/deployment-manifest.js';
 export * from './config/live-market.js';
 export * from './config/public-testnet-live-route.js';
+export * from './config/public-testnet-funding.js';
 export * from './config/public-testnet-route.js';
 export * from './config/testnet-morpho-deployment.js';
 export * from './financing.js';

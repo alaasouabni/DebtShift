@@ -59,8 +59,11 @@ before changing code.
    feeds. A source-commit-bound generator derives the post-deployment executable route from the
    dependency file, canonical Morpho manifest, and reviewed policy without inventing testnet 1Click
    asset IDs.
-9. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
-   no credentialed or write-capable external action was attempted.
+9. A credential-free public-testnet funding gate reads the real Aave borrower position, EVM gas and
+   asset balances, and NEAR account/code/access-key state. It requires distinct operational
+   identities and all nineteen prerequisites before a deployment private key may be loaded.
+10. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
+    no credentialed or write-capable external action was attempted.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -78,7 +81,7 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, scripts, lint/types, all tests, and all 11 builds         |
 | Worker suite                          | Pass: 85 tests, including adapter startup ordering and exact final registry state      |
-| Domain suite                          | Pass: 119 tests, including deterministic testnet-route derivation and mode boundaries  |
+| Domain suite                          | Pass: 123 tests, including deterministic route and funding-readiness derivation        |
 | Database suite and migration drill    | Pass: 22 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
 | API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
 | Agent and web suites                  | Pass: 9 agent/security tests and 4 browser tests                                       |
@@ -109,6 +112,7 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | GitHub quality run `43460754238`      | Pass: complete quality workflow for synchronized strategy checkpoint `a6fae68`         |
 | GitHub quality run `43465347172`      | Pass: complete quality workflow for manifested route generator checkpoint `f73b9df`    |
 | `npm run check:public-testnet-route`  | Pass: dependency hash `0x2186…7f17`; both source/destination feed rounds finalized     |
+| Public-testnet funding dry exercise   | Correct fail-closed report: 19 deficiencies for deliberately unfunded placeholders     |
 | `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
@@ -121,31 +125,35 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Acquire funded Ethereum Sepolia/Base Sepolia/NEAR testnet signers and the reviewed test assets,
-   rerun `npm run check:public-testnet-route`, then follow
+1. Implement and verify the guarded, manifest-bound source-vault funding command and immutable
+   funding evidence without broadcasting it.
+2. Acquire distinct funded Ethereum Sepolia/Base Sepolia/NEAR testnet identities and the reviewed
+   test assets, then require `npm run check:public-testnet-funding` to pass.
+3. Rerun `npm run check:public-testnet-route`, then follow
    `21-public-testnet-morpho-deployment.md` for the reviewed irreversible deployment.
-2. Run `npm run generate:public-testnet-route` with the resulting Morpho manifest, review and commit
+4. Run `npm run generate:public-testnet-route` with the resulting Morpho manifest, review and commit
    the exclusively created executable route, deploy the seven DebtShift EVM contracts, and
    configure both manifests for startup attestation.
-3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
+5. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
-4. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
+6. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
    storage, and sandbox/testnet evidence.
-5. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
+7. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
    web UI with `NEXT_PUBLIC_API_URL` set at image build time.
-6. Run the public-testnet workflow with only the unavailable 1Click boundary explicitly simulated,
+8. Run the public-testnet workflow with only the unavailable 1Click boundary explicitly simulated,
    then execute the full acceptance and security gate from a clean checkout.
-7. Only after those gates, prepare external production deployment with
+9. Only after those gates, prepare external production deployment with
    `MAINNET_EXECUTION_ENABLED=false`, generate real manifests, and run `npm run check:deployment`.
-8. Treat a real mainnet refinance as a separate final authorization event.
+10. Treat a real mainnet refinance as a separate final authorization event.
 
 ## Required external inputs
 
 - Git hosting/CI access for the pushed branch.
 - An official 1Click authentication token for a dry quote and later committed lifecycle.
-- NEAR testnet account/key and funded testnet signer.
+- Distinct NEAR testnet registry, owner, and verifier accounts; funded deployment/runtime keys.
 - Hosted environment credentials and PostgreSQL/Redis services.
-- EVM testnet/mainnet deployer and executor addresses, RPCs, and gas only when deployment is approved.
+- Distinct EVM borrower, deployer, source-vault funder, and executor addresses plus reviewed gas and
+  asset floors; private keys only when the corresponding guarded external action is approved.
 - Reviewed public-testnet collateral/loan tokens, Chainlink feeds/sequencer policy, LLTV, and enough
   real testnet loan token to seed the exact demonstration market.
 

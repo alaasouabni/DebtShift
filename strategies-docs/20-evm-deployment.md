@@ -60,24 +60,27 @@ liquidity funding, borrower approval, a 1Click deposit, a refinance, or any othe
 
 ## Preflight
 
-1. Work from the reviewed `main` commit with no untracked or modified files. The deployer records the
+1. Run `npm run check:public-testnet-funding` for testnet and require its complete borrower,
+   deployer, vault-funder, executor, asset, gas, and NEAR inventory to pass. The command is
+   credential-free and must run before any deployment private key is injected.
+2. Work from the reviewed `main` commit with no untracked or modified files. The deployer records the
    full commit and rejects a dirty worktree.
-2. Run `npm ci`, `npm run check`, `npm run check:evm`, `npm run check:evm-deployment`, and the
+3. Run `npm ci`, `npm run check`, `npm run check:evm`, `npm run check:evm-deployment`, and the
    environment-appropriate fork/live-route checks. Preserve results and the source commit.
-3. Review the normalized route file field by field: chain deployments, tokens and decimals, Aave
+4. Review the normalized route file field by field: chain deployments, tokens and decimals, Aave
    pool/data provider, Morpho singleton/market/oracle/IRM/LLTV, Chainlink feeds, policy, and cost
    bounds.
-4. Read both RPC chain IDs directly and confirm they equal the configured values. Confirm the signer
+5. Read both RPC chain IDs directly and confirm they equal the configured values. Confirm the signer
    and executor native balances without printing credentials.
-5. Confirm Aave returns the expected collateral-reserve aToken and debt-reserve variable-debt-token
+6. Confirm Aave returns the expected collateral-reserve aToken and debt-reserve variable-debt-token
    identities. Confirm Morpho returns the exact configured market parameters and market ID.
    On testnet, rerun `npm run check:public-testnet-route` and
    `npm run check:testnet-morpho-deployment`; the EVM deployer independently verifies the same
    Morpho manifest, dependency-file hash, source/destination planning feeds and ages, and null
    sequencer policy before broadcasting.
-6. Select a brand-new durable `DEPLOYMENT_MANIFEST_PATH`. The deployer creates it exclusively before
+7. Select a brand-new durable `DEPLOYMENT_MANIFEST_PATH`. The deployer creates it exclusively before
    the first deployment transaction; an existing path causes a pre-broadcast failure.
-7. Keep the application stopped or in `mainnet-readonly`. Do not enable queue consumption against an
+8. Keep the application stopped or in `mainnet-readonly`. Do not enable queue consumption against an
    unverified deployment.
 
 ## Deployment
