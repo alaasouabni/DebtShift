@@ -265,12 +265,17 @@ testnet provider catalog exists and the simulated boundary does not consume them
 and mainnet startup continue to require real provider asset IDs for all four route assets.
 
 Review and commit the generated route, then deploy the seven DebtShift EVM contracts with
-`20-evm-deployment.md`. The production worker in `testnet` mode requires both:
+`20-evm-deployment.md`. After the write-disabled EVM deployment is independently verified, fund its
+source vault only through `23-testnet-vault-funding.md` and require
+`npm run check:testnet-vault-funding` to pass before worker startup. The production worker in
+`testnet` mode requires all three:
 
-- `EVM_DEPLOYMENT_MANIFEST_PATH`; and
-- `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH`.
+- `EVM_DEPLOYMENT_MANIFEST_PATH`;
+- `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH`; and
+- `TESTNET_VAULT_FUNDING_MANIFEST_PATH`.
 
-Before consuming the first queue item it cross-checks both manifests against each other, the route,
+Before consuming the first queue item it cross-checks the deployment, dependency, and funding
+manifests against each other, the route,
 destination chain, deployment ordering, Morpho/market/token/oracle/IRM/LLTV/feed/sequencer bindings,
 onchain provenance, current oracle validity, seed position, allowance revocation, and nonzero
 available liquidity.

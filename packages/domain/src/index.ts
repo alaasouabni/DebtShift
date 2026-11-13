@@ -7,6 +7,7 @@ export * from './config/public-testnet-live-route.js';
 export * from './config/public-testnet-funding.js';
 export * from './config/public-testnet-route.js';
 export * from './config/testnet-morpho-deployment.js';
+export * from './config/vault-funding-manifest.js';
 export * from './financing.js';
 export * from './hashing.js';
 export * from './migration.js';

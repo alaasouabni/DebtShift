@@ -26,9 +26,10 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Verified pushed checkpoint: `f73b9df`, including both-chain public feed provenance, exact manifest
+- Verified pushed checkpoint: `50699af`, including both-chain public feed provenance, exact manifest
   binding, deterministic executable-route generation, oracle hardening, corrected Aave
-  reserve-token resolution, and strict testnet/mainnet provider-asset boundaries.
+  reserve-token resolution, strict testnet/mainnet provider-asset boundaries, and the credential-free
+  public funding/account preflight.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
@@ -61,8 +62,13 @@ before changing code.
    asset IDs.
 9. A credential-free public-testnet funding gate reads the real Aave borrower position, EVM gas and
    asset balances, and NEAR account/code/access-key state. It requires distinct operational
-   identities and all nineteen prerequisites before a deployment private key may be loaded.
-10. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
+   identities and all twenty prerequisites, including separate vault-funder gas, before a deployment
+   private key may be loaded.
+10. Guarded source-vault funding binds the clean commit and exact route/dependency/Morpho/EVM
+    manifests, executes only exact approval/deposit/revocation, and produces immutable canonical
+    transaction and balance evidence. A separate keyless command verifies the funding plus current
+    Morpho, vault-liquidity, executor-gas, and zero-allowance readiness.
+11. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
     no credentialed or write-capable external action was attempted.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
@@ -81,12 +87,12 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, scripts, lint/types, all tests, and all 11 builds         |
 | Worker suite                          | Pass: 85 tests, including adapter startup ordering and exact final registry state      |
-| Domain suite                          | Pass: 123 tests, including deterministic route and funding-readiness derivation        |
+| Domain suite                          | Pass: 125 tests, including deterministic route and funding-manifest derivation         |
 | Database suite and migration drill    | Pass: 22 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
 | API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
 | Agent and web suites                  | Pass: 9 agent/security tests and 4 browser tests                                       |
 | `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, lint, and taxed-token rollback gates            |
-| `npm run check:evm-deployment`        | Pass: seven DebtShift/Morpho deployment, readiness, and tamper tests                   |
+| `npm run check:evm-deployment`        | Pass: nine DebtShift/Morpho/funding deployment, readiness, and tamper tests            |
 | Pinned canonical Morpho Foundry gate  | Pass: 25 files compile; 4 oracle cross-price/age/stale/sequencer tests pass            |
 | Canonical Morpho deployment suite     | Pass: real market/seed liquidity plus provenance and route-hash tamper rejection       |
 | Vendored Morpho provenance            | Pass: all 28 files match pinned upstream Git blob IDs                                  |
@@ -111,8 +117,9 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | GitHub quality run `43459443566`      | Pass: complete quality workflow for public-testnet route checkpoint `7b59a4f`          |
 | GitHub quality run `43460754238`      | Pass: complete quality workflow for synchronized strategy checkpoint `a6fae68`         |
 | GitHub quality run `43465347172`      | Pass: complete quality workflow for manifested route generator checkpoint `f73b9df`    |
+| GitHub quality run `43471678265`      | Pass: complete quality workflow for funding preflight checkpoint `50699af`             |
 | `npm run check:public-testnet-route`  | Pass: dependency hash `0x2186…7f17`; both source/destination feed rounds finalized     |
-| Public-testnet funding dry exercise   | Correct fail-closed report: 19 deficiencies for deliberately unfunded placeholders     |
+| Public-testnet funding dry exercise   | Correct fail-closed report: all 20 deficiencies at finalized public blocks             |
 | `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
@@ -125,15 +132,14 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Implement and verify the guarded, manifest-bound source-vault funding command and immutable
-   funding evidence without broadcasting it.
-2. Acquire distinct funded Ethereum Sepolia/Base Sepolia/NEAR testnet identities and the reviewed
+1. Acquire distinct funded Ethereum Sepolia/Base Sepolia/NEAR testnet identities and the reviewed
    test assets, then require `npm run check:public-testnet-funding` to pass.
-3. Rerun `npm run check:public-testnet-route`, then follow
+2. Rerun `npm run check:public-testnet-route`, then follow
    `21-public-testnet-morpho-deployment.md` for the reviewed irreversible deployment.
-4. Run `npm run generate:public-testnet-route` with the resulting Morpho manifest, review and commit
-   the exclusively created executable route, deploy the seven DebtShift EVM contracts, and
-   configure both manifests for startup attestation.
+3. Run `npm run generate:public-testnet-route` with the resulting Morpho manifest, review and commit
+   the exclusively created executable route, then deploy the seven DebtShift EVM contracts.
+4. Follow `23-testnet-vault-funding.md` to fund the manifested source vault and require the
+   independent funding-readiness command before worker startup.
 5. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
 6. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,

@@ -8,6 +8,7 @@ import {
   parseDebtShiftEvmDeploymentManifest,
   parseLiveMarketConfiguration,
   parseTestnetMorphoDeploymentManifest,
+  parseTestnetVaultFundingManifest,
   type DebtShiftEnvironment,
   type Evidence,
 } from '@debtshift/domain';
@@ -19,6 +20,7 @@ import {
   loadFoundryArtifact,
   readAaveReserveTokenAddresses,
   verifyProductionDebtShiftDeployment,
+  verifyTestnetLiquidityVaultFunding,
   verifyTestnetMorphoDeployment,
   type FoundryArtifact,
 } from '@debtshift/protocols';
@@ -2198,9 +2200,11 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
 
   async #verifyDeploymentManifest(): Promise<void> {
     if (this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH.length === 0) return;
-    const manifest = parseDebtShiftEvmDeploymentManifest(
-      await readFile(resolve(this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH), 'utf8'),
+    const manifestJson = await readFile(
+      resolve(this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH),
+      'utf8',
     );
+    const manifest = parseDebtShiftEvmDeploymentManifest(manifestJson);
     if (manifest.environment !== this.#environment.DEBTSHIFT_MODE) {
       throw new Error('EVM deployment manifest environment does not match the runtime mode.');
     }
@@ -2313,7 +2317,37 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     });
     if (this.#environment.DEBTSHIFT_MODE === 'testnet') {
       await this.#verifyTestnetMorphoManifest(manifest);
+      await this.#verifyTestnetVaultFundingManifest(manifest, manifestJson);
     }
+  }
+
+  async #verifyTestnetVaultFundingManifest(
+    evmManifest: ReturnType<typeof parseDebtShiftEvmDeploymentManifest>,
+    evmManifestJson: string,
+  ): Promise<void> {
+    const fundingManifest = parseTestnetVaultFundingManifest(
+      await readFile(resolve(this.#environment.TESTNET_VAULT_FUNDING_MANIFEST_PATH), 'utf8'),
+    );
+    if (
+      fundingManifest.sourceCommit !== evmManifest.sourceCommit ||
+      fundingManifest.routeId !== evmManifest.routeId ||
+      fundingManifest.routeConfigurationHash.toLowerCase() !==
+        evmManifest.routeConfigurationHash.toLowerCase() ||
+      evmManifest.routeDependenciesHash === null ||
+      fundingManifest.routeDependenciesHash.toLowerCase() !==
+        evmManifest.routeDependenciesHash.toLowerCase() ||
+      fundingManifest.evmDeploymentManifestHash.toLowerCase() !==
+        keccak256(stringToHex(evmManifestJson)).toLowerCase() ||
+      fundingManifest.chainId !== evmManifest.source.chainId ||
+      !isAddressEqual(fundingManifest.vault, evmManifest.source.contracts.liquidityVault.address) ||
+      !isAddressEqual(fundingManifest.asset, evmManifest.source.debtToken)
+    ) {
+      throw new Error('Testnet vault funding manifest does not bind the EVM deployment.');
+    }
+    await verifyTestnetLiquidityVaultFunding({
+      manifest: fundingManifest,
+      publicClient: this.#sourcePublic,
+    });
   }
 
   async #verifyTestnetMorphoManifest(

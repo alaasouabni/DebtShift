@@ -59,6 +59,7 @@ Implementation must be understandable from this directory without relying on cha
 | [20-evm-deployment.md](./20-evm-deployment.md)                                             | Defines guarded two-chain deployment, manifest attestation, worker startup, and failure handling. |
 | [21-public-testnet-morpho-deployment.md](./21-public-testnet-morpho-deployment.md)         | Defines pinned canonical Morpho testnet deployment, funded-market evidence, and startup gates.    |
 | [22-public-testnet-funding-readiness.md](./22-public-testnet-funding-readiness.md)         | Defines credential-free borrower, operator, asset, gas, and NEAR account readiness before deploy. |
+| [23-testnet-vault-funding.md](./23-testnet-vault-funding.md)                               | Defines exact guarded source-vault funding, immutable evidence, cleanup, and readiness checks.    |
 
 ## Work protocol
 

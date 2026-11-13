@@ -38,12 +38,13 @@ This file is updated throughout implementation. It is the first place to inspect
 - **Task:** P0.7 - finish the reproducible public-testnet dependency/deployment path, then deploy the
   verified public validation environments and collect evidence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Complete the guarded manifest-bound source-vault funding path, then obtain
-  the distinct public accounts/assets and require `npm run check:public-testnet-funding` to pass.
-  Rerun the frozen dependency validator before executing the guarded canonical Morpho, DebtShift
-  EVM, and NEAR deployment runbooks. Derive the executable route only from those manifested
-  deployments and run the complete public workflow with the unavailable 1Click testnet boundary
-  explicitly simulated. No external write occurred in the completed internal checkpoint.
+- **Next verification:** Finish and push the guarded source-vault funding checkpoint, then obtain the
+  distinct public accounts/assets and require the twenty-check
+  `npm run check:public-testnet-funding` gate to pass. Rerun the frozen dependency validator before
+  executing the guarded canonical Morpho, DebtShift EVM, funding, and NEAR deployment runbooks.
+  Derive the executable route only from manifested deployments and run the complete public workflow
+  with the unavailable 1Click testnet boundary explicitly simulated. No external write occurred in
+  the completed internal checkpoint.
 
 ## Decision log
 
@@ -415,6 +416,28 @@ This file is updated throughout implementation. It is the first place to inspect
   used the reviewed public dependencies. Byte-exact chained evidence prevents silent address,
   oracle-policy, token-representation, and reserve-identity drift.
 
+### ADR-027 - Exact manifested source-vault funding with mandatory allowance cleanup
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Decision:** Fund the public-testnet permissioned source vault only through a separate guarded
+  command after canonical Morpho and DebtShift EVM deployment readiness pass. Require a clean source
+  commit, the exact four public role addresses, explicit gas/liquidity/amount floors, byte-exact
+  route/dependency/deployment hashes, an exclusively created output path, and a dedicated funder key
+  that is parsed only after read-only preflight succeeds.
+- **Transaction boundary:** Send only exact token approval, exact vault deposit, and approval-to-zero
+  transactions. Require exact finalized funder/vault/free-liquidity deltas and zero current
+  allowance, undrawn reservations, and recovery reserves. If failure occurs after allowance is
+  visible, attempt and verify emergency allowance cleanup; ambiguous cleanup halts for manual
+  reconciliation.
+- **Evidence:** Record the three unique transactions, calldata hashes, canonical receipts/blocks,
+  senders/targets/nonces/gas, historical before/after balances, exact amount, and all upstream hashes
+  in a strict version-1 funding manifest. A separate keyless verifier must reconstruct that evidence
+  and rerun Morpho plus funded EVM readiness.
+- **Reason:** A generic balance check cannot prove who funded the vault, which deployment received
+  the assets, whether a residual token approval remains, or whether a timeout caused a partial or
+  duplicate deposit. Exact chained evidence keeps temporary liquidity auditable and retry-safe.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                              |
@@ -430,6 +453,29 @@ The journal preserves historical implementation context. Entries before ADR-022 
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
 
+### 2026-11-13 - Guarded source-vault funding and independent evidence verification implemented
+
+- Added a strict testnet funding manifest bound to the clean source commit, normalized executable
+  route, byte-exact dependency file, and byte-exact DebtShift EVM manifest. It requires exact
+  funder/vault/free-liquidity deltas, three unique ordered transactions, canonical sender/target
+  identities, and zero pre/post allowance and reservation balances.
+- Added `npm run fund:testnet-vault`. Before loading the dedicated key it verifies the canonical
+  Morpho market, all seven DebtShift contracts, finalized funder gas/token balances, four distinct
+  EVM roles, current commit, route/manifests, and explicit reviewed amount/gas/liquidity floors. It
+  sends exact approval, deposit, and allowance revocation only; failure after a visible allowance
+  invokes proof-checked emergency cleanup.
+- Added keyless `npm run check:testnet-vault-funding`. It verifies all three canonical transactions
+  and historical balances, current zero allowance, current vault liquidity/executor gas, and current
+  canonical Morpho liquidity without accepting a wallet key.
+- Closed a preflight gap by adding the separate vault funder's Ethereum Sepolia gas balance to
+  `npm run check:public-testnet-funding`; the complete inventory now evaluates twenty predicates.
+- A live read-only exercise of the updated gate through the three free default RPCs returned all
+  twenty expected placeholder deficiencies at Ethereum Sepolia finalized block `12127558` and Base
+  Sepolia finalized block `58351157`; no key or write was involved.
+- Domain tests pass 125 cases and the dual-Anvil EVM/Morpho/funding deployment suite passes all nine
+  cases, including input-hash tamper and newly introduced residual-allowance rejection. No public
+  transaction, external deployment, token movement, registry write, or mainnet action occurred.
+
 ### 2026-11-13 - Credential-free public-testnet funding gate implemented
 
 - Added a strict domain model for the distinct borrower, EVM deployer, source-vault funder,
@@ -440,9 +486,10 @@ operative source of truth.
   hashes the exact frozen dependency file; reads the Aave position, native balances, and ERC-20
   balances at finalized Ethereum/Base Sepolia blocks; and reads final NEAR account, code, balance,
   and deployment-key permission state through free default RPCs.
-- The report evaluates all nineteen predicates without short-circuiting and exits non-zero with a
-  complete deficiency list. RPC ambiguity remains an error rather than being mislabeled as missing
-  funds. Output contains no RPC URL or deployment key.
+- That checkpoint evaluated nineteen predicates without short-circuiting; the later vault-funding
+  increment added the missing funder-gas predicate, bringing the current gate to twenty. RPC
+  ambiguity remains an error rather than being mislabeled as missing funds. Output contains no RPC
+  URL or deployment key.
 - A live read-only exercise with deliberately unfunded placeholder identities correctly returned
   `PUBLIC_TESTNET_FUNDING_NOT_READY` at Ethereum Sepolia block `12127276` and Base Sepolia block
   `58333379`, bound to dependency hash
@@ -534,8 +581,9 @@ operative source of truth.
   constructor input, canonical deployment/configuration receipts, runtime hashes, token/feed code
   and decimals, owner, IRM/LLTV, market, oracle/sequencer immutables, current price, seed shares,
   available liquidity, and zero allowance. Tampered deployment-input provenance is rejected.
-- Testnet runtime now requires `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH` and cross-checks the
-  dependency manifest against the route and later DebtShift EVM manifest before queue consumption.
+- Testnet runtime now requires `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH` and
+  `TESTNET_VAULT_FUNDING_MANIFEST_PATH`, and cross-checks the dependency and funding manifests
+  against the route and later DebtShift EVM manifest before queue consumption.
   The production image builds/carries the canonical artifacts, source provenance, and licenses.
 - The two-Anvil deployment suites passed six tests: the existing seven-contract DebtShift
   deployment plus canonical Morpho market deployment/readiness, deployment-input and semantic

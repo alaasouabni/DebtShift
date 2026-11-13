@@ -66,6 +66,9 @@ const requirements = publicTestnetFundingRequirementsSchema.parse({
         'MINIMUM_EVM_DEPLOYER_NATIVE_BALANCE_WEI',
       ),
       destinationMorphoSeedLiquidityUnits: morphoSeedMinimum,
+      vaultFunderSourceNativeBalanceWei: requiredPositiveAmount(
+        'MINIMUM_VAULT_FUNDER_NATIVE_BALANCE_WEI',
+      ),
       sourceVaultFundingUnits: requiredPositiveAmount('MINIMUM_VAULT_FUNDING_UNITS'),
       executorSourceNativeBalanceWei: requiredPositiveAmount('MINIMUM_EXECUTOR_NATIVE_BALANCE_WEI'),
       executorDestinationNativeBalanceWei: requiredPositiveAmount(
@@ -184,25 +187,33 @@ async function inspectSource(client, dependency, expected) {
       symbol: dependency.source.debtAsset.symbol,
     },
   });
-  const [position, borrowerNative, deployerNative, vaultFunderDebt, executorNative, executorWeth] =
-    await Promise.all([
-      adapter.readPosition(expected.evm.borrower, block.number),
-      client.getBalance({ address: expected.evm.borrower, blockNumber: block.number }),
-      client.getBalance({ address: expected.evm.deployer, blockNumber: block.number }),
-      tokenBalance(
-        client,
-        dependency.source.debtAsset.address,
-        expected.evm.vaultFunder,
-        block.number,
-      ),
-      client.getBalance({ address: expected.evm.executor, blockNumber: block.number }),
-      tokenBalance(
-        client,
-        dependency.source.collateralAsset.address,
-        expected.evm.executor,
-        block.number,
-      ),
-    ]);
+  const [
+    position,
+    borrowerNative,
+    deployerNative,
+    vaultFunderNative,
+    vaultFunderDebt,
+    executorNative,
+    executorWeth,
+  ] = await Promise.all([
+    adapter.readPosition(expected.evm.borrower, block.number),
+    client.getBalance({ address: expected.evm.borrower, blockNumber: block.number }),
+    client.getBalance({ address: expected.evm.deployer, blockNumber: block.number }),
+    client.getBalance({ address: expected.evm.vaultFunder, blockNumber: block.number }),
+    tokenBalance(
+      client,
+      dependency.source.debtAsset.address,
+      expected.evm.vaultFunder,
+      block.number,
+    ),
+    client.getBalance({ address: expected.evm.executor, blockNumber: block.number }),
+    tokenBalance(
+      client,
+      dependency.source.collateralAsset.address,
+      expected.evm.executor,
+      block.number,
+    ),
+  ]);
   return {
     chainId,
     block: evmBlock(block),
@@ -215,7 +226,10 @@ async function inspectSource(client, dependency, expected) {
         position?.health.kind === 'AAVE_HEALTH_FACTOR' ? position.health.healthFactorWad : null,
     },
     deployer: { nativeWei: deployerNative.toString() },
-    vaultFunderDebtUnits: vaultFunderDebt.toString(),
+    vaultFunder: {
+      nativeWei: vaultFunderNative.toString(),
+      debtUnits: vaultFunderDebt.toString(),
+    },
     executor: {
       nativeWei: executorNative.toString(),
       collateralUnits: executorWeth.toString(),

@@ -7,5 +7,6 @@ export * from './local-deployment.js';
 export * from './morpho-blue.js';
 export * from './production-deployment.js';
 export * from './testnet-morpho-deployment.js';
+export * from './vault-funding.js';
 
 export const PROTOCOL_ADAPTER_VERSION = 1 as const;

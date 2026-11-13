@@ -227,6 +227,25 @@ Do not treat transactional DDL success as proof that an application migration is
 run a generated `down` migration on production, overwrite the source database in place, or start a
 worker against a recovered database before independent reconciliation.
 
+## Interrupted public-testnet vault funding
+
+The guarded procedure and immutable evidence contract are defined in
+`23-testnet-vault-funding.md`. If funding times out, exits with an empty reserved manifest, or cannot
+prove allowance cleanup:
+
+1. Keep workflow writes disabled and do not restart the funding command.
+2. Preserve the output path, intended amount, funder nonce range, command output, and all
+   explorer-visible transactions.
+3. At finalized source blocks, reconcile the funder-to-vault allowance, funder/vault token
+   balances, free liquidity, undrawn reservations, and recovery reserves.
+4. Revoke any residual allowance through a separately reviewed recovery transaction. Preserve its
+   receipt and do not increase the allowance.
+5. Determine whether the exact deposit already completed before considering a new attempt. Never
+   fund twice because the first command did not produce a manifest.
+6. Require a new manifest path and explicit approval only after the incident record is complete.
+
+An RPC timeout, empty file, or absent console output does not prove that no transaction was mined.
+
 ## Stuck reservation before source close
 
 1. Confirm the source did not close from adapter event, lending position, escrow balance, and

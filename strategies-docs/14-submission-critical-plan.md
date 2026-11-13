@@ -20,6 +20,11 @@ the deadline plan survives chat compaction, a new work session, or a contributor
   source-commit-bound generator now creates the executable route only after the Morpho manifest
   exists and rejects every dependency/manifest/policy mismatch. Testnet omits unavailable 1Click
   asset IDs; mainnet modes still require official IDs.
+- **Verified public-testnet funding preflight checkpoint:** `50699af` on `main`; GitHub quality run
+  `43471678265` passed every job for exact commit
+  `50699afa6e18c026aea59b70633482122b5ed41a`. The credential-free gate reads finalized Aave,
+  EVM-balance, and NEAR account/key state, enforces distinct roles, and reports every unmet
+  prerequisite without loading a key or broadcasting.
 - **Verified production/fork foundation:** checkpoint `b7413ec`; GitHub quality run `43409934145`
   passed every job and the pinned Base block `55,600,000` fork passed against the official free RPC.
 - **Primary objective:** finish normal, functional production-oriented code for one complete
@@ -194,6 +199,8 @@ while a safe actionable item remains in this list.
      executor, gas, transport, and NEAR prerequisite to pass before loading any deployment key.
    - Deploy and attest the pinned canonical-source, DebtShift-operated Morpho destination and real
      public-testnet market before deploying the DebtShift testnet contracts.
+   - Fund the manifested source vault through the separate exact approval/deposit/revocation
+     command and require its immutable evidence plus independent funded-readiness verifier.
    - Deploy and exercise the testnet contracts/registry; only the unavailable 1Click boundary may
      use the explicitly labeled testnet transport adapter.
    - Deploy the hosted contract-backed sandbox and web/API surfaces.

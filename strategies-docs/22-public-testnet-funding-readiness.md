@@ -20,8 +20,8 @@ The assessment is deterministic and checks all of these prerequisites without sh
 2. The deployer has the reviewed native-gas floor on both EVM networks.
 3. The deployer owns enough Base Sepolia Circle test USDC for the exact Morpho seed-liquidity
    amount. That amount must also meet the frozen dependency bundle's minimum.
-4. A separate source vault funder owns enough Aave Sepolia test USDC for the reviewed vault funding
-   floor.
+4. A separate source vault funder owns enough Ethereum Sepolia native gas and Aave Sepolia test
+   USDC for the reviewed vault-funding transaction sequence.
 5. A separate executor owns the reviewed native-gas floor and transport WETH floor on both EVM
    networks. This backs real source recovery and destination delivery transactions while only the
    unavailable 1Click provider boundary is simulated.
@@ -58,6 +58,7 @@ are wei and NEAR amounts are yoctoNEAR. No amount has a silent default.
 | `MINIMUM_AAVE_DEBT_UNITS`                    | Minimum finalized Aave variable USDC debt.                                                   |
 | `MINIMUM_EVM_DEPLOYER_NATIVE_BALANCE_WEI`    | Minimum native balance required independently on each EVM network.                           |
 | `DESTINATION_MORPHO_SEED_LIQUIDITY_UNITS`    | Exact planned Base Sepolia USDC seed amount.                                                 |
+| `MINIMUM_VAULT_FUNDER_NATIVE_BALANCE_WEI`    | Minimum Ethereum Sepolia gas balance for the separate vault funder.                          |
 | `MINIMUM_VAULT_FUNDING_UNITS`                | Minimum source Aave USDC held by the future vault funder.                                    |
 | `MINIMUM_EXECUTOR_NATIVE_BALANCE_WEI`        | Minimum executor native balance required independently on each EVM network.                  |
 | `MINIMUM_TRANSPORT_COLLATERAL_UNITS`         | Minimum executor WETH balance required independently on each EVM network.                    |
@@ -91,7 +92,7 @@ The JSON output contains:
 - finalized EVM block numbers, hashes, and timestamps;
 - Aave position and public balance observations;
 - NEAR account existence, balances, registry code hash, and access permission category;
-- all nineteen actual-versus-required checks and the complete deficiency list.
+- all twenty actual-versus-required checks and the complete deficiency list.
 
 `PUBLIC_TESTNET_FUNDING_READY` with process exit code zero means every inventory predicate passed.
 `PUBLIC_TESTNET_FUNDING_NOT_READY` exits non-zero after printing every deficiency. RPC/network/schema
@@ -100,10 +101,11 @@ ambiguous provider must fail closed.
 
 ## Verified dry exercise
 
-On 2026-11-13 the command was exercised through all three default free RPCs with deliberately
-unfunded placeholder identities. It correctly returned `PUBLIC_TESTNET_FUNDING_NOT_READY` and all
-nineteen deficiencies at Ethereum Sepolia finalized block `12127276` and Base Sepolia finalized
-block `58333379`. The route dependency hash remained
+On 2026-11-13 the current twenty-check command was exercised through all three default free RPCs
+with deliberately unready placeholder identities. It correctly returned
+`PUBLIC_TESTNET_FUNDING_NOT_READY` and all twenty deficiencies, including the newly explicit
+vault-funder gas floor, at Ethereum Sepolia finalized block `12127558` and Base Sepolia finalized
+block `58351157`. The route dependency hash remained
 `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`.
 
 That exercise proves the read path and fail-closed report; it is not evidence that the real release
@@ -121,7 +123,6 @@ accounts are funded. No private key was loaded and no public-chain write or toke
 7. After deployment, use the manifest-bound readiness commands. The pre-deployment report cannot
    substitute for post-deployment code, role, receipt, vault-balance, and startup attestation.
 
-The next code increment is a guarded, manifest-bound source-vault funding command. It must use the
-deployed EVM manifest, exact route/dependency hashes, an exclusive funding manifest, exact allowance
-cleanup, receipt verification, and a post-funding balance check. This readiness command does not
-perform that funding operation.
+The later source-vault funding operation is implemented separately in
+`23-testnet-vault-funding.md`. This readiness command still does not perform it; it only proves that
+the reviewed funder has the finalized gas and asset inventory required before a key is loaded.

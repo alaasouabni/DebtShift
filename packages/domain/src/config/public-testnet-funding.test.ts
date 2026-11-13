@@ -11,7 +11,7 @@ describe('public testnet funding readiness', () => {
     const assessment = assessPublicTestnetFundingReadiness(requirements(), observation());
 
     expect(assessment.ready).toBe(true);
-    expect(assessment.checks).toHaveLength(19);
+    expect(assessment.checks).toHaveLength(20);
     expect(assessment.deficiencies).toEqual([]);
   });
 
@@ -97,6 +97,7 @@ function requirements() {
         deployerSourceNativeBalanceWei: '100',
         deployerDestinationNativeBalanceWei: '100',
         destinationMorphoSeedLiquidityUnits: '1000',
+        vaultFunderSourceNativeBalanceWei: '100',
         sourceVaultFundingUnits: '1000',
         executorSourceNativeBalanceWei: '100',
         executorDestinationNativeBalanceWei: '100',
@@ -134,7 +135,7 @@ function observation() {
         healthFactorWad: '1500000000000000000',
       },
       deployer: { nativeWei: '100' },
-      vaultFunderDebtUnits: '1000',
+      vaultFunder: { nativeWei: '100', debtUnits: '1000' },
       executor: { nativeWei: '100', collateralUnits: '1000' },
     },
     destination: {

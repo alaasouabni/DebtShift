@@ -14,6 +14,7 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.NEAR_RPC_FALLBACK_URLS_JSON).toEqual([]);
     expect(environment.EVM_DEPLOYMENT_MANIFEST_PATH).toBe('');
     expect(environment.TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH).toBe('');
+    expect(environment.TESTNET_VAULT_FUNDING_MANIFEST_PATH).toBe('');
     expect(environment.AGENT_MODE).toBe('DETERMINISTIC');
     expect(environment.MAINNET_EXECUTION_ENABLED).toBe(false);
     expect(environment.SOURCE_FINALITY_CONFIRMATIONS).toBe(1);
@@ -127,6 +128,13 @@ describe('parseDebtShiftEnvironment', () => {
       parseDebtShiftEnvironment({
         ...testnet,
         TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH: '/run/debtshift/testnet-morpho.json',
+      }),
+    ).toThrow('Funded testnet execution requires TESTNET_VAULT_FUNDING_MANIFEST_PATH');
+    expect(() =>
+      parseDebtShiftEnvironment({
+        ...testnet,
+        TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH: '/run/debtshift/testnet-morpho.json',
+        TESTNET_VAULT_FUNDING_MANIFEST_PATH: '/run/debtshift/testnet-vault-funding.json',
       }),
     ).not.toThrow();
   });

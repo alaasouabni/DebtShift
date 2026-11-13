@@ -106,6 +106,14 @@ With Foundry, Rust, and cargo-near installed, run the complete workspace gate wi
 npm run check:all
 ```
 
+Public-testnet release operations are separately gated. Run the keyless account/funding inventory
+with `npm run check:public-testnet-funding`; after canonical Morpho and DebtShift EVM deployment,
+use the exact guarded `npm run fund:testnet-vault` operation and remove its key before running
+`npm run check:testnet-vault-funding`. These commands do not enable workflow or mainnet writes. The
+required ordering, manifests, approvals, recovery rules, and evidence are documented in
+`strategies-docs/22-public-testnet-funding-readiness.md` and
+`strategies-docs/23-testnet-vault-funding.md`.
+
 Run the reproducible dual-chain contract demonstrations with:
 
 ```sh

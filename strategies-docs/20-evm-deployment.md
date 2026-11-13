@@ -110,6 +110,31 @@ SHA-256, source commit, command output, explorer links, and signer nonces in the
 Do not commit a real external deployment manifest unless the release policy explicitly makes those
 public addresses and transaction records part of the published evidence.
 
+## Testnet source-vault funding
+
+For `testnet`, contract deployment intentionally leaves the source vault unfunded and workflow
+writes disabled. After the zero-liquidity deployment check passes, follow
+`23-testnet-vault-funding.md` and run the separately authorized:
+
+```powershell
+npm run fund:testnet-vault
+```
+
+That command binds the clean source commit, executable route, byte-exact dependencies, canonical
+Morpho manifest, and DebtShift EVM manifest before it loads the separate vault-funder key. It sends
+only exact approval, deposit, and approval-revocation transactions and writes an immutable funding
+manifest after exact balance deltas and zero residual allowance are proven.
+
+Remove the key and approval flag, then require:
+
+```powershell
+npm run check:testnet-vault-funding
+```
+
+This independent read-only gate verifies historical and current funding evidence, reruns Morpho
+readiness, and reruns EVM readiness with non-zero vault-liquidity and executor-gas floors. Do not
+start the funded worker from only the deployment manifest or only a successful funding command.
+
 ## Independent readiness check
 
 Use read-only RPC access and keep `MAINNET_EXECUTION_ENABLED=false`:
@@ -160,6 +185,13 @@ chain IDs, collateral token bytecode, non-zero executor gas on both chains, and 
 source-refund and destination-delivery collateral. Exact required amounts are rechecked immediately
 before each transfer. Testnet EVM startup also requires the Morpho dependency manifest's route ID
 and dependency hash to match the DebtShift EVM manifest before it verifies the onchain market.
+
+Funded `testnet` also requires `TESTNET_VAULT_FUNDING_MANIFEST_PATH`. Startup binds its byte-exact
+EVM-manifest hash, route/dependency hashes, deployment source commit, source chain, vault, and debt
+token, then reconstructs the canonical three-transaction funding evidence and verifies the current
+funder allowance remains zero. It does not require the original amount to remain entirely free on
+every restart because an active migration may have a legitimate reservation; reservation and
+recovery invariants remain enforced by the durable workflow.
 
 After startup, rerun the independent readiness check and confirm the worker health/log record reports
 no attestation error. Do not treat process health alone as deployment evidence.

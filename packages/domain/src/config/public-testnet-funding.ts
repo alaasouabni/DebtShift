@@ -34,6 +34,7 @@ const evmFundingMinimumsSchema = z
     deployerSourceNativeBalanceWei: positiveBaseUnitAmountSchema,
     deployerDestinationNativeBalanceWei: positiveBaseUnitAmountSchema,
     destinationMorphoSeedLiquidityUnits: positiveBaseUnitAmountSchema,
+    vaultFunderSourceNativeBalanceWei: positiveBaseUnitAmountSchema,
     sourceVaultFundingUnits: positiveBaseUnitAmountSchema,
     executorSourceNativeBalanceWei: positiveBaseUnitAmountSchema,
     executorDestinationNativeBalanceWei: positiveBaseUnitAmountSchema,
@@ -149,7 +150,9 @@ export const publicTestnetFundingObservationSchema = z
           healthFactorWad: baseUnitAmountSchema.nullable(),
         }),
         deployer: observedEvmBalanceSchema,
-        vaultFunderDebtUnits: baseUnitAmountSchema,
+        vaultFunder: observedEvmBalanceSchema.extend({
+          debtUnits: baseUnitAmountSchema,
+        }),
         executor: observedEvmBalanceSchema.extend({
           collateralUnits: baseUnitAmountSchema,
         }),
@@ -252,8 +255,13 @@ export function assessPublicTestnetFundingReadiness(
     minimums.destinationMorphoSeedLiquidityUnits,
   );
   amount(
+    'source.vault_funder.native_balance_wei',
+    observation.source.vaultFunder.nativeWei,
+    minimums.vaultFunderSourceNativeBalanceWei,
+  );
+  amount(
     'source.vault_funder.debt_units',
-    observation.source.vaultFunderDebtUnits,
+    observation.source.vaultFunder.debtUnits,
     minimums.sourceVaultFundingUnits,
   );
   amount(
