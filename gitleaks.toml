@@ -17,3 +17,13 @@ regexTarget = "line"
 regexes = [
   '''deposit/destination/refund/payout receivers, principal, fee, financing, collateral bounds, quote,''',
 ]
+
+[[allowlists]]
+description = "Official public Aave Sepolia reserve-token contract addresses"
+regexTarget = "secret"
+regexes = [
+  '''5b071b590a59395fE4025A0Ccc1FcC931AAc1830''',
+  '''22a35DB253f4F6D0029025D6312A3BdAb20C2c6A''',
+  '''16dA4541aD1807f4443d92D26044C1147406EB80''',
+  '''36B5dE936eF1710E1d22EabE5231b28581a92ECc''',
+]
