@@ -10,7 +10,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] One documented command runs the happy-path demo.
 - [x] One documented command runs the refund/recovery demo.
 - [x] CI runs the same build and verification commands used locally.
-- [ ] No secret, private key, or machine-specific path is committed.
+- [x] No secret, production private key, or machine-specific path is committed; full-history secret
+      scanning permits only exact public deterministic Anvil fixtures.
 
 ## Product behavior
 
@@ -99,7 +100,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 ## Quality and operations
 
 - [x] Formatting, lint, type checks, builds, and all implemented test layers pass.
-- [ ] Dependency, secret, and container scans pass within documented policy.
+- [x] Dependency, full-history secret, and built-container scans pass within documented policy; CI
+      also publishes the runtime CycloneDX SBOM.
 - [ ] Metrics and structured logs cover all migration phases.
 - [x] Critical alerts are exercised.
 - [ ] Recovery and key-rotation runbooks are documented.

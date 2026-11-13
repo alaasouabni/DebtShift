@@ -123,7 +123,7 @@ services:
 
   migrate:
     <<: *debtshift-app
-    command: ['npm', 'run', 'db:migrate', '--workspace', '@debtshift/database']
+    command: ['node', 'packages/database/scripts/migrate.mjs']
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-debtshift}:${POSTGRES_PASSWORD:-debtshift_local}@postgres:5432/${POSTGRES_DB:-debtshift}
     depends_on:
@@ -171,7 +171,7 @@ services:
 
   web:
     <<: *debtshift-app
-    command: ['npm', 'run', 'start', '--workspace', '@debtshift/web']
+    command: ['node', 'node_modules/next/dist/bin/next', 'start', 'apps/web', '--port', '3000']
     environment:
       NODE_ENV: production
       PORT: 3000

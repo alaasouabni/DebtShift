@@ -4,20 +4,20 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Milestone tracker
 
-| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                                                                                                              |
-| ----------------------------------- | ----------- | ---------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                                                                                                                      |
-| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                                                                                                                       |
-| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                                                                                                                 |
-| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                                              |
-| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                                          |
-| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                                           |
-| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, durable alerts, and terminal retry-exhaustion/manual financial reconciliation pass; remaining recovery policies and broader alerts remain.                     |
-| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                                             |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                                      |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.                          |
-| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Durable deduplicated alerts cover deadlines, stale workflows/recoveries, unknown custody, terminal commands, missing ledgers, reservation/funding/capacity failures, receipt retractions, accounting divergence, solver exposure, and post-delivery payout failure; metrics, drills, backup, rotation, and provenance remain. |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                           |
+| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                                                                                                |
+| ----------------------------------- | ----------- | ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                                                                                                        |
+| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                                                                                                         |
+| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                                                                                                   |
+| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                                |
+| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                            |
+| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                             |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain. |
+| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                               |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                        |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.            |
+| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | All required durable alert classes pass deterministic drills. Full-history secret scanning, production dependency audit, built-image vulnerability enforcement, and CycloneDX SBOM publication are wired into CI; metrics, recovery/backup/key-rotation drills, and broader provenance remain.                  |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                             |
 
 ## Submission-critical mode
 
@@ -345,6 +345,37 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Fail-closed security scans and minimized runtime image
+
+- Added a dedicated CI security job: zero high/critical production npm findings, full-history
+  Gitleaks `8.30.1`, and a Trivy `0.76.2` scan of the actual built runtime image. Third-party actions
+  added by this gate are pinned to immutable commit SHAs, and the scan emits a retained CycloneDX
+  SBOM.
+- Gitleaks initially identified thirteen known local-fixture matches across history. The configuration
+  allowlists only the exact two public Anvil keys and two deterministic Anvil token addresses; a
+  second scan covered all 25 commits and found no unallowlisted leak.
+- The first container scan correctly rejected the former Node `22.16.0`/Debian `12.11` image for
+  five fixable critical OS findings, vulnerable package-manager dependencies, and additional high
+  findings. No CVE or file path was ignored.
+- Refreshed Node to `22.23.5`/Debian `12.15` at immutable digest
+  `sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee` and converted the image to
+  a multi-stage runtime without npm, Corepack, Yarn, curl, or unused Foundry binaries. Compose now
+  invokes the database migrator and Next server directly with Node.
+- The rebuilt `debtshift-app:local` manifest list is
+  `sha256:e2613a413de5d1ef6cc97084adf1d4550760cf4bc76a9396c6a5654065b50a08`.
+  Trivy reports zero fixable high/critical OS or library findings, and the production npm audit
+  reports zero vulnerabilities.
+- A separate non-failing inventory reports 35 Debian high/critical package associations for which
+  the current security feed supplies no fixed version (`affected`, `fix_deferred`, or
+  `will_not_fix`); several CVEs repeat across related util-linux packages. They remain an explicit
+  upstream-base review item before any real-fund release and are not represented as resolved.
+- A full Compose recreate preserved database/Redis volumes, migration exited `0`, all long-running
+  roles became healthy, and `npm run smoke:local` completed a signed contract-backed refinance at
+  migration `0xc469782becebcd32b21ac8edf8fc728c9b332a8a0d608fa8ccea2b053d262654`:
+  `SETTLED`, 17 evidence records, 16 ledger rows, and zero unexplained imbalance.
+- No public-chain write, provider commit, external deployment, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
 
 ### 2026-11-13 - Terminal transport and NEAR receipt alerts completed
 

@@ -134,6 +134,24 @@ Applications refuse to start if required manifest entries or chain IDs disagree 
 9. Scan dependencies, secrets, images, and generated SBOM.
 10. Publish immutable test artifacts and reports.
 
+The security job is fail-closed for three independently scoped checks:
+
+- `npm audit --omit=dev --audit-level=high` requires zero high or critical findings in production
+  dependencies. Development-only findings remain visible to the ordinary audit and are monitored,
+  but cannot be confused with the shipped dependency set.
+- Gitleaks `8.30.1` scans the complete Git history. `gitleaks.toml` extends the default rules and
+  allowlists only four exact, public deterministic Anvil fixture values; it does not exclude any
+  path or rule category.
+- Trivy `0.76.2` scans the built runtime image for fixable high or critical OS and library findings
+  and fails on any result. Unfixed upstream findings do not fail the build but must be reviewed
+  before release. The same pinned scanner emits a CycloneDX runtime SBOM retained as a CI artifact.
+
+The runtime image is multi-stage and pinned to Node `22.23.5` on Debian `12.15` by digest. Solidity,
+TypeScript, Next, and dependency pruning run only in the build stage. The final image contains the
+application artifacts and Anvil binary required by the shared sandbox topology, but not npm,
+Corepack, Yarn, curl, or the rest of the Foundry toolchain. Migration and web services therefore
+invoke their Node entry points directly.
+
 ## Operational metrics
 
 - Active migrations by phase and route.
