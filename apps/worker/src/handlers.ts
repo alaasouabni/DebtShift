@@ -73,6 +73,7 @@ export interface MigrationExecutionPort {
     records: readonly Evidence[],
   ): Promise<readonly ChainCanonicalityFailure[]>;
   reserve(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
+  cancelBeforeSourceClose(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   dispatchTransport(context: MigrationExecutionContext): Promise<FinalizedChainAction>;
   deliverDestination(
@@ -174,6 +175,17 @@ export function createWorkflowHandlers({
           ),
         ];
       }),
+    ],
+    [
+      'CANCEL_MIGRATION',
+      handler(store, execution, async (context) => [
+        chainEvidence(
+          context.migration.migrationId,
+          'MIGRATION_CANCELLED',
+          evidenceProviders.liquidity,
+          await execution.cancelBeforeSourceClose(context),
+        ),
+      ]),
     ],
     [
       'CLOSE_SOURCE',

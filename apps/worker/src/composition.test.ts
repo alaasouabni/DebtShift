@@ -33,7 +33,7 @@ describe('composeWorkflowHandlers', () => {
         store: fakeStore(),
         adapters: fakeAdapters('sandbox', 'DEBTSHIFT_SIMULATOR'),
       }).size,
-    ).toBe(8);
+    ).toBe(9);
   });
 
   it('rejects adapter sets from another runtime mode', () => {
@@ -50,8 +50,11 @@ describe('composeWorkflowHandlers', () => {
     const environment = modeEnvironment('mainnet-readonly', false);
     const handlers = composeWorkflowHandlers({ environment, store: fakeStore() });
 
-    expect(handlers.size).toBe(8);
+    expect(handlers.size).toBe(9);
     await expect(handlers.get('RESERVE_LIQUIDITY')?.execute({} as DurableCommand)).rejects.toThrow(
+      'Funded execution is unavailable in mainnet-readonly mode.',
+    );
+    await expect(handlers.get('CANCEL_MIGRATION')?.execute({} as DurableCommand)).rejects.toThrow(
       'Funded execution is unavailable in mainnet-readonly mode.',
     );
     expect(() =>
@@ -95,7 +98,7 @@ describe('composeWorkflowHandlers', () => {
         store: fakeStore(),
         adapters: fakeAdapters('mainnet', 'NEAR_INTENTS_1CLICK'),
       }).size,
-    ).toBe(8);
+    ).toBe(9);
   });
 });
 
@@ -149,6 +152,7 @@ function fakeExecution(): MigrationExecutionPort {
   return {
     verifyCanonicalEvidence: vi.fn(async () => []),
     reserve: action,
+    cancelBeforeSourceClose: action,
     closeSource: action,
     dispatchTransport: action,
     deliverDestination: action,

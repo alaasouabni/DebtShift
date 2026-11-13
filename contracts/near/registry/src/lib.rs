@@ -91,6 +91,7 @@ pub enum TerminalStatus {
     FailedSafe,
     RequoteRequired,
     Expired,
+    Cancelled,
 }
 
 #[near(serializers = [borsh, json])]

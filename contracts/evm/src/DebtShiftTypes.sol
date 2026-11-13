@@ -15,7 +15,8 @@ library DebtShiftTypes {
         COMPLETED,
         RECOVERY,
         FAILED_SAFE,
-        EXPIRED
+        EXPIRED,
+        CANCELLED
     }
 
     struct AssetRef {

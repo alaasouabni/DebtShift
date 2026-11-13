@@ -1666,6 +1666,423 @@
         "tags": ["system"]
       }
     },
+    "/v1/intents/{intentHash}": {
+      "get": {
+        "operationId": "MigrationsController_getIntent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intentHash",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "intent": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "accountType": {
+                          "enum": ["EOA", "EIP1271"],
+                          "type": "string"
+                        },
+                        "allowedTargets": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "chainId": {
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "type": "integer"
+                              },
+                              "deployment": {
+                                "type": "string"
+                              },
+                              "marketId": {
+                                "type": "string"
+                              },
+                              "protocol": {
+                                "enum": [
+                                  "AAVE_V3",
+                                  "MORPHO_BLUE",
+                                  "LOCAL_AAVE_MOCK",
+                                  "LOCAL_MORPHO_MOCK"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": ["chainId", "protocol", "deployment", "marketId"],
+                            "type": "object"
+                          },
+                          "maxItems": 16,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "borrower": {
+                          "type": "string"
+                        },
+                        "expiration": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "feeAsset": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "address": {
+                              "type": "string"
+                            },
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "decimals": {
+                              "maximum": 36,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "providerAssetId": {
+                              "maxLength": 512,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "symbol": {
+                              "maxLength": 32,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "address", "decimals"],
+                          "type": "object"
+                        },
+                        "maxDurationSeconds": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 86400,
+                          "type": "integer"
+                        },
+                        "maxSlippageBps": {
+                          "maximum": 10000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maxSourceDebtUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "maxTotalFeeUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "minAprReductionBps": {
+                          "maximum": 1000000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "minSourceCollateralUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "nonce": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "safetyPolicy": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "MIN_HEALTH_FACTOR_WAD",
+                                  "type": "string"
+                                },
+                                "minimumWad": {
+                                  "pattern": "^(0|[1-9]\\d*)$",
+                                  "type": "string"
+                                },
+                                "stressMinimumWad": {
+                                  "pattern": "^(0|[1-9]\\d*)$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "minimumWad", "stressMinimumWad"],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "MAX_LTV_BPS",
+                                  "type": "string"
+                                },
+                                "maximumLtvBps": {
+                                  "maximum": 10000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "stressMaximumLtvBps": {
+                                  "maximum": 10000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": ["kind", "maximumLtvBps", "stressMaximumLtvBps"],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "sourcePosition": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "borrower": {
+                              "type": "string"
+                            },
+                            "collateralAsset": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "address": {
+                                  "type": "string"
+                                },
+                                "chainId": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "type": "integer"
+                                },
+                                "decimals": {
+                                  "maximum": 36,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "providerAssetId": {
+                                  "maxLength": 512,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "symbol": {
+                                  "maxLength": 32,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["chainId", "address", "decimals"],
+                              "type": "object"
+                            },
+                            "debtAsset": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "address": {
+                                  "type": "string"
+                                },
+                                "chainId": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "type": "integer"
+                                },
+                                "decimals": {
+                                  "maximum": 36,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "providerAssetId": {
+                                  "maxLength": 512,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "symbol": {
+                                  "maxLength": 32,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["chainId", "address", "decimals"],
+                              "type": "object"
+                            },
+                            "market": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "chainId": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "type": "integer"
+                                },
+                                "deployment": {
+                                  "type": "string"
+                                },
+                                "marketId": {
+                                  "type": "string"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "AAVE_V3",
+                                    "MORPHO_BLUE",
+                                    "LOCAL_AAVE_MOCK",
+                                    "LOCAL_MORPHO_MOCK"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["chainId", "protocol", "deployment", "marketId"],
+                              "type": "object"
+                            }
+                          },
+                          "required": ["market", "borrower", "collateralAsset", "debtAsset"],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "borrower",
+                        "accountType",
+                        "sourcePosition",
+                        "allowedTargets",
+                        "feeAsset",
+                        "maxSourceDebtUnits",
+                        "minSourceCollateralUnits",
+                        "maxTotalFeeUnits",
+                        "maxSlippageBps",
+                        "minAprReductionBps",
+                        "safetyPolicy",
+                        "maxDurationSeconds",
+                        "expiration",
+                        "nonce"
+                      ],
+                      "type": "object"
+                    },
+                    "intentHash": {
+                      "type": "string"
+                    },
+                    "signature": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["intent", "intentHash", "signature"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "debtshift_session": []
+          }
+        ],
+        "summary": "Read one persisted signed refinance intent",
+        "tags": ["migrations"]
+      }
+    },
     "/v1/markets": {
       "get": {
         "operationId": "MigrationsController_listMarkets",
@@ -1904,7 +2321,8 @@
                               "OPEN_TARGET",
                               "SETTLE_LIQUIDITY",
                               "FINALIZE_NEAR_RECEIPT",
-                              "EXECUTE_RECOVERY"
+                              "EXECUTE_RECOVERY",
+                              "CANCEL_MIGRATION"
                             ],
                             "type": "string"
                           },
@@ -1983,7 +2401,8 @@
                               "RECOVERY",
                               "FAILED_SAFE",
                               "REQUOTE_REQUIRED",
-                              "EXPIRED"
+                              "EXPIRED",
+                              "CANCELLED"
                             ],
                             "type": "string"
                           },
@@ -2301,7 +2720,8 @@
                             "RECOVERY",
                             "FAILED_SAFE",
                             "REQUOTE_REQUIRED",
-                            "EXPIRED"
+                            "EXPIRED",
+                            "CANCELLED"
                           ],
                           "type": "string"
                         },
@@ -2632,6 +3052,197 @@
         "tags": ["migrations"]
       }
     },
+    "/v1/migrations/{migrationId}/cancel": {
+      "post": {
+        "operationId": "MigrationsController_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "migrationId",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "cancellationRequested": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "migrationId": {
+                      "pattern": "^0x[0-9a-fA-F]{64}$",
+                      "type": "string"
+                    },
+                    "phase": {
+                      "enum": ["RESERVED", "CANCELLED"],
+                      "type": "string"
+                    }
+                  },
+                  "required": ["migrationId", "phase", "cancellationRequested"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "debtshift_session": []
+          }
+        ],
+        "summary": "Cancel safely before source closure",
+        "tags": ["migrations"]
+      }
+    },
     "/v1/migrations/{migrationId}/events": {
       "get": {
         "operationId": "MigrationsController_getEvents",
@@ -2701,7 +3312,8 @@
                           "RECOVERY",
                           "FAILED_SAFE",
                           "REQUOTE_REQUIRED",
-                          "EXPIRED"
+                          "EXPIRED",
+                          "CANCELLED"
                         ],
                         "type": "string"
                       },
@@ -7591,6 +8203,805 @@
           }
         ],
         "summary": "Prepare an exact local route for borrower EIP-712 review",
+        "tags": ["migrations"]
+      }
+    },
+    "/v1/plans/{planHash}": {
+      "get": {
+        "operationId": "MigrationsController_getPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "planHash",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "borrower": {
+                          "type": "string"
+                        },
+                        "deadline": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "destinationCollateralAsset": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "address": {
+                              "type": "string"
+                            },
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "decimals": {
+                              "maximum": 36,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "providerAssetId": {
+                              "maxLength": 512,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "symbol": {
+                              "maxLength": 32,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "address", "decimals"],
+                          "type": "object"
+                        },
+                        "destinationDebtAsset": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "address": {
+                              "type": "string"
+                            },
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "decimals": {
+                              "maximum": 36,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "providerAssetId": {
+                              "maxLength": 512,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "symbol": {
+                              "maxLength": 32,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "address", "decimals"],
+                          "type": "object"
+                        },
+                        "destinationReceiver": {
+                          "type": "string"
+                        },
+                        "feeMaxUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "financing": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "borrowerDebtPrepaymentAssetUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "borrowerDebtPrepaymentEvidenceId": {
+                              "type": "string"
+                            },
+                            "borrowerDebtPrepaymentUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "capacityEvidenceHash": {
+                              "type": "string"
+                            },
+                            "capitalizedCostUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "confirmedExternalFundingUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "costs": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "amountUnits": {
+                                    "pattern": "^(0|[1-9]\\d*)$",
+                                    "type": "string"
+                                  },
+                                  "asset": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "address": {
+                                        "type": "string"
+                                      },
+                                      "chainId": {
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "decimals": {
+                                        "maximum": 36,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "providerAssetId": {
+                                        "maxLength": 512,
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "symbol": {
+                                        "maxLength": 32,
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["chainId", "address", "decimals"],
+                                    "type": "object"
+                                  },
+                                  "componentId": {
+                                    "maxLength": 512,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "conversionQuoteHash": {
+                                    "type": "string"
+                                  },
+                                  "financingClass": {
+                                    "enum": ["SOLVER_ADVANCED", "CAPITALIZED", "SEPARATELY_PAID"],
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "TRANSPORT",
+                                      "PROTOCOL",
+                                      "EXECUTION",
+                                      "NETWORK",
+                                      "SLIPPAGE",
+                                      "OTHER"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "settlementAmountUnits": {
+                                    "pattern": "^(0|[1-9]\\d*)$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "componentId",
+                                  "kind",
+                                  "financingClass",
+                                  "asset",
+                                  "amountUnits",
+                                  "settlementAmountUnits"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 64,
+                              "type": "array"
+                            },
+                            "evaluatedAt": {
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                              "type": "string"
+                            },
+                            "externalFunding": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "amountUnits": {
+                                    "pattern": "^(0|[1-9]\\d*)$",
+                                    "type": "string"
+                                  },
+                                  "asset": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "address": {
+                                        "type": "string"
+                                      },
+                                      "chainId": {
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "decimals": {
+                                        "maximum": 36,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "providerAssetId": {
+                                        "maxLength": 512,
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "symbol": {
+                                        "maxLength": 32,
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["chainId", "address", "decimals"],
+                                    "type": "object"
+                                  },
+                                  "authorizedUse": {
+                                    "maxLength": 512,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "escrow": {
+                                    "type": "string"
+                                  },
+                                  "evidenceId": {
+                                    "type": "string"
+                                  },
+                                  "expiresAt": {
+                                    "pattern": "^(0|[1-9]\\d*)$",
+                                    "type": "string"
+                                  },
+                                  "fundingId": {
+                                    "maxLength": 512,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "refundReceiver": {
+                                    "type": "string"
+                                  },
+                                  "verificationState": {
+                                    "const": "FINALIZED",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "fundingId",
+                                  "evidenceId",
+                                  "asset",
+                                  "amountUnits",
+                                  "escrow",
+                                  "refundReceiver",
+                                  "authorizedUse",
+                                  "verificationState",
+                                  "expiresAt"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 16,
+                              "type": "array"
+                            },
+                            "fundingShortfallUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "liquidityBorrowCapacityUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "liquidityBufferBps": {
+                              "maximum": 10000,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "maximumSafeBorrowingCapacityUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "modelVersion": {
+                              "const": 1,
+                              "type": "number"
+                            },
+                            "policyBorrowCapacityUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "protocolBorrowCapacityUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "requiredDestinationBorrowUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "separatelyPaidCostUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "settlementAsset": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "address": {
+                                  "type": "string"
+                                },
+                                "chainId": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "type": "integer"
+                                },
+                                "decimals": {
+                                  "maximum": 36,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "providerAssetId": {
+                                  "maxLength": 512,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "symbol": {
+                                  "maxLength": 32,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["chainId", "address", "decimals"],
+                              "type": "object"
+                            },
+                            "signedBorrowCapacityUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "solverAdvancedCostUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "solverFeeUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "solverPrincipalUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "sourceConversionQuoteHash": {
+                              "type": "string"
+                            },
+                            "sourceDebtPayoffAssetUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "sourceDebtPayoffUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "stressCollateralDropBps": {
+                              "maximum": 10000,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "totalRequiredRepaymentAndFinancedCostUnits": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            },
+                            "validUntil": {
+                              "pattern": "^(0|[1-9]\\d*)$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "modelVersion",
+                            "evaluatedAt",
+                            "validUntil",
+                            "capacityEvidenceHash",
+                            "liquidityBufferBps",
+                            "stressCollateralDropBps",
+                            "settlementAsset",
+                            "sourceDebtPayoffAssetUnits",
+                            "sourceDebtPayoffUnits",
+                            "borrowerDebtPrepaymentAssetUnits",
+                            "borrowerDebtPrepaymentUnits",
+                            "costs",
+                            "solverAdvancedCostUnits",
+                            "solverPrincipalUnits",
+                            "solverFeeUnits",
+                            "capitalizedCostUnits",
+                            "separatelyPaidCostUnits",
+                            "totalRequiredRepaymentAndFinancedCostUnits",
+                            "externalFunding",
+                            "confirmedExternalFundingUnits",
+                            "protocolBorrowCapacityUnits",
+                            "policyBorrowCapacityUnits",
+                            "liquidityBorrowCapacityUnits",
+                            "signedBorrowCapacityUnits",
+                            "maximumSafeBorrowingCapacityUnits",
+                            "requiredDestinationBorrowUnits",
+                            "fundingShortfallUnits"
+                          ],
+                          "type": "object"
+                        },
+                        "fundingProvider": {
+                          "type": "string"
+                        },
+                        "intentHash": {
+                          "type": "string"
+                        },
+                        "migrationId": {
+                          "type": "string"
+                        },
+                        "minDestinationCollateralUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "nonce": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "payoutAsset": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "address": {
+                              "type": "string"
+                            },
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "decimals": {
+                              "maximum": 36,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "providerAssetId": {
+                              "maxLength": 512,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "symbol": {
+                              "maxLength": 32,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "address", "decimals"],
+                          "type": "object"
+                        },
+                        "payoutReceiver": {
+                          "type": "string"
+                        },
+                        "principalMaxUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "refundReceiver": {
+                          "type": "string"
+                        },
+                        "reservationHash": {
+                          "type": "string"
+                        },
+                        "routeHash": {
+                          "type": "string"
+                        },
+                        "sourceCollateralAsset": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "address": {
+                              "type": "string"
+                            },
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "decimals": {
+                              "maximum": 36,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "providerAssetId": {
+                              "maxLength": 512,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "symbol": {
+                              "maxLength": 32,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "address", "decimals"],
+                          "type": "object"
+                        },
+                        "sourceCollateralMinUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "sourceDebtAsset": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "address": {
+                              "type": "string"
+                            },
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "decimals": {
+                              "maximum": 36,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "providerAssetId": {
+                              "maxLength": 512,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "symbol": {
+                              "maxLength": 32,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "address", "decimals"],
+                          "type": "object"
+                        },
+                        "sourceMarket": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "deployment": {
+                              "type": "string"
+                            },
+                            "marketId": {
+                              "type": "string"
+                            },
+                            "protocol": {
+                              "enum": [
+                                "AAVE_V3",
+                                "MORPHO_BLUE",
+                                "LOCAL_AAVE_MOCK",
+                                "LOCAL_MORPHO_MOCK"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "protocol", "deployment", "marketId"],
+                          "type": "object"
+                        },
+                        "sourcePositionId": {
+                          "type": "string"
+                        },
+                        "sourceRepaymentMaxUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "targetDebtMaxUnits": {
+                          "pattern": "^(0|[1-9]\\d*)$",
+                          "type": "string"
+                        },
+                        "targetMarket": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "chainId": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "deployment": {
+                              "type": "string"
+                            },
+                            "marketId": {
+                              "type": "string"
+                            },
+                            "protocol": {
+                              "enum": [
+                                "AAVE_V3",
+                                "MORPHO_BLUE",
+                                "LOCAL_AAVE_MOCK",
+                                "LOCAL_MORPHO_MOCK"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": ["chainId", "protocol", "deployment", "marketId"],
+                          "type": "object"
+                        },
+                        "transportDepositAddress": {
+                          "maxLength": 512,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "transportProvider": {
+                          "enum": ["DEBTSHIFT_SIMULATOR", "NEAR_INTENTS_1CLICK"],
+                          "type": "string"
+                        },
+                        "transportQuoteHash": {
+                          "type": "string"
+                        },
+                        "transportRefundReceiver": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "intentHash",
+                        "migrationId",
+                        "borrower",
+                        "sourcePositionId",
+                        "sourceMarket",
+                        "targetMarket",
+                        "sourceDebtAsset",
+                        "sourceCollateralAsset",
+                        "destinationDebtAsset",
+                        "destinationCollateralAsset",
+                        "sourceRepaymentMaxUnits",
+                        "sourceCollateralMinUnits",
+                        "targetDebtMaxUnits",
+                        "minDestinationCollateralUnits",
+                        "transportProvider",
+                        "transportQuoteHash",
+                        "transportDepositAddress",
+                        "destinationReceiver",
+                        "transportRefundReceiver",
+                        "refundReceiver",
+                        "fundingProvider",
+                        "reservationHash",
+                        "payoutAsset",
+                        "payoutReceiver",
+                        "principalMaxUnits",
+                        "feeMaxUnits",
+                        "financing",
+                        "routeHash",
+                        "deadline",
+                        "nonce"
+                      ],
+                      "type": "object"
+                    },
+                    "planHash": {
+                      "type": "string"
+                    },
+                    "signature": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["plan", "planHash", "signature"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "statusCode": {
+                      "maximum": 599,
+                      "minimum": 400,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["statusCode", "message"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "debtshift_session": []
+          }
+        ],
+        "summary": "Read one persisted signed execution plan",
         "tags": ["migrations"]
       }
     },

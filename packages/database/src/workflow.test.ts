@@ -33,5 +33,6 @@ describe('workflow command planning', () => {
     expect(planNextCommand(migrationId, 'FAILED_SAFE')).toBeUndefined();
     expect(planNextCommand(migrationId, 'REQUOTE_REQUIRED')).toBeUndefined();
     expect(planNextCommand(migrationId, 'EXPIRED')).toBeUndefined();
+    expect(planNextCommand(migrationId, 'CANCELLED')).toBeUndefined();
   });
 });

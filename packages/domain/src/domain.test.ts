@@ -215,6 +215,8 @@ function phaseEvidence(
     ledgerReconciliation: false,
     nearReceipt: false,
     expired: false,
+    cancellationRequested: false,
+    cancellationCompleted: false,
     requoteRequired: false,
     recoveryOpened: false,
     recoveryCompleted: false,
@@ -322,6 +324,44 @@ describe('evidence-derived migration phases', () => {
     ).toThrow('cannot coexist');
     expect(() => assertAllowedPhaseTransition('RESERVED', 'REQUOTE_REQUIRED')).not.toThrow();
     expect(() => assertAllowedPhaseTransition('AUTHORIZED', 'REQUOTE_REQUIRED')).not.toThrow();
+  });
+
+  it('cancels immediately before reservation and waits for verified release after reservation', () => {
+    const authorized = {
+      routeQuote: true,
+      intentAuthorization: true,
+      executionPlanAuthorization: true,
+      sourceLendingAuthorization: true,
+      financingFeasibility: true,
+    } as const;
+    expect(
+      deriveMigrationPhase(phaseEvidence({ ...authorized, cancellationRequested: true })),
+    ).toBe('CANCELLED');
+    expect(
+      deriveMigrationPhase(
+        phaseEvidence({ ...authorized, liquidityReservation: true, cancellationRequested: true }),
+      ),
+    ).toBe('RESERVED');
+    expect(
+      deriveMigrationPhase(
+        phaseEvidence({
+          ...authorized,
+          liquidityReservation: true,
+          cancellationRequested: true,
+          cancellationCompleted: true,
+        }),
+      ),
+    ).toBe('CANCELLED');
+    expect(() =>
+      deriveMigrationPhase(
+        phaseEvidence({
+          ...authorized,
+          liquidityReservation: true,
+          sourceClose: true,
+          cancellationRequested: true,
+        }),
+      ),
+    ).toThrow('cannot coexist with source-close');
   });
 
   it('removes append-only retracted evidence from phase predicates', () => {

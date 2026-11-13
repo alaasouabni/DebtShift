@@ -20,23 +20,24 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `b7783a0`.
+- Previous remote checkpoint before this handoff: `635cdbd`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. A complete Docker sandbox stack for chains, migrations, API, worker, web, PostgreSQL, and Redis.
-2. A checksum-pinned Node/Foundry Linux image that compiles contracts/apps and prunes development
-   dependencies before runtime.
-3. Container-addressable, interval-mined local chains with an explicit post-deployment readiness gate.
-4. A current signed smoke client that submits both lending authorizations and waits for bounded
-   asynchronous settlement.
-5. `near-api-js` 7.2.0 with the v7 registry-provider boundary and a zero-vulnerability production
-   dependency audit.
-6. Preserved production deployment manifests, guarded deployment CLI, wallet-free readiness checks,
-   and two-Anvil production deployment tests from the prior checkpoint.
+1. Borrower-owned reads for persisted signed refinance intents and exact execution plans.
+2. Safe borrower cancellation: immediate before reservation and contract-backed vault release after
+   reservation, with a hard rejection once source closure may race.
+3. A terminal `CANCELLED` phase, request/completion evidence, durable `CANCEL_MIGRATION` command,
+   PostgreSQL migration `0012`, and compatible EVM/NEAR terminal enums.
+4. An outbox concurrency fix that dead-letters terminal-command messages instead of resurrecting a
+   cancelled financial command.
+5. A borrower cancel action plus regenerated OpenAPI 3.1 and TypeScript SDK contracts for artifact
+   reads, cancellation success, and cancellation conflict responses.
+6. Updated roadmap/progress evidence and complete domain, database, API, worker, EVM, and NEAR
+   validation for this checkpoint.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -45,17 +46,18 @@ RPC URLs or secrets.
 
 ## Verified evidence at handoff
 
-| Gate                                       | Result                                                                             |
-| ------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Forced workspace lint/typecheck/test/build | Pass: 40/40 tasks, zero cache replay                                               |
-| Worker suite                               | Pass: 40 tests including happy, refund, timeout, reorg, and deterioration recovery |
-| Full Docker sandbox smoke                  | Pass: migration `0x4fa3...88c8`, `SETTLED`, 17 evidence records                    |
-| Pruned production dependency audit         | Pass: zero vulnerabilities at the low-severity threshold                           |
-| `npm run check:evm`                        | Pass: 33 tests, including fuzz and three invariant suites                          |
-| `npm run check:evm-deployment`             | Pass: two-node deployment/readiness and tamper rejection                           |
-| `npm run check:near`                       | Not rerun locally: Cargo is absent on this Windows host                            |
-| `npm run check:forks`                      | Not rerun: `BASE_FORK_RPC_URL` is required                                         |
-| Credentialed 1Click dry quote              | Not run: `INTENTS_AUTH_TOKEN` is required                                          |
+| Gate                                      | Result                                                                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Full `npm run check`                      | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds         |
+| Worker suite                              | Pass: 60 tests, including 15 durable two-chain workflows and reserved cancellation         |
+| Database suite and migration drill        | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified     |
+| API suite                                 | Pass: 24 tests, including owner-scoped artifacts, cancellation race rejection, and OpenAPI |
+| `npm run check:evm`                       | Pass: compiler, unit, fuzz, invariant, and lint gates                                      |
+| `npm run check:evm-deployment`            | Pass: two-node deployment/readiness and tamper rejection                                   |
+| NEAR format/test/clippy/sandbox gates     | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                     |
+| Previous GitHub quality run `43383946262` | Pass for recovery checkpoint `635cdbd`                                                     |
+| `npm run check:forks`                     | Not rerun: `BASE_FORK_RPC_URL` is required                                                 |
+| Credentialed 1Click dry quote             | Not run: `INTENTS_AUTH_TOKEN` is required                                                  |
 
 The live route observation used Base block `56,649,525` and Arbitrum block `523,682,852`. The
 official 1Click schema hash observed during this session was

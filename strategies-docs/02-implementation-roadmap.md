@@ -230,7 +230,10 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 - [x] Implement wallet challenge/session authentication.
 - [x] Complete OpenAPI schemas and generated client types.
-- [ ] Complete positions, markets, quotes, intents, plans, execute, cancel, events, and evidence endpoints.
+- [x] Complete positions, markets, quotes, intents, plans, execute, cancel, events, and evidence
+      endpoints. Signed artifacts and migrations are borrower-scoped; cancellation is immediate
+      before reservation, contract-backed after reservation, and rejected once source closure can
+      race.
 - [x] Implement SSE reconnect and cursor recovery.
 - [x] Build source position and risk views.
 - [x] Build route comparison and economic explanation views.

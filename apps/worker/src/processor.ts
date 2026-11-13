@@ -55,6 +55,7 @@ export class PostgresCommandPersistence implements CommandPersistence {
 
 const expectedEvidenceByCommand: Readonly<Record<string, readonly (readonly EvidenceType[])[]>> = {
   RESERVE_LIQUIDITY: [['LIQUIDITY_RESERVATION'], ['REQUOTE_REQUIRED']],
+  CANCEL_MIGRATION: [['MIGRATION_CANCELLED']],
   CLOSE_SOURCE: [['SOURCE_CLOSE'], ['REQUOTE_REQUIRED'], ['RECOVERY_OPENED']],
   DISPATCH_TRANSPORT: [['TRANSPORT_ORIGIN'], ['RECOVERY_OPENED']],
   VERIFY_DESTINATION: [['TRANSPORT_DESTINATION'], ['RECOVERY_OPENED']],

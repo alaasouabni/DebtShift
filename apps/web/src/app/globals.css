@@ -750,6 +750,22 @@ button:disabled {
   font-size: 9px;
 }
 
+.cancelAction {
+  width: 100%;
+  margin: -12px 0 22px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.cancelAction:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+
 code {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }

@@ -60,11 +60,11 @@ describe('initial PostgreSQL migration', () => {
         '${hash('7')}', '${hash('5')}', 'RESERVE_LIQUIDITY', 'seed:reserve', '{}', '${hash('8')}'
       );
     `);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await database.close();
-  });
+  }, 30_000);
 
   it('creates every durable workflow table', async () => {
     const result = await database.query<{ table_name: string }>(`
@@ -240,11 +240,12 @@ describe('recovery responsibility forward migration', () => {
   it('normalizes and backfills a legacy recovery case before enforcing constraints', async () => {
     const database = new PGlite();
     try {
-      const recoveryMigration = migrationFiles.at(-1);
-      if (recoveryMigration !== '0011_groovy_pete_wisdom.sql') {
-        throw new Error('Expected the recovery responsibility migration to be last.');
+      const recoveryMigration = '0011_groovy_pete_wisdom.sql';
+      const recoveryMigrationIndex = migrationFiles.indexOf(recoveryMigration);
+      if (recoveryMigrationIndex < 1) {
+        throw new Error('Recovery responsibility migration is missing or out of order.');
       }
-      for (const migrationFile of migrationFiles.slice(0, -1)) {
+      for (const migrationFile of migrationFiles.slice(0, recoveryMigrationIndex)) {
         await database.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
       }
       await database.exec(`

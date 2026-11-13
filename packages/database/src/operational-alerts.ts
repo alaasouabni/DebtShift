@@ -62,9 +62,13 @@ const managedAlertTypes = [
 
 export type OperationalAlertType = (typeof managedAlertTypes)[number];
 
-const terminalPhases = ['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED'] satisfies Array<
-  (typeof migrations.phase.enumValues)[number]
->;
+const terminalPhases = [
+  'COMPLETED',
+  'FAILED_SAFE',
+  'REQUOTE_REQUIRED',
+  'EXPIRED',
+  'CANCELLED',
+] satisfies Array<(typeof migrations.phase.enumValues)[number]>;
 
 export async function scanOperationalAlerts(
   database: DebtShiftDatabase,

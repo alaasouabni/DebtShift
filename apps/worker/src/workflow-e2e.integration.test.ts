@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PGlite } from '@electric-sql/pglite';
 import {
+  advanceMigrationWithEvidence,
   createAuthorizedMigration,
   debtShiftSchema,
   getMigrationDetails,
@@ -15,6 +16,7 @@ import {
   computeMigrationId,
   computeRouteHash,
   executionPlanSchema,
+  evidenceSchema,
   getExecutionPlanTypedData,
   getRefinanceIntentTypedData,
   hashCanonicalText,
@@ -561,6 +563,95 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
     );
   }, 60_000);
 
+  it('cancels after reservation by releasing the vault before source closure', async () => {
+    await withWorkflow('SUCCESS', async ({ database, deployment, source, createProcessor }) => {
+      const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+      await runUntil(database, createProcessor, migrationId, 'RESERVED');
+      const observedAt = new Date().toISOString();
+      const payload = {
+        reason: 'BORROWER_REQUESTED_CANCELLATION',
+        requestedBy: deployment.borrower,
+        requestedPhase: 'RESERVED',
+      };
+      const evidenceId = hashCanonicalText(
+        `debtshift.evidence.v1:${migrationId}:MIGRATION_CANCELLATION_REQUESTED:${deployment.borrower.toLowerCase()}`,
+      );
+      await expect(
+        advanceMigrationWithEvidence(
+          database,
+          evidenceSchema.parse({
+            evidenceId,
+            migrationId,
+            type: 'MIGRATION_CANCELLATION_REQUESTED',
+            schemaVersion: 1,
+            provider: 'DEBTSHIFT_API',
+            network: 'debtshift:workflow',
+            providerReference: evidenceId,
+            rawObservationHash: hashCanonicalText(JSON.stringify(payload)),
+            normalizedPayload: payload,
+            observedAt,
+            verificationState: 'FINALIZED',
+            verificationMethod: 'AUTHENTICATED_BORROWER_SESSION',
+            verifierVersion: 'debtshift-api-v1',
+          }),
+          deployment.borrower,
+        ),
+      ).resolves.toBe('RESERVED');
+
+      const requested = await getMigrationDetails(database, migrationId);
+      expect(requested?.commands).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'CLOSE_SOURCE', status: 'CANCELLED' }),
+          expect.objectContaining({ type: 'CANCEL_MIGRATION', status: 'PENDING' }),
+        ]),
+      );
+
+      await runUntil(database, createProcessor, migrationId, 'CANCELLED');
+      const details = await getMigrationDetails(database, migrationId);
+      expect(details?.migration.phase).toBe('CANCELLED');
+      expect(details?.evidence.map(({ type }) => type)).toEqual(
+        expect.arrayContaining(['MIGRATION_CANCELLATION_REQUESTED', 'MIGRATION_CANCELLED']),
+      );
+      expect(details?.evidence.some(({ type }) => type === 'SOURCE_CLOSE')).toBe(false);
+      expect(details?.commands.find(({ type }) => type === 'CLOSE_SOURCE')?.status).toBe(
+        'CANCELLED',
+      );
+      expect(details?.commands.find(({ type }) => type === 'CANCEL_MIGRATION')?.status).toBe(
+        'SUCCEEDED',
+      );
+      expect(details?.reservations[0]?.status).toBe('RELEASED');
+
+      const [sourceArtifact, vaultArtifact] = await Promise.all([
+        loadFoundryArtifact('MockSourceLending'),
+        loadFoundryArtifact('LiquidityVault'),
+      ]);
+      const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
+        source.publicClient.readContract({
+          address: deployment.source.lending,
+          abi: sourceArtifact.abi,
+          functionName: 'positions',
+          args: [deployment.borrower],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservations',
+          args: [migrationId],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservedUndrawn',
+          args: [deployment.source.debtToken],
+        }),
+      ]);
+      expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+      expect(Array.isArray(reservation) ? reservation[6] : undefined).toBe(4);
+      expect(Array.isArray(reservation) ? reservation[8] : undefined).toBe(0n);
+      expect(reservedUndrawn).toBe(0n);
+    });
+  }, 60_000);
+
   for (const testCase of [
     {
       name: 'collateral price deteriorates before source close',
@@ -808,6 +899,8 @@ function withExecutionOverrides(
     verifyCanonicalEvidence:
       overrides.verifyCanonicalEvidence ?? ((records) => base.verifyCanonicalEvidence(records)),
     reserve: overrides.reserve ?? ((context) => base.reserve(context)),
+    cancelBeforeSourceClose:
+      overrides.cancelBeforeSourceClose ?? ((context) => base.cancelBeforeSourceClose(context)),
     closeSource: overrides.closeSource ?? ((context) => base.closeSource(context)),
     dispatchTransport:
       overrides.dispatchTransport ?? ((context) => base.dispatchTransport(context)),

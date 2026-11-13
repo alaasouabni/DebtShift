@@ -142,6 +142,42 @@ describe('durable workflow and transactional outbox', () => {
     expect(published.rows[0]?.status).toBe('PUBLISHED');
   });
 
+  it('dead-letters a cancelled command instead of resurrecting or delivering it', async () => {
+    const migrationId = hash('5');
+    const commandId = await enqueueCommand(database, migrationId, {
+      type: 'CLOSE_SOURCE',
+      idempotencyKey: `cancelled-before-publish:${migrationId}`,
+      payload: { migrationId },
+    });
+    await postgres.exec(`
+      UPDATE commands SET status = 'CANCELLED' WHERE command_id = '${commandId}'
+    `);
+    const delivered: string[] = [];
+
+    await publishPendingOutbox(database, async (message) => {
+      delivered.push(message.commandId);
+    });
+
+    expect(delivered).not.toContain(commandId);
+    const [command, outbox] = await Promise.all([
+      postgres.query<{ status: string }>(
+        `SELECT status FROM commands WHERE command_id = '${commandId}'`,
+      ),
+      postgres.query<{ status: string; last_error: string | null }>(
+        `SELECT status, last_error FROM outbox_messages WHERE command_id = '${commandId}'`,
+      ),
+    ]);
+    expect(command.rows[0]?.status).toBe('CANCELLED');
+    expect(outbox.rows[0]).toEqual({
+      status: 'DEAD_LETTER',
+      last_error: 'Command is already terminal with status CANCELLED.',
+    });
+    await postgres.exec(`
+      DELETE FROM outbox_messages WHERE command_id = '${commandId}';
+      DELETE FROM commands WHERE command_id = '${commandId}';
+    `);
+  });
+
   it('persists provisional and confirmed evidence without advancing financial state', async () => {
     const baseEvidence = {
       migrationId: hash('5'),

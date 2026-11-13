@@ -1,10 +1,13 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import {
+  advanceMigrationWithEvidence,
   createAuthorizedMigration,
   getMigrationBorrower,
   getProviderQuote,
   getMigrationDetails,
+  getSignedExecutionPlan,
+  getSignedIntent,
   listEnabledMarkets,
   listMigrationEventsAfter,
   listWalletPositions,
@@ -13,6 +16,8 @@ import {
   assertFundedExecutionEnabled,
   assertExecutionPlanIntegrity,
   computeMigrationId,
+  evidenceSchema,
+  hashCanonicalText,
   hashExecutionPlan,
   hashRefinanceIntent,
   hashSourcePosition,
@@ -28,6 +33,7 @@ import type {
 } from '@debtshift/domain';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -180,6 +186,75 @@ export class MigrationsService {
     const result = await getMigrationDetails(this.database.db, migrationId);
     if (result === undefined) throw new NotFoundException('Migration not found.');
     return result;
+  }
+
+  async getIntent(intentHash: string, authenticatedWallet: Address) {
+    const stored = await getSignedIntent(this.database.db, intentHash);
+    if (
+      stored === undefined ||
+      !isAddressEqual(stored.walletAddress as Address, authenticatedWallet)
+    ) {
+      throw new NotFoundException('Intent not found.');
+    }
+    return stored.signedIntent;
+  }
+
+  async getPlan(planHash: string, authenticatedWallet: Address) {
+    const stored = await getSignedExecutionPlan(this.database.db, planHash);
+    if (
+      stored === undefined ||
+      !isAddressEqual(stored.walletAddress as Address, authenticatedWallet)
+    ) {
+      throw new NotFoundException('Execution plan not found.');
+    }
+    return stored.signedPlan;
+  }
+
+  async cancel(migrationId: string, authenticatedWallet: Address) {
+    const details = await this.getMigration(migrationId, authenticatedWallet);
+    if (details.migration.phase === 'CANCELLED') {
+      return { migrationId, phase: 'CANCELLED' as const, cancellationRequested: true };
+    }
+    if (details.migration.phase !== 'AUTHORIZED' && details.migration.phase !== 'RESERVED') {
+      throw new ConflictException(
+        `Migration cancellation is not permitted from phase ${details.migration.phase}.`,
+      );
+    }
+    const observedAt = new Date().toISOString();
+    const payload = {
+      reason: 'BORROWER_REQUESTED_CANCELLATION',
+      requestedBy: authenticatedWallet,
+      requestedPhase: details.migration.phase,
+    };
+    const evidenceId = hashCanonicalText(
+      `debtshift.evidence.v1:${migrationId}:MIGRATION_CANCELLATION_REQUESTED:${authenticatedWallet.toLowerCase()}`,
+    );
+    const record = evidenceSchema.parse({
+      evidenceId,
+      migrationId,
+      type: 'MIGRATION_CANCELLATION_REQUESTED',
+      schemaVersion: 1,
+      provider: 'DEBTSHIFT_API',
+      network: 'debtshift:workflow',
+      providerReference: evidenceId,
+      rawObservationHash: hashCanonicalText(JSON.stringify(payload)),
+      normalizedPayload: payload,
+      observedAt,
+      verificationState: 'FINALIZED',
+      verificationMethod: 'AUTHENTICATED_BORROWER_SESSION',
+      verifierVersion: 'debtshift-api-v1',
+    });
+    try {
+      const phase = await advanceMigrationWithEvidence(
+        this.database.db,
+        record,
+        authenticatedWallet,
+      );
+      return { migrationId, phase, cancellationRequested: true as const };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Migration cancellation failed.';
+      throw new ConflictException(message);
+    }
   }
 
   async streamMigrationEvents(

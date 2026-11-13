@@ -4,6 +4,8 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   Inject,
   Param,
   Post,
@@ -16,6 +18,7 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiCookieAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiHeader,
@@ -34,6 +37,7 @@ import { getAddress } from 'viem';
 import { SESSION_COOKIE_NAME, type AuthenticatedWalletSession } from './authentication.service.js';
 import {
   bytes32ContractSchema,
+  cancellationResponseSchema,
   errorResponseSchema,
   evmAddressContractSchema,
   executeMigrationRequestSchema,
@@ -46,6 +50,8 @@ import {
   positionSnapshotListResponseSchema,
   preparationRequestSchema,
   preparationResponseSchema,
+  signedIntentResponseSchema,
+  signedPlanResponseSchema,
   toOpenApiSchema,
 } from './http-contracts.js';
 import { MigrationsService } from './migrations.service.js';
@@ -118,6 +124,50 @@ export class MigrationsController {
   @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
   prepare(@Body() body: unknown, @CurrentSession() session: AuthenticatedWalletSession) {
     return this.preparation.prepare(body, session.walletAddress);
+  }
+
+  @Get('intents/:intentHash')
+  @ApiOperation({ summary: 'Read one persisted signed refinance intent' })
+  @ApiParam({ name: 'intentHash', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(signedIntentResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  getIntent(
+    @Param('intentHash') intentHash: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.getIntent(
+      parseBytes32(intentHash, 'Intent hash'),
+      session.walletAddress,
+    );
+  }
+
+  @Get('plans/:planHash')
+  @ApiOperation({ summary: 'Read one persisted signed execution plan' })
+  @ApiParam({ name: 'planHash', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(signedPlanResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  getPlan(
+    @Param('planHash') planHash: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.getPlan(parseBytes32(planHash, 'Plan hash'), session.walletAddress);
+  }
+
+  @Post('migrations/:migrationId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel safely before source closure' })
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(cancellationResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiConflictResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  cancel(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.cancel(parseBytes32(migrationId, 'Migration ID'), session.walletAddress);
   }
 
   @Get('migrations/:migrationId')
@@ -195,6 +245,12 @@ function parseWalletAddress(wallet: string) {
   } catch {
     throw new BadRequestException('Wallet route parameter must be a valid EVM address.');
   }
+}
+
+function parseBytes32(value: string, label: string): string {
+  const parsed = bytes32ContractSchema.safeParse(value);
+  if (!parsed.success) throw new BadRequestException(`${label} must be a bytes32 value.`);
+  return parsed.data.toLowerCase();
 }
 
 export function parseMigrationEventCursor(

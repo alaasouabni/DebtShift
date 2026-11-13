@@ -437,6 +437,44 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     return action;
   }
 
+  async cancelBeforeSourceClose(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
+    await this.#assertContext(context);
+    const artifacts = await this.#artifacts;
+    const migrationId = context.migration.migrationId as Hex;
+    const existing = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      eventTopics.reservationReleased,
+      [migrationId],
+      {
+        action: 'cancelBeforeSourceClose',
+        reason: 'BORROWER_REQUESTED_CANCELLATION',
+        reconciled: true,
+      },
+    );
+    if (existing !== undefined) return existing;
+    const action = await this.#writeAction(
+      this.#sourceWallet,
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      artifacts.vault,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      'release',
+      [migrationId],
+      {
+        action: 'cancelBeforeSourceClose',
+        reason: 'BORROWER_REQUESTED_CANCELLATION',
+        planHash: context.signedPlan.planHash,
+      },
+    );
+    const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+    if (exposure.status !== 4 || exposure.principalUnits !== 0n) {
+      throw new Error('Borrower cancellation did not release the undrawn source reservation.');
+    }
+    return action;
+  }
+
   async closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
     await this.#assertContext(context);
     const artifacts = await this.#artifacts;

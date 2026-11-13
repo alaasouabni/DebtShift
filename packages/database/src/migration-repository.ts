@@ -377,6 +377,51 @@ export async function getMigrationBorrower(
   return owner?.address;
 }
 
+export async function getSignedIntent(database: DebtShiftDatabase, intentHash: string) {
+  const [stored] = await database
+    .select({
+      payload: intents.payload,
+      signature: intents.signature,
+      walletAddress: wallets.address,
+    })
+    .from(intents)
+    .innerJoin(wallets, eq(intents.walletId, wallets.walletId))
+    .where(eq(intents.intentHash, intentHash))
+    .limit(1);
+  if (stored === undefined) return undefined;
+  return {
+    walletAddress: stored.walletAddress,
+    signedIntent: signedRefinanceIntentSchema.parse({
+      intent: refinanceIntentSchema.parse(stored.payload),
+      intentHash,
+      signature: signatureSchema.parse(stored.signature),
+    }),
+  };
+}
+
+export async function getSignedExecutionPlan(database: DebtShiftDatabase, planHash: string) {
+  const [stored] = await database
+    .select({
+      payload: executionPlans.payload,
+      signature: executionPlans.signature,
+      walletAddress: wallets.address,
+    })
+    .from(executionPlans)
+    .innerJoin(intents, eq(executionPlans.intentHash, intents.intentHash))
+    .innerJoin(wallets, eq(intents.walletId, wallets.walletId))
+    .where(eq(executionPlans.planHash, planHash))
+    .limit(1);
+  if (stored === undefined) return undefined;
+  return {
+    walletAddress: stored.walletAddress,
+    signedPlan: signedExecutionPlanSchema.parse({
+      plan: executionPlanSchema.parse(stored.payload),
+      planHash,
+      signature: signatureSchema.parse(stored.signature),
+    }),
+  };
+}
+
 export async function listMigrationEventsAfter(
   database: DebtShiftDatabase,
   migrationId: string,

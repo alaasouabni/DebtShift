@@ -75,7 +75,8 @@ interface Attestation extends AttestationInput {
 
 interface FinalReceipt {
   readonly receipt_bundle_hash: string;
-  readonly terminal_status: 'COMPLETED' | 'FAILED_SAFE' | 'REQUOTE_REQUIRED' | 'EXPIRED';
+  readonly terminal_status:
+    'COMPLETED' | 'FAILED_SAFE' | 'REQUOTE_REQUIRED' | 'EXPIRED' | 'CANCELLED';
   readonly finalized_by: string;
   readonly finalized_at_ns: string;
 }
@@ -421,7 +422,11 @@ function parseFinalReceipt(value: unknown): FinalReceipt | null {
   if (value === null || value === undefined) return null;
   const record = object(value, 'final receipt');
   const terminalStatus = text(record.terminal_status, 'terminal_status');
-  if (!['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED'].includes(terminalStatus)) {
+  if (
+    !['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED', 'CANCELLED'].includes(
+      terminalStatus,
+    )
+  ) {
     throw new Error(`Invalid NEAR terminal status ${terminalStatus}.`);
   }
   return {

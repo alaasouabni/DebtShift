@@ -27,6 +27,7 @@ export const migrationPhaseSchema = z.enum([
   'FAILED_SAFE',
   'REQUOTE_REQUIRED',
   'EXPIRED',
+  'CANCELLED',
 ]);
 
 export const evidenceTypeSchema = z.enum([
@@ -47,6 +48,8 @@ export const evidenceTypeSchema = z.enum([
   'LEDGER_RECONCILIATION',
   'NEAR_RECEIPT',
   'MIGRATION_EXPIRED',
+  'MIGRATION_CANCELLATION_REQUESTED',
+  'MIGRATION_CANCELLED',
   'REQUOTE_REQUIRED',
   'RECOVERY_OPENED',
   'RECOVERY_COMPLETED',
@@ -170,6 +173,7 @@ export const commandTypeSchema = z.enum([
   'SETTLE_LIQUIDITY',
   'FINALIZE_NEAR_RECEIPT',
   'EXECUTE_RECOVERY',
+  'CANCEL_MIGRATION',
 ]);
 
 export const commandStatusSchema = z.enum([

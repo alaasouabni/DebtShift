@@ -77,6 +77,31 @@ export interface DebtShiftApiOperations {
     requestBody: never;
     responses: { 200: string };
   };
+  MigrationsController_cancel: {
+    method: 'POST';
+    path: '/v1/migrations/{migrationId}/cancel';
+    parameters: { path: { migrationId: string } };
+    requestBody: never;
+    responses: {
+      200: { cancellationRequested: true; migrationId: string; phase: 'RESERVED' | 'CANCELLED' };
+      400: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+      401: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+      404: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+      409: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+    };
+  };
   MigrationsController_execute: {
     method: 'POST';
     path: '/v1/migrations/execute';
@@ -433,7 +458,8 @@ export interface DebtShiftApiOperations {
           | 'RECOVERY'
           | 'FAILED_SAFE'
           | 'REQUOTE_REQUIRED'
-          | 'EXPIRED';
+          | 'EXPIRED'
+          | 'CANCELLED';
         sequence: number;
         type: string;
       }>;
@@ -485,6 +511,81 @@ export interface DebtShiftApiOperations {
       >;
     };
   };
+  MigrationsController_getIntent: {
+    method: 'GET';
+    path: '/v1/intents/{intentHash}';
+    parameters: { path: { intentHash: string } };
+    requestBody: never;
+    responses: {
+      200: {
+        intent: {
+          accountType: 'EOA' | 'EIP1271';
+          allowedTargets: Array<{
+            chainId: number;
+            deployment: string;
+            marketId: string;
+            protocol: 'AAVE_V3' | 'MORPHO_BLUE' | 'LOCAL_AAVE_MOCK' | 'LOCAL_MORPHO_MOCK';
+          }>;
+          borrower: string;
+          expiration: string;
+          feeAsset: {
+            address: string;
+            chainId: number;
+            decimals: number;
+            providerAssetId?: string;
+            symbol?: string;
+          };
+          maxDurationSeconds: number;
+          maxSlippageBps: number;
+          maxSourceDebtUnits: string;
+          maxTotalFeeUnits: string;
+          minAprReductionBps: number;
+          minSourceCollateralUnits: string;
+          nonce: string;
+          safetyPolicy:
+            | { kind: 'MIN_HEALTH_FACTOR_WAD'; minimumWad: string; stressMinimumWad: string }
+            | { kind: 'MAX_LTV_BPS'; maximumLtvBps: number; stressMaximumLtvBps: number };
+          sourcePosition: {
+            borrower: string;
+            collateralAsset: {
+              address: string;
+              chainId: number;
+              decimals: number;
+              providerAssetId?: string;
+              symbol?: string;
+            };
+            debtAsset: {
+              address: string;
+              chainId: number;
+              decimals: number;
+              providerAssetId?: string;
+              symbol?: string;
+            };
+            market: {
+              chainId: number;
+              deployment: string;
+              marketId: string;
+              protocol: 'AAVE_V3' | 'MORPHO_BLUE' | 'LOCAL_AAVE_MOCK' | 'LOCAL_MORPHO_MOCK';
+            };
+          };
+        };
+        intentHash: string;
+        signature: string;
+      };
+      400: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+      401: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+      404: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+    };
+  };
   MigrationsController_getMigration: {
     method: 'GET';
     path: '/v1/migrations/{migrationId}';
@@ -518,7 +619,8 @@ export interface DebtShiftApiOperations {
             | 'OPEN_TARGET'
             | 'SETTLE_LIQUIDITY'
             | 'FINALIZE_NEAR_RECEIPT'
-            | 'EXECUTE_RECOVERY';
+            | 'EXECUTE_RECOVERY'
+            | 'CANCEL_MIGRATION';
           updatedAt: string;
         }>;
         events: Array<{
@@ -543,7 +645,8 @@ export interface DebtShiftApiOperations {
             | 'RECOVERY'
             | 'FAILED_SAFE'
             | 'REQUOTE_REQUIRED'
-            | 'EXPIRED';
+            | 'EXPIRED'
+            | 'CANCELLED';
           sequence: number;
           type: string;
         }>;
@@ -606,7 +709,8 @@ export interface DebtShiftApiOperations {
             | 'RECOVERY'
             | 'FAILED_SAFE'
             | 'REQUOTE_REQUIRED'
-            | 'EXPIRED';
+            | 'EXPIRED'
+            | 'CANCELLED';
           planHash: string;
           quoteHash: string;
           updatedAt: string;
@@ -657,6 +761,168 @@ export interface DebtShiftApiOperations {
           updatedAt: string;
         }>;
       };
+      401: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+      404: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
+    };
+  };
+  MigrationsController_getPlan: {
+    method: 'GET';
+    path: '/v1/plans/{planHash}';
+    parameters: { path: { planHash: string } };
+    requestBody: never;
+    responses: {
+      200: {
+        plan: {
+          borrower: string;
+          deadline: string;
+          destinationCollateralAsset: {
+            address: string;
+            chainId: number;
+            decimals: number;
+            providerAssetId?: string;
+            symbol?: string;
+          };
+          destinationDebtAsset: {
+            address: string;
+            chainId: number;
+            decimals: number;
+            providerAssetId?: string;
+            symbol?: string;
+          };
+          destinationReceiver: string;
+          feeMaxUnits: string;
+          financing: {
+            borrowerDebtPrepaymentAssetUnits: string;
+            borrowerDebtPrepaymentEvidenceId?: string;
+            borrowerDebtPrepaymentUnits: string;
+            capacityEvidenceHash: string;
+            capitalizedCostUnits: string;
+            confirmedExternalFundingUnits: string;
+            costs: Array<{
+              amountUnits: string;
+              asset: {
+                address: string;
+                chainId: number;
+                decimals: number;
+                providerAssetId?: string;
+                symbol?: string;
+              };
+              componentId: string;
+              conversionQuoteHash?: string;
+              financingClass: 'SOLVER_ADVANCED' | 'CAPITALIZED' | 'SEPARATELY_PAID';
+              kind: 'TRANSPORT' | 'PROTOCOL' | 'EXECUTION' | 'NETWORK' | 'SLIPPAGE' | 'OTHER';
+              settlementAmountUnits: string;
+            }>;
+            evaluatedAt: string;
+            externalFunding: Array<{
+              amountUnits: string;
+              asset: {
+                address: string;
+                chainId: number;
+                decimals: number;
+                providerAssetId?: string;
+                symbol?: string;
+              };
+              authorizedUse: string;
+              escrow: string;
+              evidenceId: string;
+              expiresAt: string;
+              fundingId: string;
+              refundReceiver: string;
+              verificationState: 'FINALIZED';
+            }>;
+            fundingShortfallUnits: string;
+            liquidityBorrowCapacityUnits: string;
+            liquidityBufferBps: number;
+            maximumSafeBorrowingCapacityUnits: string;
+            modelVersion: 1;
+            policyBorrowCapacityUnits: string;
+            protocolBorrowCapacityUnits: string;
+            requiredDestinationBorrowUnits: string;
+            separatelyPaidCostUnits: string;
+            settlementAsset: {
+              address: string;
+              chainId: number;
+              decimals: number;
+              providerAssetId?: string;
+              symbol?: string;
+            };
+            signedBorrowCapacityUnits: string;
+            solverAdvancedCostUnits: string;
+            solverFeeUnits: string;
+            solverPrincipalUnits: string;
+            sourceConversionQuoteHash?: string;
+            sourceDebtPayoffAssetUnits: string;
+            sourceDebtPayoffUnits: string;
+            stressCollateralDropBps: number;
+            totalRequiredRepaymentAndFinancedCostUnits: string;
+            validUntil: string;
+          };
+          fundingProvider: string;
+          intentHash: string;
+          migrationId: string;
+          minDestinationCollateralUnits: string;
+          nonce: string;
+          payoutAsset: {
+            address: string;
+            chainId: number;
+            decimals: number;
+            providerAssetId?: string;
+            symbol?: string;
+          };
+          payoutReceiver: string;
+          principalMaxUnits: string;
+          refundReceiver: string;
+          reservationHash: string;
+          routeHash: string;
+          sourceCollateralAsset: {
+            address: string;
+            chainId: number;
+            decimals: number;
+            providerAssetId?: string;
+            symbol?: string;
+          };
+          sourceCollateralMinUnits: string;
+          sourceDebtAsset: {
+            address: string;
+            chainId: number;
+            decimals: number;
+            providerAssetId?: string;
+            symbol?: string;
+          };
+          sourceMarket: {
+            chainId: number;
+            deployment: string;
+            marketId: string;
+            protocol: 'AAVE_V3' | 'MORPHO_BLUE' | 'LOCAL_AAVE_MOCK' | 'LOCAL_MORPHO_MOCK';
+          };
+          sourcePositionId: string;
+          sourceRepaymentMaxUnits: string;
+          targetDebtMaxUnits: string;
+          targetMarket: {
+            chainId: number;
+            deployment: string;
+            marketId: string;
+            protocol: 'AAVE_V3' | 'MORPHO_BLUE' | 'LOCAL_AAVE_MOCK' | 'LOCAL_MORPHO_MOCK';
+          };
+          transportDepositAddress: string;
+          transportProvider: 'DEBTSHIFT_SIMULATOR' | 'NEAR_INTENTS_1CLICK';
+          transportQuoteHash: string;
+          transportRefundReceiver: string;
+        };
+        planHash: string;
+        signature: string;
+      };
+      400: { error?: string; message: string | Array<string>; statusCode: number } & Record<
+        string,
+        unknown
+      >;
       401: { error?: string; message: string | Array<string>; statusCode: number } & Record<
         string,
         unknown

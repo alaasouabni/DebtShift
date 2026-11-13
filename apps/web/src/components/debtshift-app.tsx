@@ -24,8 +24,20 @@ import {
 } from './migration-client';
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/v1';
-const terminalPhases = new Set(['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED']);
-const warningPhases = new Set(['RECOVERY', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED']);
+const terminalPhases = new Set([
+  'COMPLETED',
+  'FAILED_SAFE',
+  'REQUOTE_REQUIRED',
+  'EXPIRED',
+  'CANCELLED',
+]);
+const warningPhases = new Set([
+  'RECOVERY',
+  'FAILED_SAFE',
+  'REQUOTE_REQUIRED',
+  'EXPIRED',
+  'CANCELLED',
+]);
 
 interface PreparedMigration {
   readonly execution: {
@@ -225,7 +237,7 @@ interface MigrationDetails {
   readonly recoveryCases: readonly MigrationRecoveryCase[];
 }
 
-type BusyAction = 'connect' | 'prepare' | 'authorize' | 'explain' | null;
+type BusyAction = 'connect' | 'prepare' | 'authorize' | 'cancel' | 'explain' | null;
 type StreamStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'complete';
 
 export function DebtShiftApp() {
@@ -478,6 +490,20 @@ export function DebtShiftApp() {
       await loadMigration(result.migrationId);
     } catch (authorizationError) {
       setError(messageOf(authorizationError));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancelMigration = async () => {
+    if (migrationId === undefined || migration === undefined) return;
+    setBusy('cancel');
+    setError(undefined);
+    try {
+      await api(`/migrations/${migrationId}/cancel`, { method: 'POST' });
+      await loadMigration(migrationId);
+    } catch (cancellationError) {
+      setError(messageOf(cancellationError));
     } finally {
       setBusy(null);
     }
@@ -853,6 +879,19 @@ export function DebtShiftApp() {
                     {shortHash(migration.migration.migrationId)}
                   </code>
                 </div>
+                {(migration.migration.phase === 'AUTHORIZED' ||
+                  migration.migration.phase === 'RESERVED') && (
+                  <button
+                    className="cancelAction"
+                    type="button"
+                    onClick={() => void cancelMigration()}
+                    disabled={busy !== null}
+                  >
+                    {busy === 'cancel'
+                      ? 'Requesting safe cancellation…'
+                      : 'Cancel before source close'}
+                  </button>
+                )}
                 <ol className="timeline">
                   {migration.evidence.map((record) => (
                     <li key={record.evidenceId}>

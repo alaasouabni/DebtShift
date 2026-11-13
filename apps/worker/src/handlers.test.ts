@@ -58,6 +58,28 @@ class MemoryContextStore implements WorkflowContextStore {
 }
 
 describe('simulated workflow handlers', () => {
+  it('emits finalized cancellation evidence only after the reservation release action', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'CANCEL_MIGRATION').execute(
+      command('CANCEL_MIGRATION'),
+    );
+
+    expect(execution.cancelBeforeSourceClose).toHaveBeenCalledOnce();
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'MIGRATION_CANCELLED',
+          verificationState: 'FINALIZED',
+          transactionHash: ACTION_TRANSACTION,
+        }),
+      ]),
+    );
+  });
+
   it('persists transport submission state before emitting origin evidence', async () => {
     const simulator = new DeterministicTransportSimulator({ processingPolls: 0 });
     const context = await buildContext(simulator, false);
@@ -793,6 +815,7 @@ function fakeExecution(): MigrationExecutionPort {
   return {
     verifyCanonicalEvidence: vi.fn(async () => []),
     reserve: perform,
+    cancelBeforeSourceClose: perform,
     closeSource: perform,
     dispatchTransport: perform,
     deliverDestination: perform,

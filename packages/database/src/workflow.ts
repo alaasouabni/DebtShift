@@ -33,7 +33,8 @@ export interface PlannedCommand {
     | 'OPEN_TARGET'
     | 'SETTLE_LIQUIDITY'
     | 'FINALIZE_NEAR_RECEIPT'
-    | 'EXECUTE_RECOVERY';
+    | 'EXECUTE_RECOVERY'
+    | 'CANCEL_MIGRATION';
   readonly idempotencyKey: string;
   readonly payload: Record<string, unknown>;
 }
@@ -103,6 +104,30 @@ export async function advanceMigrationWithEvidence(
         .limit(1);
       if (migration === undefined) throw new Error('Migration disappeared while locked.');
 
+      let cancellationCommandIds: string[] = [];
+      if (
+        parsedEvidence.verificationState === 'FINALIZED' &&
+        parsedEvidence.type === 'MIGRATION_CANCELLATION_REQUESTED'
+      ) {
+        if (!['AUTHORIZED', 'RESERVED', 'CANCELLED'].includes(migration.phase)) {
+          throw new Error(`Migration cancellation is not permitted from phase ${migration.phase}.`);
+        }
+        const cancellableCommands = await transaction
+          .select({ commandId: commands.commandId, status: commands.status })
+          .from(commands)
+          .where(
+            and(
+              eq(commands.migrationId, parsedEvidence.migrationId),
+              inArray(commands.status, ['PENDING', 'DISPATCHED', 'RUNNING', 'FAILED_RETRYABLE']),
+            ),
+          )
+          .for('update');
+        if (cancellableCommands.some(({ status }) => status === 'RUNNING')) {
+          throw new Error('Migration cancellation cannot race a running financial command.');
+        }
+        cancellationCommandIds = cancellableCommands.map(({ commandId }) => commandId);
+      }
+
       const insertedEvidence = await transaction
         .insert(evidenceTable)
         .values({
@@ -128,6 +153,33 @@ export async function advanceMigrationWithEvidence(
         })
         .onConflictDoNothing({ target: evidenceTable.evidenceId })
         .returning({ evidenceId: evidenceTable.evidenceId });
+
+      if (
+        insertedEvidence.length !== 0 &&
+        parsedEvidence.type === 'MIGRATION_CANCELLATION_REQUESTED'
+      ) {
+        if (cancellationCommandIds.length !== 0) {
+          await transaction
+            .update(commands)
+            .set({
+              status: 'CANCELLED',
+              lastError: 'Superseded by the borrower cancellation request.',
+              updatedAt: new Date(parsedEvidence.observedAt),
+            })
+            .where(inArray(commands.commandId, cancellationCommandIds));
+        }
+        if (migration.phase === 'AUTHORIZED') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'RELEASED', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                eq(liquidityReservations.status, 'PENDING'),
+              ),
+            );
+        }
+      }
 
       if (parsedEvidence.verificationState === 'FINALIZED') {
         if (parsedEvidence.type === 'LEDGER_RECONCILIATION') {
@@ -177,6 +229,17 @@ export async function advanceMigrationWithEvidence(
                   eq(liquidityReservations.status, 'PENDING'),
                   eq(liquidityReservations.status, 'ACTIVE'),
                 ),
+              ),
+            );
+        }
+        if (parsedEvidence.type === 'MIGRATION_CANCELLED') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'RELEASED', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                inArray(liquidityReservations.status, ['PENDING', 'ACTIVE']),
               ),
             );
         }
@@ -231,7 +294,46 @@ export async function advanceMigrationWithEvidence(
         .where(eq(evidenceTable.migrationId, parsedEvidence.migrationId));
       const normalized = storedEvidence.map(databaseEvidenceToDomain);
       const derivedPhase = deriveMigrationPhase(phaseEvidenceFromRecords(normalized));
-      if (derivedPhase === migration.phase) return derivedPhase;
+      if (derivedPhase === migration.phase) {
+        if (
+          insertedEvidence.length !== 0 &&
+          parsedEvidence.type === 'MIGRATION_CANCELLATION_REQUESTED' &&
+          migration.phase === 'RESERVED'
+        ) {
+          const sequenceResult = await transaction
+            .select({ maximumSequence: max(auditEvents.sequence) })
+            .from(auditEvents)
+            .where(eq(auditEvents.migrationId, migration.migrationId));
+          const sequence = (sequenceResult[0]?.maximumSequence ?? 0) + 1;
+          const payload = { evidenceId: parsedEvidence.evidenceId, phase: migration.phase };
+          await transaction.insert(auditEvents).values({
+            eventId: hashCanonicalText(
+              `debtshift.audit.v1:${migration.migrationId}:${sequence.toString()}`,
+            ),
+            migrationId: migration.migrationId,
+            sequence,
+            type: 'MIGRATION_CANCELLATION_REQUESTED',
+            phase: migration.phase,
+            actor,
+            payload,
+            payloadHash: hashCanonicalText(canonicalJson(payload)),
+            observedAt: new Date(parsedEvidence.observedAt),
+          });
+          const command: PlannedCommand = {
+            type: 'CANCEL_MIGRATION',
+            idempotencyKey: `cancel:${migration.migrationId}`,
+            payload: { migrationId: migration.migrationId },
+          };
+          await insertCommandInTransaction(
+            transaction,
+            migration.migrationId,
+            command,
+            hashCanonicalText(`debtshift.command.v1:${command.idempotencyKey}`),
+            hashCanonicalText(canonicalJson(command.payload)),
+          );
+        }
+        return derivedPhase;
+      }
       assertAllowedPhaseTransition(migration.phase, derivedPhase);
 
       const [updated] = await transaction
@@ -455,6 +557,24 @@ export async function publishPendingOutbox(
         .for('update', { skipLocked: true });
       if (message === undefined) return false;
 
+      const [command] = await transaction
+        .select({ status: commands.status })
+        .from(commands)
+        .where(eq(commands.commandId, message.commandId))
+        .limit(1)
+        .for('update');
+      if (command === undefined) throw new Error('Outbox command disappeared while locked.');
+      if (['CANCELLED', 'SUCCEEDED', 'FAILED_TERMINAL'].includes(command.status)) {
+        await transaction
+          .update(outboxMessages)
+          .set({
+            status: 'DEAD_LETTER',
+            lastError: `Command is already terminal with status ${command.status}.`,
+          })
+          .where(eq(outboxMessages.outboxId, message.outboxId));
+        return true;
+      }
+
       const envelope: OutboxEnvelope = {
         outboxId: message.outboxId,
         commandId: message.commandId,
@@ -471,7 +591,12 @@ export async function publishPendingOutbox(
         await transaction
           .update(commands)
           .set({ status: 'DISPATCHED', updatedAt: now })
-          .where(eq(commands.commandId, message.commandId));
+          .where(
+            and(
+              eq(commands.commandId, message.commandId),
+              inArray(commands.status, ['PENDING', 'FAILED_RETRYABLE']),
+            ),
+          );
       } catch (error) {
         const failure = error instanceof Error ? error.message : 'Unknown publication failure';
         await transaction

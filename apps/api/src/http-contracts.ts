@@ -363,6 +363,16 @@ export const migrationDetailsResponseSchema = z
 export const migrationEventsResponseSchema = z.array(migrationEventSchema);
 export const migrationEvidenceResponseSchema = z.array(evidenceRowSchema);
 
+export const signedIntentResponseSchema = signedRefinanceIntentSchema;
+export const signedPlanResponseSchema = signedExecutionPlanSchema;
+export const cancellationResponseSchema = z
+  .object({
+    migrationId: bytes32,
+    phase: z.enum(['RESERVED', 'CANCELLED']),
+    cancellationRequested: z.literal(true),
+  })
+  .strict();
+
 /** Convert a runtime Zod contract into the JSON Schema subset accepted by OpenAPI. */
 export function toOpenApiSchema(schema: z.ZodType): SchemaObject {
   const generated = z.toJSONSchema(schema, {

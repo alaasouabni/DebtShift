@@ -74,6 +74,21 @@ describe('DebtShift OpenAPI contract', () => {
       content: { 'application/json': { schema: { type: 'array' } } },
     });
   });
+
+  it('documents owner-protected signed artifacts and safe cancellation conflicts', () => {
+    for (const path of ['/v1/intents/{intentHash}', '/v1/plans/{planHash}']) {
+      const read = operation(document, path, 'get');
+      expect(read.security).toEqual([{ debtshift_session: [] }]);
+      expect(read.responses).toHaveProperty('200');
+      expect(read.responses).toHaveProperty('404');
+    }
+
+    const cancel = operation(document, '/v1/migrations/{migrationId}/cancel', 'post');
+    expect(cancel.security).toEqual([{ debtshift_session: [] }]);
+    expect(cancel.responses).toHaveProperty('200');
+    expect(cancel.responses).toHaveProperty('409');
+    expect(cancel.responses).toHaveProperty('404');
+  });
 });
 
 function operations(document: OpenAPIObject): OperationObject[] {
