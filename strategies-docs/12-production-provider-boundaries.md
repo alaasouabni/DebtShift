@@ -74,7 +74,14 @@ public testnet, the transport port remains the explicitly labelled simulator and
 real source/destination testnet transaction evidence where the configured test contracts permit it.
 
 Protocol-compatible test deployments validate orchestration and deployment, not official Aave or
-Morpho production behavior. Official behavior is separately proven with pinned production forks.
+Morpho production behavior. The current testnet route may use the official Aave V3 Sepolia
+deployment plus a destination Morpho Blue deployment compiled from a pinned canonical upstream
+source commit, because the official Morpho registry currently publishes no public testnet. That
+deployment must use a real market, oracle, IRM, tokens, liquidity, authorization, and onchain
+receipts; `MockMorphoBlue` and application-level market fixtures are forbidden in public testnet
+evidence. It must be labeled DebtShift-operated protocol-compatible testnet infrastructure, never an
+official Morpho testnet. Official behavior is separately proven with pinned production forks and the
+configured production singleton/market.
 
 ## Live deployment registry
 

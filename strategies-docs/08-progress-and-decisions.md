@@ -331,6 +331,33 @@ This file is updated throughout implementation. It is the first place to inspect
   durable ledger rows. A settlement claim must be independently queryable and must distinguish
   observed transfers from signed economic classifications.
 
+### ADR-024 - Canonical public-testnet protocols without false official-deployment claims
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Evidence:** The current official
+  [Aave address book](https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Sepolia.sol)
+  publishes an Aave V3 Sepolia deployment. The current official
+  [Morpho SDK chain registry](https://github.com/morpho-org/sdks/blob/main/packages/morpho-ts/src/chain.ts)
+  enumerates production networks and no public testnet, while the
+  [Morpho Blue repository](https://github.com/morpho-org/morpho-blue) supplies the canonical audited
+  protocol source for permissionless deployment. These observations are version-sensitive and must
+  be rechecked before deployment.
+- **Decision:** Public EVM testnet evidence may use the official Aave Sepolia deployment and a
+  DebtShift-operated destination deployment built from a pinned canonical Morpho Blue source commit.
+  The Morpho deployment must create a real market with real public-testnet token, oracle, IRM,
+  liquidity, borrow, authorization, receipt, and explorer state. `MockMorphoBlue`, local test tokens,
+  or application-returned market success are prohibited from public testnet evidence.
+- **Production boundary:** A DebtShift-operated testnet deployment is protocol-compatible evidence,
+  not an official Morpho testnet or production deployment. Official production behavior remains
+  proven through pinned forks and the configured official mainnet singleton/market.
+- **Transport boundary:** Only the unavailable 1Click testnet boundary remains explicitly simulated;
+  it must still produce real source/destination public-chain token transactions and independent
+  receipt/balance verification.
+- **Deployment consequence:** Pin source commits and artifact hashes, publish dependency and
+  DebtShift manifests, verify both runtime bytecode and market parameters, and refuse external
+  deployment until the route, oracle, funding, signer, RPC, gas, and recovery balances are reviewed.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                              |
@@ -345,6 +372,19 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Funded public-testnet transport startup gate added
+
+- The provider-neutral startup boundary now awaits execution, transport, and registry readiness in
+  that order before the worker creates a queue consumer.
+- The funded testnet transport independently reads both RPC chain IDs, verifies deployed collateral
+  token code on each chain, and requires the executor to hold non-zero native gas plus pre-funded
+  source recovery and destination delivery collateral on both networks. Direct transport calls also
+  await the same gate; exact per-migration amounts remain checked immediately before each transfer.
+- Focused worker type checks and nine startup/readiness tests pass. The complete repository gate
+  also passes OpenAPI drift, formatting, script checks, all 11 lint/type workspaces, 85 worker tests,
+  every other package suite, and all 11 production builds. No RPC write, external deployment, or
+  transaction broadcast was performed.
 
 ### 2026-11-13 - EVM deployment provenance and worker startup attestation implemented
 

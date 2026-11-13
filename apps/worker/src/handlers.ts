@@ -106,6 +106,7 @@ export interface MigrationExecutionPort {
 
 export interface TransportExecutionPort {
   readonly provider: TransportProvider;
+  assertReady?(): Promise<void>;
   bindOrigin(
     context: MigrationExecutionContext,
     originTransactionHash: Hex,

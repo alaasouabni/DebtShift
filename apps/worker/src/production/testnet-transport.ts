@@ -58,6 +58,7 @@ export class FundedTestnetTransportExecutionPort implements TransportExecutionPo
   readonly #destinationPublic: EvmPublicClient;
   readonly #sourceWallet: EvmWalletClient;
   readonly #destinationWallet: EvmWalletClient;
+  readonly #ready: Promise<void>;
 
   constructor(
     private readonly environment: DebtShiftEnvironment,
@@ -96,12 +97,18 @@ export class FundedTestnetTransportExecutionPort implements TransportExecutionPo
       chain: destinationChain,
       transport: http(environment.DESTINATION_RPC_URL),
     });
+    this.#ready = this.#verifyReadiness();
+  }
+
+  async assertReady(): Promise<void> {
+    await this.#ready;
   }
 
   async bindOrigin(
     context: MigrationExecutionContext,
     originTransactionHash: Hex,
   ): Promise<{ readonly providerReference: string; readonly observationCount: number }> {
+    await this.#ready;
     this.#restore(context);
     const providerReference = await this.simulator.submitOrigin({
       quoteHash: context.quote.quoteHash as Hex,
@@ -117,6 +124,7 @@ export class FundedTestnetTransportExecutionPort implements TransportExecutionPo
     readonly observation: TransportObservation;
     readonly observationCount: number;
   }> {
+    await this.#ready;
     this.#restore(context);
     const providerReference = context.transportLeg.providerReference ?? context.quote.quoteId;
     const observed = await this.simulator.getStatus(providerReference);
@@ -199,6 +207,88 @@ export class FundedTestnetTransportExecutionPort implements TransportExecutionPo
       throw new Error(`Testnet transport custody transfer reverted: ${transactionHash}`);
     }
     return transactionHash;
+  }
+
+  async #verifyReadiness(): Promise<void> {
+    const [
+      sourceChainId,
+      destinationChainId,
+      sourceTokenCode,
+      destinationTokenCode,
+      sourceNativeBalanceWei,
+      destinationNativeBalanceWei,
+      sourceCollateralBalanceUnits,
+      destinationCollateralBalanceUnits,
+    ] = await Promise.all([
+      this.#sourcePublic.getChainId(),
+      this.#destinationPublic.getChainId(),
+      this.#sourcePublic.getCode({
+        address: this.environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
+      }),
+      this.#destinationPublic.getCode({
+        address: this.environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS,
+      }),
+      this.#sourcePublic.getBalance({ address: this.#account.address }),
+      this.#destinationPublic.getBalance({ address: this.#account.address }),
+      this.#sourcePublic.readContract({
+        address: this.environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [this.#account.address],
+      }),
+      this.#destinationPublic.readContract({
+        address: this.environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [this.#account.address],
+      }),
+    ]);
+    assertFundedTestnetTransportReadiness(this.environment, {
+      sourceChainId,
+      destinationChainId,
+      sourceTokenCodePresent: sourceTokenCode !== undefined && sourceTokenCode !== '0x',
+      destinationTokenCodePresent:
+        destinationTokenCode !== undefined && destinationTokenCode !== '0x',
+      sourceNativeBalanceWei,
+      destinationNativeBalanceWei,
+      sourceCollateralBalanceUnits,
+      destinationCollateralBalanceUnits,
+    });
+  }
+}
+
+export interface FundedTestnetTransportReadiness {
+  readonly sourceChainId: number;
+  readonly destinationChainId: number;
+  readonly sourceTokenCodePresent: boolean;
+  readonly destinationTokenCodePresent: boolean;
+  readonly sourceNativeBalanceWei: bigint;
+  readonly destinationNativeBalanceWei: bigint;
+  readonly sourceCollateralBalanceUnits: bigint;
+  readonly destinationCollateralBalanceUnits: bigint;
+}
+
+export function assertFundedTestnetTransportReadiness(
+  environment: Pick<DebtShiftEnvironment, 'SOURCE_CHAIN_ID' | 'DESTINATION_CHAIN_ID'>,
+  readiness: FundedTestnetTransportReadiness,
+): void {
+  if (
+    readiness.sourceChainId !== environment.SOURCE_CHAIN_ID ||
+    readiness.destinationChainId !== environment.DESTINATION_CHAIN_ID
+  ) {
+    throw new Error('Testnet transport RPC chain IDs do not match runtime configuration.');
+  }
+  if (!readiness.sourceTokenCodePresent || !readiness.destinationTokenCodePresent) {
+    throw new Error('Testnet transport collateral token deployment is missing.');
+  }
+  if (readiness.sourceNativeBalanceWei === 0n || readiness.destinationNativeBalanceWei === 0n) {
+    throw new Error('Testnet transport executor requires native gas on both chains.');
+  }
+  if (
+    readiness.sourceCollateralBalanceUnits === 0n ||
+    readiness.destinationCollateralBalanceUnits === 0n
+  ) {
+    throw new Error('Testnet transport executor requires pre-funded collateral on both chains.');
   }
 }
 

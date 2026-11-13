@@ -7,9 +7,12 @@ validated Aave V3 source reserve and Morpho Blue destination market. It never de
 protocol mocks, borrower positions, or liquidity. It does not authorize a refinance or enable
 workflow writes.
 
-Testnet deployment is permitted only after suitable public Aave/Morpho markets, funded deployment
-and executor accounts, and the exact route configuration are available. Mainnet contract deployment
-is a separate irreversible event: keep `MAINNET_EXECUTION_ENABLED=false` and obtain the explicit
+Testnet deployment is permitted only after suitable public protocol deployments, funded deployment
+and executor accounts, and the exact route configuration are available. If there is no official
+Morpho testnet deployment, follow ADR-024: use a separately manifested DebtShift-operated deployment
+compiled from a pinned canonical Morpho Blue source commit and label it protocol-compatible testnet
+infrastructure. Never use `MockMorphoBlue` as public testnet evidence. Mainnet contract deployment is
+a separate irreversible event: keep `MAINNET_EXECUTION_ENABLED=false` and obtain the explicit
 deployment authorization required by the current acceptance plan. A real mainnet refinance still
 requires a later exposure review, borrower signatures, and separate final authorization.
 
@@ -132,8 +135,11 @@ to runtime variables without manual address substitution:
 The worker must also receive the exact manifest-bound token, protocol, route, and executor
 configuration already required by the environment schema. Production funded `testnet` and
 write-enabled `mainnet` reject a missing manifest path. Before creating a queue consumer, the worker
-performs both EVM and NEAR startup attestations; any failure terminates startup before a durable
-financial command can be consumed.
+performs EVM, transport, and NEAR startup attestations; any failure terminates startup before a
+durable financial command can be consumed. Testnet transport startup additionally checks both RPC
+chain IDs, collateral token bytecode, non-zero executor gas on both chains, and non-zero pre-funded
+source-refund and destination-delivery collateral. Exact required amounts are rechecked immediately
+before each transfer.
 
 After startup, rerun the independent readiness check and confirm the worker health/log record reports
 no attestation error. Do not treat process health alone as deployment evidence.

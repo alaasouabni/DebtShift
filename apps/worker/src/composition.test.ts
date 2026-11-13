@@ -28,15 +28,21 @@ describe('composeWorkflowHandlers', () => {
   it('awaits execution and registry startup attestation before command consumption', async () => {
     const adapters = fakeAdapters('testnet', 'DEBTSHIFT_SIMULATOR');
     const executionReady = vi.fn(async () => {});
+    const transportReady = vi.fn(async () => {});
     const registryReady = vi.fn(async () => {});
     adapters.execution.assertReady = executionReady;
+    adapters.transport.assertReady = transportReady;
     adapters.registry.assertReady = registryReady;
 
     await assertWorkflowAdaptersReady(adapters);
 
     expect(executionReady).toHaveBeenCalledOnce();
+    expect(transportReady).toHaveBeenCalledOnce();
     expect(registryReady).toHaveBeenCalledOnce();
     expect(executionReady.mock.invocationCallOrder[0]).toBeLessThan(
+      transportReady.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(transportReady.mock.invocationCallOrder[0]).toBeLessThan(
       registryReady.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
     );
   });

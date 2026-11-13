@@ -33,6 +33,7 @@ export interface WorkflowCompositionInput {
 export async function assertWorkflowAdaptersReady(adapters?: WorkflowAdapterSet): Promise<void> {
   if (adapters === undefined) return;
   await adapters.execution.assertReady?.();
+  await adapters.transport.assertReady?.();
   await adapters.registry.assertReady?.();
 }
 
