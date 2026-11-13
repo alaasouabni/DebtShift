@@ -251,7 +251,23 @@ export const debtShiftEnvironmentSchema = z
 
     if (environment.MARKET_DATA_PROVIDER === 'LIVE_READ_ONLY') {
       try {
-        parseLiveMarketConfiguration(environment.LIVE_MARKET_CONFIG_JSON);
+        const liveMarket = parseLiveMarketConfiguration(environment.LIVE_MARKET_CONFIG_JSON);
+        if (
+          (environment.DEBTSHIFT_MODE === 'mainnet-readonly' ||
+            environment.DEBTSHIFT_MODE === 'mainnet') &&
+          [
+            liveMarket.source.collateralAsset,
+            liveMarket.source.debtAsset,
+            liveMarket.destination.collateralAsset,
+            liveMarket.destination.debtAsset,
+          ].some((asset) => asset.providerAssetId === undefined)
+        ) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Mainnet live routes require provider asset IDs for every route asset.',
+            path: ['LIVE_MARKET_CONFIG_JSON'],
+          });
+        }
       } catch (error) {
         context.addIssue({
           code: 'custom',

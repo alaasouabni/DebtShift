@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "routeId": "ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue-weth-usdc-v1",
+  "environment": "testnet",
+  "status": "reviewed-executable-route-policy",
+  "workflowWriteSwitchEnabled": false,
+  "policy": {
+    "horizonDays": 90,
+    "maxAllInCostUsdMicro": "250000000",
+    "minAprReductionBps": 50,
+    "maxPositionSnapshotAgeSeconds": 300,
+    "maxMarketSnapshotAgeSeconds": 300,
+    "maxOracleAgeSeconds": 86400,
+    "minimumLiquidityBufferBps": 500,
+    "stressCollateralDropBps": 2000,
+    "stressTargetAprIncreaseBps": 200,
+    "maximumLtvBps": 7000,
+    "stressMaximumLtvBps": 6000
+  },
+  "analyticsCosts": {
+    "sourceGasUnitsUpperBound": 2000000,
+    "destinationGasUnitsUpperBound": 2500000,
+    "estimatedSettlementSeconds": 300,
+    "settlementTimeP95Seconds": 1800,
+    "tailLossEstimateUsdMicro": "25000000",
+    "settlementRiskCostUsdMicro": "10000000",
+    "dependencyRiskCostUsdMicro": "10000000"
+  }
+}

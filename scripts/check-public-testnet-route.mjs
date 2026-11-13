@@ -152,14 +152,39 @@ async function verifyOfficialProvenance(configuration) {
   const module = parseJsonObject(moduleDocument.text, 'Aave Sepolia module');
   verifyAaveModule(module, configuration.source);
 
-  const [baseDocs, circleDocs, chainlinkDirectory, chainlinkRegistry, sequencerDocs] =
-    await Promise.all([
-      fetchDocument(configuration.destination.references.baseContractsUrl),
-      fetchDocument(configuration.destination.references.circleUsdcUrl),
-      fetchDocument(configuration.destination.references.chainlinkDirectoryUrl),
-      fetchDocument(configuration.destination.references.chainlinkRegistryUrl),
-      fetchDocument(configuration.destination.references.chainlinkSequencerFeedsUrl),
-    ]);
+  const [
+    sourceChainlinkDirectory,
+    sourceChainlinkRegistry,
+    baseDocs,
+    circleDocs,
+    destinationChainlinkDirectory,
+    destinationChainlinkRegistry,
+    sequencerDocs,
+  ] = await Promise.all([
+    fetchDocument(configuration.source.references.chainlinkDirectoryUrl),
+    fetchDocument(configuration.source.references.chainlinkRegistryUrl),
+    fetchDocument(configuration.destination.references.baseContractsUrl),
+    fetchDocument(configuration.destination.references.circleUsdcUrl),
+    fetchDocument(configuration.destination.references.chainlinkDirectoryUrl),
+    fetchDocument(configuration.destination.references.chainlinkRegistryUrl),
+    fetchDocument(configuration.destination.references.chainlinkSequencerFeedsUrl),
+  ]);
+  assertDocumentContains(
+    'Chainlink Ethereum Sepolia registry binding',
+    sourceChainlinkDirectory.text,
+    configuration.source.references.chainlinkRegistryUrl,
+  );
+  assertDocumentContains(
+    'Chainlink Ethereum Sepolia network binding',
+    sourceChainlinkDirectory.text,
+    'Sepolia Testnet',
+  );
+  const sourceRegistry = parseJsonArray(
+    sourceChainlinkRegistry.text,
+    'Chainlink Ethereum Sepolia registry',
+  );
+  verifyRegistryFeed(sourceRegistry, configuration.source.collateralFeed);
+  verifyRegistryFeed(sourceRegistry, configuration.source.debtFeed);
   assertDocumentContains(
     'Base Sepolia WETH documentation',
     baseDocs.text,
@@ -172,12 +197,12 @@ async function verifyOfficialProvenance(configuration) {
   );
   assertDocumentContains(
     'Chainlink Base Sepolia registry binding',
-    chainlinkDirectory.text,
+    destinationChainlinkDirectory.text,
     configuration.destination.references.chainlinkRegistryUrl,
   );
   assertDocumentContains(
     'Chainlink Base Sepolia network binding',
-    chainlinkDirectory.text,
+    destinationChainlinkDirectory.text,
     'Base Sepolia testnet',
   );
   if (/Base Sepolia/i.test(sequencerDocs.text)) {
@@ -185,7 +210,10 @@ async function verifyOfficialProvenance(configuration) {
       'Chainlink now lists Base Sepolia in its sequencer-feed documentation; review the null policy.',
     );
   }
-  const registry = parseJsonArray(chainlinkRegistry.text, 'Chainlink Base Sepolia registry');
+  const registry = parseJsonArray(
+    destinationChainlinkRegistry.text,
+    'Chainlink Base Sepolia registry',
+  );
   verifyRegistryFeed(registry, configuration.destination.collateralFeed);
   verifyRegistryFeed(registry, configuration.destination.loanFeed);
 
@@ -197,10 +225,12 @@ async function verifyOfficialProvenance(configuration) {
       moduleSha256: moduleDocument.sha256,
       moduleBytes: moduleDocument.bytes,
     },
+    sourceChainlinkDirectoryResponseSha256: sourceChainlinkDirectory.sha256,
+    sourceChainlinkRegistryResponseSha256: sourceChainlinkRegistry.sha256,
     baseContractsResponseSha256: baseDocs.sha256,
     circleUsdcResponseSha256: circleDocs.sha256,
-    chainlinkDirectoryResponseSha256: chainlinkDirectory.sha256,
-    chainlinkRegistryResponseSha256: chainlinkRegistry.sha256,
+    destinationChainlinkDirectoryResponseSha256: destinationChainlinkDirectory.sha256,
+    destinationChainlinkRegistryResponseSha256: destinationChainlinkRegistry.sha256,
     chainlinkSequencerDocumentationResponseSha256: sequencerDocs.sha256,
     baseSepoliaSequencerFeedListed: false,
   };
@@ -218,42 +248,48 @@ async function inspectSource(configuration, rpcUrl) {
     throw new Error('Ethereum Sepolia finalized block has no canonical hash.');
   }
   const blockNumber = block.number;
+  const blockObservedAt = new Date(Number(block.timestamp) * 1_000).toISOString();
 
-  const [providerPool, providerOracle, collateral, debt, contracts] = await Promise.all([
-    client.readContract({
-      address: source.poolAddressesProvider,
-      abi: ADDRESS_PROVIDER_ABI,
-      functionName: 'getPool',
-      blockNumber,
-    }),
-    client.readContract({
-      address: source.poolAddressesProvider,
-      abi: ADDRESS_PROVIDER_ABI,
-      functionName: 'getPriceOracle',
-      blockNumber,
-    }),
-    inspectAaveReserve(client, source, source.collateralAsset, blockNumber, 'collateral'),
-    inspectAaveReserve(client, source, source.debtAsset, blockNumber, 'debt'),
-    inspectContracts(
-      client,
-      [
-        source.pool,
-        source.poolAddressesProvider,
-        source.dataProvider,
-        source.oracle,
-        source.faucet,
-        source.collateralAsset.address,
-        source.collateralAsset.aToken,
-        source.collateralAsset.variableDebtToken,
-        source.collateralAsset.oracle,
-        source.debtAsset.address,
-        source.debtAsset.aToken,
-        source.debtAsset.variableDebtToken,
-        source.debtAsset.oracle,
-      ],
-      blockNumber,
-    ),
-  ]);
+  const [providerPool, providerOracle, collateral, debt, collateralFeed, debtFeed, contracts] =
+    await Promise.all([
+      client.readContract({
+        address: source.poolAddressesProvider,
+        abi: ADDRESS_PROVIDER_ABI,
+        functionName: 'getPool',
+        blockNumber,
+      }),
+      client.readContract({
+        address: source.poolAddressesProvider,
+        abi: ADDRESS_PROVIDER_ABI,
+        functionName: 'getPriceOracle',
+        blockNumber,
+      }),
+      inspectAaveReserve(client, source, source.collateralAsset, blockNumber, 'collateral'),
+      inspectAaveReserve(client, source, source.debtAsset, blockNumber, 'debt'),
+      inspectFeed(client, source.collateralFeed, blockNumber, blockObservedAt),
+      inspectFeed(client, source.debtFeed, blockNumber, blockObservedAt),
+      inspectContracts(
+        client,
+        [
+          source.pool,
+          source.poolAddressesProvider,
+          source.dataProvider,
+          source.oracle,
+          source.faucet,
+          source.collateralAsset.address,
+          source.collateralAsset.aToken,
+          source.collateralAsset.variableDebtToken,
+          source.collateralAsset.oracle,
+          source.debtAsset.address,
+          source.debtAsset.aToken,
+          source.debtAsset.variableDebtToken,
+          source.debtAsset.oracle,
+          source.collateralFeed.address,
+          source.debtFeed.address,
+        ],
+        blockNumber,
+      ),
+    ]);
   assertAddress('Aave provider pool', providerPool, source.pool);
   assertAddress('Aave provider oracle', providerOracle, source.oracle);
   if (debt.availableLiquidityUnits <= 0n) {
@@ -264,12 +300,14 @@ async function inspectSource(configuration, rpcUrl) {
     chainId,
     blockNumber: blockNumber.toString(),
     blockHash: block.hash,
-    blockTimestamp: new Date(Number(block.timestamp) * 1_000).toISOString(),
+    blockTimestamp: blockObservedAt,
     pool: getAddress(source.pool),
     poolAddressesProvider: getAddress(source.poolAddressesProvider),
     oracle: getAddress(source.oracle),
     collateral: serializeBigInts(collateral),
     debt: serializeBigInts(debt),
+    collateralFeed,
+    debtFeed,
     contracts,
   };
 }

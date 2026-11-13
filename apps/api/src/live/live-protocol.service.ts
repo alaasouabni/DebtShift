@@ -400,14 +400,16 @@ function token(
     readonly address: Address;
     readonly decimals: number;
     readonly symbol: string;
-    readonly providerAssetId: string;
+    readonly providerAssetId?: string | undefined;
   },
-): TokenReference & { readonly symbol: string; readonly providerAssetId: string } {
+): TokenReference & { readonly symbol: string } {
   return {
     chainId,
     address: getAddress(configuration.address),
     decimals: configuration.decimals,
     symbol: configuration.symbol,
-    providerAssetId: configuration.providerAssetId,
+    ...(configuration.providerAssetId === undefined
+      ? {}
+      : { providerAssetId: configuration.providerAssetId }),
   };
 }

@@ -111,7 +111,7 @@ describe('parseDebtShiftEnvironment', () => {
       ...explicitExecutionConfiguration(),
       DEBTSHIFT_MODE: 'testnet',
       MARKET_DATA_PROVIDER: 'LIVE_READ_ONLY',
-      LIVE_MARKET_CONFIG_JSON: validLiveMarketJson(),
+      LIVE_MARKET_CONFIG_JSON: liveMarketWithoutProviderAssetIds(),
       NEAR_NETWORK: 'testnet',
       NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
       NEAR_REGISTRY_OWNER_ACCOUNT: 'owner.testnet',
@@ -129,6 +129,20 @@ describe('parseDebtShiftEnvironment', () => {
         TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH: '/run/debtshift/testnet-morpho.json',
       }),
     ).not.toThrow();
+  });
+
+  it('requires real provider asset identifiers only for official mainnet 1Click modes', () => {
+    expect(() =>
+      parseDebtShiftEnvironment({
+        DEBTSHIFT_MODE: 'mainnet-readonly',
+        MARKET_DATA_PROVIDER: 'LIVE_READ_ONLY',
+        LIVE_MARKET_CONFIG_JSON: liveMarketWithoutProviderAssetIds(),
+        TRANSPORT_PROVIDER: 'NEAR_INTENTS_1CLICK',
+        INTENTS_MODE: 'mainnet-readonly',
+        INTENTS_AUTH_TOKEN: 'test-token',
+        NEAR_NETWORK: 'mainnet',
+      }),
+    ).toThrow('Mainnet live routes require provider asset IDs for every route asset.');
   });
 
   it('accepts a bounded, unique list of HTTPS NEAR RPC fallbacks', () => {
@@ -406,4 +420,22 @@ function validLiveMarketJson(): string {
       dependencyRiskCostUsdMicro: '0',
     },
   });
+}
+
+function liveMarketWithoutProviderAssetIds(): string {
+  const configuration = JSON.parse(validLiveMarketJson()) as {
+    source: {
+      collateralAsset: { providerAssetId?: string };
+      debtAsset: { providerAssetId?: string };
+    };
+    destination: {
+      collateralAsset: { providerAssetId?: string };
+      debtAsset: { providerAssetId?: string };
+    };
+  };
+  delete configuration.source.collateralAsset.providerAssetId;
+  delete configuration.source.debtAsset.providerAssetId;
+  delete configuration.destination.collateralAsset.providerAssetId;
+  delete configuration.destination.debtAsset.providerAssetId;
+  return JSON.stringify(configuration);
 }

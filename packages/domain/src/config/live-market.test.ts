@@ -21,6 +21,19 @@ describe('live market configuration', () => {
     ).toBe(90_000);
   });
 
+  it('allows testnet routes to omit unavailable provider asset identifiers', () => {
+    const configuration = validConfiguration();
+    delete configuration.source.collateralAsset.providerAssetId;
+    delete configuration.source.debtAsset.providerAssetId;
+    delete configuration.destination.collateralAsset.providerAssetId;
+    delete configuration.destination.debtAsset.providerAssetId;
+
+    expect(
+      parseLiveMarketConfiguration(JSON.stringify(configuration)).source.collateralAsset
+        .providerAssetId,
+    ).toBeUndefined();
+  });
+
   it('rejects malformed JSON and incomplete registries', () => {
     expect(() => parseLiveMarketConfiguration('{')).toThrow('valid JSON');
     expect(() => parseLiveMarketConfiguration('{}')).toThrow();
@@ -29,40 +42,51 @@ describe('live market configuration', () => {
 
 function validConfiguration() {
   const feed = (address: string) => ({ address, maximumAgeSeconds: 3600 });
+  const token = (
+    address: string,
+    decimals: number,
+    symbol: string,
+    providerAssetId: string,
+  ): {
+    address: string;
+    decimals: number;
+    symbol: string;
+    providerAssetId?: string;
+  } => ({ address, decimals, symbol, providerAssetId });
   return {
     version: 1,
     source: {
       pool: '0x1000000000000000000000000000000000000001',
       dataProvider: '0x1000000000000000000000000000000000000002',
-      collateralAsset: {
-        address: '0x1000000000000000000000000000000000000003',
-        decimals: 18,
-        symbol: 'WETH',
-        providerAssetId: 'nep141:base-weth.omft.near',
-      },
-      debtAsset: {
-        address: '0x1000000000000000000000000000000000000004',
-        decimals: 6,
-        symbol: 'USDC',
-        providerAssetId: 'nep141:base-usdc.omft.near',
-      },
+      collateralAsset: token(
+        '0x1000000000000000000000000000000000000003',
+        18,
+        'WETH',
+        'nep141:base-weth.omft.near',
+      ),
+      debtAsset: token(
+        '0x1000000000000000000000000000000000000004',
+        6,
+        'USDC',
+        'nep141:base-usdc.omft.near',
+      ),
     },
     destination: {
       morpho: '0x2000000000000000000000000000000000000001',
       marketId: `0x${'22'.repeat(32)}`,
       morphoOracle: '0x2000000000000000000000000000000000000002',
-      collateralAsset: {
-        address: '0x2000000000000000000000000000000000000003',
-        decimals: 18,
-        symbol: 'WETH',
-        providerAssetId: 'nep141:arb-weth.omft.near',
-      },
-      debtAsset: {
-        address: '0x2000000000000000000000000000000000000004',
-        decimals: 6,
-        symbol: 'USDC',
-        providerAssetId: 'nep141:arb-usdc.omft.near',
-      },
+      collateralAsset: token(
+        '0x2000000000000000000000000000000000000003',
+        18,
+        'WETH',
+        'nep141:arb-weth.omft.near',
+      ),
+      debtAsset: token(
+        '0x2000000000000000000000000000000000000004',
+        6,
+        'USDC',
+        'nep141:arb-usdc.omft.near',
+      ),
       morphoOracleFeeds: [feed('0x2000000000000000000000000000000000000005')],
     },
     prices: {

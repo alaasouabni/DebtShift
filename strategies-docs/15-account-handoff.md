@@ -19,13 +19,16 @@ before changing code.
 - The write-disabled public-testnet dependency candidate is separately frozen in
   `config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json`;
   it is not an executable route or evidence of deployment.
+- The executable testnet route must be generated only after canonical Morpho deployment with the
+  reviewed policy in
+  `config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.policy.v1.json`.
 
 ## Git checkpoint
 
 - Branch: `main`.
-- Verified pushed checkpoint: `7b59a4f`, including the frozen public-testnet dependencies, live
-  validator, exact manifest binding, oracle hardening, corrected Aave reserve-token resolution, and
-  narrow public-address Gitleaks policy.
+- Verified pushed checkpoint: `a6fae68`, including the frozen public-testnet foundation, live
+  validator, exact manifest binding, oracle hardening, corrected Aave reserve-token resolution,
+  narrow public-address Gitleaks policy, and synchronized strategy evidence.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
@@ -52,7 +55,11 @@ before changing code.
    canonical-source Morpho market on Base Sepolia. A credential-free validator pins official
    provenance and live state; the route dependency hash is chained through both deployment
    manifests, readiness, and worker startup.
-8. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
+8. The hardened dependency also pins independent official Chainlink Ethereum Sepolia planning
+   feeds. A source-commit-bound generator derives the post-deployment executable route from the
+   dependency file, canonical Morpho manifest, and reviewed policy without inventing testnet 1Click
+   asset IDs.
+9. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
    no credentialed or write-capable external action was attempted.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
@@ -71,7 +78,7 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, scripts, lint/types, all tests, and all 11 builds         |
 | Worker suite                          | Pass: 85 tests, including adapter startup ordering and exact final registry state      |
-| Domain suite                          | Pass: 114 tests, including route/deployment manifests, modes, and transition pairs     |
+| Domain suite                          | Pass: 119 tests, including deterministic testnet-route derivation and mode boundaries  |
 | Database suite and migration drill    | Pass: 22 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
 | API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
 | Agent and web suites                  | Pass: 9 agent/security tests and 4 browser tests                                       |
@@ -99,7 +106,8 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | GitHub quality run `43435798717`      | Pass: complete quality workflow for funded transport checkpoint `ecc6417`              |
 | GitHub quality run `43446037695`      | Pass: complete quality workflow for canonical Morpho checkpoint `435c351`              |
 | GitHub quality run `43459443566`      | Pass: complete quality workflow for public-testnet route checkpoint `7b59a4f`          |
-| `npm run check:public-testnet-route`  | Pass: dependency hash `0x323c…39ca`; finalized Sepolia/Base Sepolia reads              |
+| GitHub quality run `43460754238`      | Pass: complete quality workflow for synchronized strategy checkpoint `a6fae68`         |
+| `npm run check:public-testnet-route`  | Pass: dependency hash `0x2186…7f17`; both source/destination feed rounds finalized     |
 | `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
@@ -115,9 +123,9 @@ Work in this order:
 1. Acquire funded Ethereum Sepolia/Base Sepolia/NEAR testnet signers and the reviewed test assets,
    rerun `npm run check:public-testnet-route`, then follow
    `21-public-testnet-morpho-deployment.md` for the reviewed irreversible deployment.
-2. Create and commit the executable public-testnet route only from the resulting dependency
-   manifest, deploy the seven
-   DebtShift EVM contracts, and configure both manifests for startup attestation.
+2. Run `npm run generate:public-testnet-route` with the resulting Morpho manifest, review and commit
+   the exclusively created executable route, deploy the seven DebtShift EVM contracts, and
+   configure both manifests for startup attestation.
 3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
 4. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,

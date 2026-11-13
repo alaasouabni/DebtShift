@@ -9,6 +9,7 @@ describe('public testnet route dependencies', () => {
     expect(route.environment).toBe('testnet');
     expect(route.workflowWriteSwitchEnabled).toBe(false);
     expect(route.transport.testnetBoundary).toBe('SIMULATED_UNAVAILABLE_PROVIDER_BOUNDARY');
+    expect(route.source.collateralFeed.expectedDescription).toBe('ETH / USD');
     expect(route.destination.sequencerUptimeFeed).toBeNull();
   });
 
@@ -61,6 +62,20 @@ describe('public testnet route dependencies', () => {
         }),
       ),
     ).toThrow('maximum age must cover');
+    expect(() =>
+      parsePublicTestnetRouteDependencies(
+        JSON.stringify({
+          ...validRoute(),
+          source: {
+            ...validRoute().source,
+            debtFeed: {
+              ...validRoute().source.debtFeed,
+              address: validRoute().source.collateralFeed.address,
+            },
+          },
+        }),
+      ),
+    ).toThrow('Source collateral and debt feeds must differ');
   });
 });
 
@@ -102,6 +117,10 @@ function validRoute() {
         moduleSha256: '3'.repeat(64),
         moduleBytes: 4_799,
       },
+      references: {
+        chainlinkDirectoryUrl: 'https://chainlink.example/feeds',
+        chainlinkRegistryUrl: 'https://chainlink.example/ethereum-sepolia.json',
+      },
       pool: '0x1000000000000000000000000000000000000001',
       poolAddressesProvider: '0x1000000000000000000000000000000000000002',
       dataProvider: '0x1000000000000000000000000000000000000003',
@@ -109,6 +128,8 @@ function validRoute() {
       faucet: '0x1000000000000000000000000000000000000005',
       collateralAsset: aaveAsset('0x2000000000000000000000000000000000000001', 18, 'WETH', '21'),
       debtAsset: aaveAsset('0x2000000000000000000000000000000000000002', 6, 'USDC', '22'),
+      collateralFeed: feed('0x2000000000000000000000000000000000000003', 'eth-usd', 'ETH / USD'),
+      debtFeed: feed('0x2000000000000000000000000000000000000004', 'usdc-usd', 'USDC / USD'),
     },
     destination: {
       chainId: 84_532,

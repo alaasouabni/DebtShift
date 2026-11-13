@@ -15,6 +15,10 @@
       "moduleSha256": "a9f66b5f399a2152c143516ea5d93ca2376f0f98e6dd9737913fa1e32414fe75",
       "moduleBytes": 4799
     },
+    "references": {
+      "chainlinkDirectoryUrl": "https://docs.chain.link/data-feeds/price-feeds/addresses",
+      "chainlinkRegistryUrl": "https://reference-data-directory.vercel.app/feeds-ethereum-testnet-sepolia.json"
+    },
     "pool": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
     "poolAddressesProvider": "0x012bAC54348C0E635dCAc9D5FB99f06F24136C9A",
     "dataProvider": "0x3e9708d80f7B3e43118013075F7e95CE3AB31F31",
@@ -35,6 +39,22 @@
       "aToken": "0x16dA4541aD1807f4443d92D26044C1147406EB80",
       "variableDebtToken": "0x36B5dE936eF1710E1d22EabE5231b28581a92ECc",
       "oracle": "0x98458D6A99489F15e6eB5aFa67ACFAcf6F211051"
+    },
+    "collateralFeed": {
+      "address": "0x694AA1769357215DE4FAC081bf1f309aDC325306",
+      "registryPath": "eth-usd",
+      "expectedDescription": "ETH / USD",
+      "decimals": 8,
+      "heartbeatSeconds": 3600,
+      "maximumAgeSeconds": 10800
+    },
+    "debtFeed": {
+      "address": "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
+      "registryPath": "usdc-usd",
+      "expectedDescription": "USDC / USD",
+      "decimals": 8,
+      "heartbeatSeconds": 86400,
+      "maximumAgeSeconds": 90000
     }
   },
   "destination": {

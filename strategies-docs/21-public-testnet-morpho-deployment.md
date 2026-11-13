@@ -62,20 +62,22 @@ It is a deployment input, not an executable route and not proof that any contrac
 `npm run check:public-testnet-route` revalidates its primary-source provenance and finalized onchain
 state without a key or write transaction.
 
-| Role                        | Network / reviewed value                                                                                                                                  |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source                      | Official Aave V3 on Ethereum Sepolia, chain `11155111`                                                                                                    |
-| Aave address-book pin       | Commit `b8c801a413c4b934afaf7976d2ddc5fbada6dce6`, module SHA-256 `a9f66b5f399a2152c143516ea5d93ca2376f0f98e6dd9737913fa1e32414fe75`                      |
-| Source pool / data provider | `0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951` / `0x3e9708d80f7B3e43118013075F7e95CE3AB31F31`                                                               |
-| Source WETH collateral      | `0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c`; aToken `0x5b071b590a59395fE4025A0Ccc1FcC931AAc1830`                                                         |
-| Source USDC debt            | Aave test USDC `0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8`; variable debt `0x36B5dE936eF1710E1d22EabE5231b28581a92ECc`                                   |
-| Destination                 | Base Sepolia, chain `84532`; DebtShift-operated canonical-source Morpho                                                                                   |
-| Destination WETH            | Base WETH9 predeploy `0x4200000000000000000000000000000000000006`                                                                                         |
-| Destination USDC            | Circle test USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`                                                                                             |
-| Collateral feed             | Chainlink ETH/USD `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1`; published heartbeat `1200s`; enforced maximum age `3600s`                                 |
-| Loan feed                   | Chainlink USDC/USD `0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165`; published heartbeat `86400s`; enforced maximum age `90000s`                              |
-| Sequencer policy            | `null`, grace `0`: Chainlink's current sequencer-feed directory does not list Base Sepolia. Revalidation fails if that changes and requires a new review. |
-| Market parameters           | LLTV `800000000000000000` (`80%`); minimum seed liquidity `10000000` USDC base units (`10` test USDC)                                                     |
+| Role                          | Network / reviewed value                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source                        | Official Aave V3 on Ethereum Sepolia, chain `11155111`                                                                                                    |
+| Aave address-book pin         | Commit `b8c801a413c4b934afaf7976d2ddc5fbada6dce6`, module SHA-256 `a9f66b5f399a2152c143516ea5d93ca2376f0f98e6dd9737913fa1e32414fe75`                      |
+| Source pool / data provider   | `0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951` / `0x3e9708d80f7B3e43118013075F7e95CE3AB31F31`                                                               |
+| Source WETH collateral        | `0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c`; aToken `0x5b071b590a59395fE4025A0Ccc1FcC931AAc1830`                                                         |
+| Source USDC debt              | Aave test USDC `0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8`; variable debt `0x36B5dE936eF1710E1d22EabE5231b28581a92ECc`                                   |
+| Source ETH/USD planning feed  | Official Chainlink Sepolia `0x694AA1769357215DE4FAC081bf1f309aDC325306`; published heartbeat `3600s`; enforced maximum age `10800s`                       |
+| Source USDC/USD planning feed | Official Chainlink Sepolia `0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E`; published heartbeat `86400s`; enforced maximum age `90000s`                      |
+| Destination                   | Base Sepolia, chain `84532`; DebtShift-operated canonical-source Morpho                                                                                   |
+| Destination WETH              | Base WETH9 predeploy `0x4200000000000000000000000000000000000006`                                                                                         |
+| Destination USDC              | Circle test USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`                                                                                             |
+| Collateral feed               | Chainlink ETH/USD `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1`; published heartbeat `1200s`; enforced maximum age `3600s`                                 |
+| Loan feed                     | Chainlink USDC/USD `0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165`; published heartbeat `86400s`; enforced maximum age `90000s`                              |
+| Sequencer policy              | `null`, grace `0`: Chainlink's current sequencer-feed directory does not list Base Sepolia. Revalidation fails if that changes and requires a new review. |
+| Market parameters             | LLTV `800000000000000000` (`80%`); minimum seed liquidity `10000000` USDC base units (`10` test USDC)                                                     |
 
 The source Aave USDC and destination Circle USDC are different testnet contracts. The route labels
 them as chain-specific, no-value test representations of the same economic debt unit; it never
@@ -84,10 +86,12 @@ remains explicitly simulated, while its source escrow and destination delivery m
 public-chain token transactions.
 
 Primary sources are pinned or re-read from Aave's official address-book API, Base contract docs,
-Circle's USDC address page, and Chainlink's official feed and sequencer directories. Do not replace
-an address from a blog, chat, explorer search, or remembered value. Every deployment window must
-rerun the validator and preserve its blocks, hashes, code hashes, metadata, rounds, and response
-hashes.
+Circle's USDC address page, and Chainlink's official Ethereum/Base Sepolia feed and sequencer
+directories. The Aave address-book `ORACLE` entries are Aave price-source contracts, not
+AggregatorV3 planning feeds; the executable route therefore uses the separately pinned official
+Chainlink Sepolia proxies above. Do not replace an address from a blog, chat, explorer search, or
+remembered value. Every deployment window must rerun the validator and preserve its blocks, hashes,
+code hashes, metadata, rounds, and response hashes.
 
 ## Irreversible-action boundary
 
@@ -237,10 +241,28 @@ Set `MORPHO_DEPLOYMENT_MANIFEST_PATH`, `DESTINATION_RPC_URL`, optionally
 - zero remaining deployer token allowance;
 - preserved seed supply shares and the configured current available-liquidity floor.
 
-After deployment, derive and commit the executable public-testnet route configuration using only
-the dependency candidate, manifested Morpho addresses, and current official Aave source data. Then
-deploy the seven DebtShift EVM contracts with `20-evm-deployment.md`. The production worker in
-`testnet` mode requires both:
+### Deterministic executable route generation
+
+After deployment, generate the executable public-testnet route rather than assembling it manually:
+
+```text
+MORPHO_DEPLOYMENT_MANIFEST_PATH=<new Morpho manifest> npm run generate:public-testnet-route
+```
+
+The generator requires clean tracked source files and a Morpho manifest whose `sourceCommit` equals
+the current commit. It opens the output path exclusively, defaults to
+`config/routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.v1.json`, and fails closed on any
+route ID, dependency hash, chain, token, decimals, feed, independent maximum age, sequencer policy,
+market, oracle, IRM, LLTV, or minimum-liquidity mismatch.
+
+Only risk/analytics policy comes from the separately reviewed, write-disabled file
+`config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.policy.v1.json`. The
+generated testnet route deliberately omits 1Click `providerAssetId` values because no official
+testnet provider catalog exists and the simulated boundary does not consume them. Mainnet-readonly
+and mainnet startup continue to require real provider asset IDs for all four route assets.
+
+Review and commit the generated route, then deploy the seven DebtShift EVM contracts with
+`20-evm-deployment.md`. The production worker in `testnet` mode requires both:
 
 - `EVM_DEPLOYMENT_MANIFEST_PATH`; and
 - `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH`.

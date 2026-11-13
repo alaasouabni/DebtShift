@@ -393,11 +393,12 @@ This file is updated throughout implementation. It is the first place to inspect
   dependency file is
   `config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json`,
   route ID `ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue-weth-usdc-v1`, with byte-exact
-  Keccak-256 `0x323c89c5a9ee623eba0087e9ad25fe45b146d91bbaf073d03ab90c13125939ca`.
-- **Oracle policy:** Base Sepolia ETH/USD uses a `3600`-second maximum age and USDC/USD uses a
-  separate `90000`-second maximum age. The checked official Chainlink sequencer directory does not
-  list Base Sepolia, so version 1 requires a null sequencer feed and zero grace period; any change
-  requires a new reviewed dependency version.
+  Keccak-256 `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`.
+- **Oracle policy:** Ethereum Sepolia planning reads use the official Chainlink ETH/USD and USDC/USD
+  proxies with independent `10800`/`90000`-second maximum ages. Base Sepolia ETH/USD and USDC/USD
+  use separate `3600`/`90000`-second maximum ages. The checked official Chainlink sequencer
+  directory does not list Base Sepolia, so version 1 requires a null sequencer feed and zero grace
+  period; any change requires a new reviewed dependency version.
 - **Asset boundary:** Source Aave test USDC and destination Circle test USDC are distinct no-value
   test representations. The route does not claim a native bridge or identical issuer contract. The
   unavailable provider boundary remains simulated, while source custody and destination delivery
@@ -427,6 +428,31 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Public-testnet source feeds and deterministic route generation hardened
+
+- The post-deployment audit found that the dependency candidate pinned Aave's per-asset oracle
+  source contracts but did not yet pin AggregatorV3 planning feeds for the executable route. Those
+  Aave source contracts reject the Chainlink feed interface and cannot safely back live planning.
+- Added official Chainlink Ethereum Sepolia ETH/USD
+  (`0x694AA1769357215DE4FAC081bf1f309aDC325306`) and USDC/USD
+  (`0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E`) registry bindings, published heartbeats, independent
+  `10800`/`90000`-second maximum ages, finalized-block round validation, and response hashes. The
+  byte-exact dependency hash is now
+  `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`.
+- Added the reviewed write-disabled route-policy file and `npm run generate:public-testnet-route`.
+  After canonical Morpho deployment, the generator exclusively creates the executable route from
+  the exact dependency file, the source-commit-bound Morpho manifest, and the policy file. It
+  rejects drift in route/hash/chain/token/feed/age/sequencer/market/oracle/IRM/LLTV/liquidity
+  bindings and reports the derived route configuration hash.
+- Testnet routes now omit unavailable 1Click provider asset IDs instead of inventing testnet
+  catalog values. Environment validation continues to require all four official provider asset IDs
+  in `mainnet-readonly` and `mainnet` modes.
+- Evidence passes the complete repository gate, including 119 domain tests and all package
+  lint/type/test/build jobs, seven EVM/Morpho deployment integration tests, four oracle tests under
+  checksum-verified Foundry 1.9.0, and the live dependency validator at finalized Ethereum Sepolia
+  block `12127052` and Base Sepolia block `58318762`. No transaction, token movement, provider
+  request, registry write, or external deployment occurred.
 
 ### 2026-11-13 - Public-testnet route dependencies frozen and deployment chain hardened
 

@@ -14,7 +14,7 @@ export const liveTokenConfigurationSchema = z
     address: evmAddressSchema,
     decimals: tokenDecimalsSchema,
     symbol: z.string().trim().min(1).max(32),
-    providerAssetId: canonicalTextSchema,
+    providerAssetId: canonicalTextSchema.optional(),
   })
   .strict();
 

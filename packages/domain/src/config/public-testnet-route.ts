@@ -61,6 +61,12 @@ export const publicTestnetRouteDependenciesSchema = z
             moduleBytes: z.number().int().positive(),
           })
           .strict(),
+        references: z
+          .object({
+            chainlinkDirectoryUrl: httpsUrlSchema,
+            chainlinkRegistryUrl: httpsUrlSchema,
+          })
+          .strict(),
         pool: evmAddressSchema,
         poolAddressesProvider: evmAddressSchema,
         dataProvider: evmAddressSchema,
@@ -68,6 +74,8 @@ export const publicTestnetRouteDependenciesSchema = z
         faucet: evmAddressSchema,
         collateralAsset: aaveAssetSchema,
         debtAsset: aaveAssetSchema,
+        collateralFeed: chainlinkFeedSchema,
+        debtFeed: chainlinkFeedSchema,
       })
       .strict(),
     destination: z
@@ -134,6 +142,13 @@ export const publicTestnetRouteDependenciesSchema = z
         code: 'custom',
         message: 'Destination collateral and loan feeds must differ.',
         path: ['destination'],
+      });
+    }
+    if (route.source.collateralFeed.address === route.source.debtFeed.address) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Source collateral and debt feeds must differ.',
+        path: ['source'],
       });
     }
   });

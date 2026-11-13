@@ -18,7 +18,9 @@ requires a later exposure review, borrower signatures, and separate final author
 
 The exact canonical-source, funded-market deployment and attestation procedure is defined in
 `21-public-testnet-morpho-deployment.md`. Complete its read-only readiness gate before using its
-manifested market in this runbook.
+manifested market in this runbook. Then run `npm run generate:public-testnet-route` with that exact
+Morpho manifest and use the exclusively created output as `LIVE_MARKET_CONFIG_PATH`; do not copy
+addresses or invent testnet 1Click asset IDs by hand.
 
 ## Accounts and inputs
 
@@ -71,7 +73,8 @@ liquidity funding, borrower approval, a 1Click deposit, a refinance, or any othe
    identities. Confirm Morpho returns the exact configured market parameters and market ID.
    On testnet, rerun `npm run check:public-testnet-route` and
    `npm run check:testnet-morpho-deployment`; the EVM deployer independently verifies the same
-   Morpho manifest and dependency-file hash before broadcasting.
+   Morpho manifest, dependency-file hash, source/destination planning feeds and ages, and null
+   sequencer policy before broadcasting.
 6. Select a brand-new durable `DEPLOYMENT_MANIFEST_PATH`. The deployer creates it exclusively before
    the first deployment transaction; an existing path causes a pre-broadcast failure.
 7. Keep the application stopped or in `mainnet-readonly`. Do not enable queue consumption against an

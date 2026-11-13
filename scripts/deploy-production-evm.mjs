@@ -299,6 +299,44 @@ function assertTestnetDependencyBindings(dependency, route, sourceChainId, desti
   ) {
     throw new Error('Morpho oracle feeds do not match the reviewed testnet dependencies.');
   }
+  const priceBindings = [
+    [
+      'source collateral price',
+      route.prices.sourceCollateralUsd,
+      routeDependencies.source.collateralFeed,
+    ],
+    ['source debt price', route.prices.sourceDebtUsd, routeDependencies.source.debtFeed],
+    ['source native price', route.prices.sourceNativeUsd, routeDependencies.source.collateralFeed],
+    [
+      'destination collateral price',
+      route.prices.destinationCollateralUsd,
+      routeDependencies.destination.collateralFeed,
+    ],
+    [
+      'destination debt price',
+      route.prices.destinationDebtUsd,
+      routeDependencies.destination.loanFeed,
+    ],
+    [
+      'destination native price',
+      route.prices.destinationNativeUsd,
+      routeDependencies.destination.collateralFeed,
+    ],
+  ];
+  for (const [label, actual, expected] of priceBindings) {
+    if (
+      actual.address.toLowerCase() !== expected.address.toLowerCase() ||
+      actual.maximumAgeSeconds !== expected.maximumAgeSeconds
+    ) {
+      throw new Error(`${label} does not match the reviewed testnet dependencies.`);
+    }
+  }
+  if (
+    route.source.sequencerUptimeFeed !== undefined ||
+    route.destination.sequencerUptimeFeed !== undefined
+  ) {
+    throw new Error('Testnet route sequencer policy does not match the reviewed dependencies.');
+  }
   if (
     morphoManifest.market.lltv !== routeDependencies.destination.lltv ||
     morphoManifest.feeds.collateralMaxPriceAgeSeconds !==
