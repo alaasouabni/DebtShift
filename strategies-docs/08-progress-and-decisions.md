@@ -1449,6 +1449,26 @@ operative source of truth.
 - Focused type checks and tests pass with 9 agent/security tests, 4 web tests, and 25 API tests.
   This closes the two credential/payload definition-of-done items and mitigates R-26 and R-28.
 
+### 2026-11-13 - Completion now requires exact final NEAR registry state
+
+- Strengthened the production registry adapter so a successful write response is never enough to
+  emit `NEAR_RECEIPT`. It re-reads the complete attestation set from final NEAR state and requires an
+  exact match to every active finalized durable evidence record before finalizing the agreement.
+- Replays of an already-finalized agreement now verify the same immutable attestation set rather
+  than trusting the receipt hash alone. Missing, unexpected, duplicate, or conflicting attestations
+  reject completion without attempting another registry write.
+- After finalization, the worker re-reads the agreement and receipt independently, verifies the
+  signed intent/plan/actor/network bindings, exact attestation count, matching receipt views,
+  `COMPLETED` terminal status, and the locally recomputed receipt-bundle hash.
+- Added adversarial tests for an acknowledged attestation write that never appears in final state
+  and an immutable receipt whose registered set is incomplete. Both remain fail-closed; the focused
+  registry suite passes all five cases and the worker type check passes.
+- The complete repository gate passes OpenAPI drift, formatting, lint, all ten package type checks,
+  75 worker tests, every other package suite, and all ten production builds.
+- This closes the code-level `COMPLETED`/NEAR registration definition-of-done item. The separate
+  external requirement to deploy the registry and preserve a matching NEAR testnet receipt remains
+  open until funded testnet credentials are available.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

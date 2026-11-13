@@ -20,25 +20,23 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `06504e3`.
+- Previous remote checkpoint before this handoff: `d527bf6`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. A strict display-only remote explanation schema and explicit field copier that drops runtime
-   additions instead of forwarding nested optimizer objects by reference.
-2. Aggregate economics, safety, financing, rejection, and timestamp fields only; no addresses,
-   chain IDs, hashes, migration/evidence IDs, escrow/refund receivers, authorization, session, or
-   signature data reaches the provider body.
-3. Header-only user credential handling with failure-path tests proving credential-bearing provider
-   errors are neither logged nor returned and that the explanation module has no persistence or
-   telemetry sink.
-4. Static API and browser architecture guards preventing the credential path from acquiring
-   PostgreSQL/Redis/logging/telemetry dependencies or browser persistence/cookie/analytics sinks.
-5. Closure of the two remaining agent/data-source security definition-of-done items and mitigation
-   of risks R-26 and R-28.
+1. Exact-set verification of every durable attestation after it is written to the NEAR registry and
+   before the agreement may be finalized.
+2. The same immutable attestation verification on replay of an already-finalized agreement, with no
+   attempt to repair or write after finalization.
+3. Independent final-block agreement and receipt readbacks whose signed bindings, count, receipt
+   views, terminal status, and locally recomputed bundle hash must agree.
+4. Adversarial coverage proving an acknowledged-but-absent attestation and an incomplete immutable
+   final agreement cannot emit `NEAR_RECEIPT` or advance the workflow to `COMPLETED`.
+5. Closure of the code-level completion/registry gate while preserving the separate external NEAR
+   testnet deployment and receipt requirement as open.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -50,7 +48,7 @@ RPC URLs or secrets.
 | Gate                                  | Result                                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds     |
-| Worker suite                          | Pass: 73 tests, including 21 durable workflows and 5 local execution-port cases        |
+| Worker suite                          | Pass: 75 tests, including absent-write and incomplete-final-state registry rejection   |
 | Domain suite                          | Pass: 97 tests, including all 15 phase entries and all 225 transition pairs            |
 | Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
 | API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
@@ -59,6 +57,7 @@ RPC URLs or secrets.
 | `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                               |
 | NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                 |
 | GitHub quality run `43400476244`      | Pass: TypeScript, EVM, NEAR, and security for phase checkpoint `06504e3`               |
+| GitHub quality run `43402193495`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `d527bf6`                |
 | `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
@@ -71,8 +70,8 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Run the full repository gate, push this pending checkpoint, and confirm CI, especially the EVM
-   deployment job and Linux NEAR sandbox test.
+1. Push the newest locally verified NEAR final-state checkpoint if needed and confirm CI, especially
+   the EVM deployment job and Linux NEAR sandbox test.
 2. Supply a trusted archival `BASE_FORK_RPC_URL` and run `npm run check:forks` on this commit.
 3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.

@@ -11,7 +11,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] One documented command runs the refund/recovery demo.
 - [x] CI runs the same build and verification commands used locally.
 - [x] No secret, production private key, or machine-specific path is committed; full-history secret
-      scanning permits only exact public deterministic Anvil fixtures.
+      scanning permits only exact public deterministic Anvil fixtures and one line-exact
+      route-binding documentation false positive.
 
 ## Product behavior
 
@@ -104,7 +105,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
       solver fee, capitalized costs, separate costs, debt prepayment, and external funding reconcile.
 - [x] Feasibility is revalidated before reservation, source closure, target borrowing, and settlement;
       a newer failure supersedes an older passing quote.
-- [ ] `COMPLETED` requires verified NEAR receipt registration.
+- [x] `COMPLETED` requires a final-block NEAR agreement and receipt readback whose signed bindings,
+      exact durable-attestation set, attestation count, terminal status, and receipt-bundle hash all
+      agree; absent, incomplete, conflicting, or non-persisted registry state remains `SETTLED`.
 
 ## NEAR registry
 

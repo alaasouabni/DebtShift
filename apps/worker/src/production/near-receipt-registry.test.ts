@@ -62,6 +62,31 @@ describe('NearReceiptRegistryPort', () => {
 
     await expect(port.finalize(context())).rejects.toThrow('signed migration bindings');
   });
+
+  it('does not finalize when an attestation write is absent from final contract state', async () => {
+    const registry = new RegistryHarness();
+    registry.dropAttestationWrites = true;
+    const port = createPort(registry.client, evidence());
+
+    await expect(port.finalize(context())).rejects.toThrow('did not persist durable evidence');
+    expect(registry.receipt).toBeNull();
+    expect(registry.client.call).not.toHaveBeenCalledWith('finalize_agreement', expect.anything());
+  });
+
+  it('rejects an immutable final receipt whose registered attestation set is incomplete', async () => {
+    const registry = new RegistryHarness();
+    const port = createPort(registry.client, evidence());
+    await port.finalize(context());
+    registry.attestations.pop();
+    if (registry.agreement === null) throw new Error('Expected a stored agreement.');
+    registry.agreement.attestation_count = registry.attestations.length;
+    const writeCount = registry.client.call.mock.calls.length;
+
+    await expect(port.finalize(context())).rejects.toThrow(
+      'Finalized NEAR agreement is missing durable evidence',
+    );
+    expect(registry.client.call).toHaveBeenCalledTimes(writeCount);
+  });
 });
 
 function createPort(client: NearRegistryClient, records: readonly Evidence[]) {
@@ -126,6 +151,7 @@ class RegistryHarness {
   agreement: Record<string, unknown> | null = null;
   readonly attestations: Array<Record<string, unknown>> = [];
   receipt: Record<string, string> | null = null;
+  dropAttestationWrites = false;
 
   readonly client = {
     view: vi.fn(async (methodName: string, args: Readonly<Record<string, unknown>>) => {
@@ -159,7 +185,7 @@ class RegistryHarness {
           verifier_id: 'verifier.testnet',
           recorded_at_ns: '1794477600000000000',
         };
-        this.attestations.push(stored);
+        if (!this.dropAttestationWrites) this.attestations.push(stored);
         if (this.agreement !== null) this.agreement.attestation_count = this.attestations.length;
         return stored;
       }

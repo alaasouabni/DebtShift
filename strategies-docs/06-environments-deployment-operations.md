@@ -140,8 +140,9 @@ The security job is fail-closed for three independently scoped checks:
   dependencies. Development-only findings remain visible to the ordinary audit and are monitored,
   but cannot be confused with the shipped dependency set.
 - Gitleaks `8.30.1` scans the complete Git history. `gitleaks.toml` extends the default rules and
-  allowlists only four exact, public deterministic Anvil fixture values; it does not exclude any
-  path or rule category.
+  allowlists only four exact, public deterministic Anvil fixture values plus one exact
+  route-binding documentation sentence that triggers the generic-key heuristic; it does not
+  exclude any path or rule category.
 - Trivy `0.76.2` scans the built runtime image for fixable high or critical OS and library findings
   and fails on any result. Unfixed upstream findings do not fail the build but must be reviewed
   before release. The same pinned scanner emits a CycloneDX runtime SBOM retained as a CI artifact.

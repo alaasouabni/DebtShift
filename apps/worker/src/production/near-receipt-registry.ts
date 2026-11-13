@@ -141,16 +141,30 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
     assertAgreementMatches(agreement, request);
 
     if (agreement.final_receipt === null) {
-      await this.#appendMissingAttestations(context.migration.migrationId, records);
+      await this.#synchronizeAttestations(context.migration.migrationId, records, true);
       await this.#client.call('finalize_agreement', {
         agreement_id: context.migration.migrationId,
         receipt_bundle_hash: receiptBundleHash,
         terminal_status: 'COMPLETED',
       });
+    } else {
+      await this.#synchronizeAttestations(context.migration.migrationId, records, false);
     }
 
+    const finalizedAgreement = await this.#getAgreement(context.migration.migrationId);
+    if (finalizedAgreement === null) throw new Error('NEAR registry agreement disappeared.');
+    assertAgreementMatches(finalizedAgreement, request);
+    if (finalizedAgreement.attestation_count !== records.length) {
+      throw new Error('NEAR registry agreement attestation count does not match durable evidence.');
+    }
+    if (finalizedAgreement.final_receipt === null) {
+      throw new Error('NEAR registry agreement was not finalized.');
+    }
     const finalReceipt = await this.#getFinalReceipt(context.migration.migrationId);
     if (finalReceipt === null) throw new Error('NEAR registry final receipt was not persisted.');
+    if (stableJson(finalizedAgreement.final_receipt) !== stableJson(finalReceipt)) {
+      throw new Error('NEAR registry receipt views do not agree.');
+    }
     assertReceiptMatches(finalReceipt, receiptBundleHash);
     return registryEvidence(context, finalReceipt, receiptBundle, this.#environment.NEAR_NETWORK);
   }
@@ -165,9 +179,10 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
     );
   }
 
-  async #appendMissingAttestations(
+  async #synchronizeAttestations(
     agreementId: string,
     records: readonly Evidence[],
+    mayAppend: boolean,
   ): Promise<void> {
     if (records.length > MAX_ATTESTATIONS) {
       throw new Error(`Receipt evidence exceeds the registry limit of ${MAX_ATTESTATIONS}.`);
@@ -176,21 +191,22 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
       records.map((record) => [record.evidenceId, attestation(record)]),
     );
     const existing = await this.#getAttestations(agreementId);
-    for (const stored of existing) {
-      const expected = inputs.get(stored.evidence_id);
-      if (expected === undefined) {
-        throw new Error(`NEAR agreement contains unexpected evidence ${stored.evidence_id}.`);
-      }
-      assertAttestationMatches(stored, expected);
-    }
+    assertStoredAttestations(existing, inputs, false);
     const existingIds = new Set(existing.map(({ evidence_id }) => evidence_id));
     for (const input of inputs.values()) {
       if (existingIds.has(input.evidence_id)) continue;
+      if (!mayAppend) {
+        throw new Error(
+          `Finalized NEAR agreement is missing durable evidence ${input.evidence_id}.`,
+        );
+      }
       await this.#client.call('append_attestation', {
         agreement_id: agreementId,
         input,
       });
     }
+    const finalized = await this.#getAttestations(agreementId);
+    assertStoredAttestations(finalized, inputs, true);
   }
 
   async #getAttestations(agreementId: string): Promise<readonly Attestation[]> {
@@ -391,6 +407,30 @@ function assertAttestationMatches(actual: Attestation, expected: AttestationInpu
   };
   if (stableJson(comparable) !== stableJson(expected)) {
     throw new Error(`NEAR attestation ${actual.evidence_id} conflicts with durable evidence.`);
+  }
+}
+
+function assertStoredAttestations(
+  actual: readonly Attestation[],
+  expected: ReadonlyMap<string, AttestationInput>,
+  requireComplete: boolean,
+): void {
+  const seen = new Set<string>();
+  for (const stored of actual) {
+    if (seen.has(stored.evidence_id)) {
+      throw new Error(`NEAR agreement contains duplicate evidence ${stored.evidence_id}.`);
+    }
+    seen.add(stored.evidence_id);
+    const input = expected.get(stored.evidence_id);
+    if (input === undefined) {
+      throw new Error(`NEAR agreement contains unexpected evidence ${stored.evidence_id}.`);
+    }
+    assertAttestationMatches(stored, input);
+  }
+  if (!requireComplete) return;
+  const missing = [...expected.keys()].filter((evidenceId) => !seen.has(evidenceId));
+  if (missing.length !== 0) {
+    throw new Error(`NEAR agreement did not persist durable evidence ${missing.join(', ')}.`);
   }
 }
 
