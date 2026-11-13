@@ -143,8 +143,11 @@ function seedSql(): string {
     VALUES ('${hash('a')}', '${hash('5')}', 1, 'MIGRATION_PHASE_ADVANCED', 'RESERVED',
             'worker', '{}', '${hash('b')}', '${NOW.toISOString()}');
     INSERT INTO recovery_cases
-      (recovery_id, migration_id, policy, status, reason, residual_assets, opened_at)
-    VALUES ('${hash('b')}', '${hash('5')}', 'MANUAL_REVIEW', 'OPEN', 'metrics fixture', '[]',
+      (recovery_id, migration_id, policy, status, reason, next_permitted_action,
+       action_deadline, escalation_owner, escalation_state, residual_assets, opened_at)
+    VALUES ('${hash('b')}', '${hash('5')}', 'MANUAL_CUSTODY_RECONCILIATION', 'OPEN',
+            'metrics fixture', 'RECONCILE_TRANSPORT_CUSTODY', '${NOW.toISOString()}',
+            'DEBTSHIFT_OPERATIONS', 'MANUAL_REVIEW_REQUIRED', '[]',
             '${new Date(NOW.getTime() - 60_000).toISOString()}');
     INSERT INTO operational_alerts
       (alert_id, migration_id, type, severity, deduplication_key, status, message,

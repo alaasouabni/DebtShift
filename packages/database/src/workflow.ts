@@ -5,6 +5,7 @@ import {
   hashCanonicalText,
   ledgerReconciliationSchema,
   phaseEvidenceFromRecords,
+  recoveryOpeningPayloadSchema,
   type Evidence,
   type MigrationPhase,
 } from '@debtshift/domain';
@@ -198,6 +199,7 @@ export async function advanceMigrationWithEvidence(
             .update(recoveryCases)
             .set({
               status: 'RESOLVED_FAILED_SAFE',
+              escalationState: 'RESOLVED_FAILED_SAFE',
               resolvedAt: new Date(parsedEvidence.observedAt),
               updatedAt: new Date(parsedEvidence.observedAt),
             })
@@ -399,6 +401,10 @@ async function openRecoveryCase(
       policy: metadata.policy,
       status: 'OPEN',
       reason: metadata.reason,
+      nextPermittedAction: metadata.nextPermittedAction,
+      actionDeadline: new Date(metadata.actionDeadline),
+      escalationOwner: metadata.escalationOwner,
+      escalationState: metadata.escalationState,
       residualAssets: metadata.residualAssets,
       openedAt: observedAt,
     })
@@ -410,6 +416,10 @@ async function openRecoveryCase(
     .set({
       policy: metadata.policy,
       reason: metadata.reason,
+      nextPermittedAction: metadata.nextPermittedAction,
+      actionDeadline: new Date(metadata.actionDeadline),
+      escalationOwner: metadata.escalationOwner,
+      escalationState: metadata.escalationState,
       residualAssets: metadata.residualAssets,
       updatedAt: observedAt,
     })
@@ -418,35 +428,8 @@ async function openRecoveryCase(
     );
 }
 
-function recoveryMetadata(record: Evidence): {
-  readonly policy: string;
-  readonly reason: string;
-  readonly residualAssets: ReadonlyArray<Record<string, unknown>>;
-} {
-  const payload = record.normalizedPayload;
-  const policy =
-    typeof payload.policy === 'string' && payload.policy.length !== 0
-      ? payload.policy
-      : 'DETERMINISTIC_RECOVERY_POLICY';
-  const reason =
-    typeof payload.reason === 'string' && payload.reason.length !== 0
-      ? payload.reason
-      : 'RECOVERY_OPENED';
-  const residualAssets = Array.isArray(payload.residualAssets)
-    ? payload.residualAssets.filter(isRecord)
-    : [];
-  return {
-    policy,
-    reason,
-    residualAssets:
-      residualAssets.length === 0
-        ? [{ kind: 'RECOVERY_EVIDENCE', normalizedPayload: payload }]
-        : residualAssets,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function recoveryMetadata(record: Evidence) {
+  return recoveryOpeningPayloadSchema.parse(record.normalizedPayload);
 }
 
 export async function publishPendingOutbox(

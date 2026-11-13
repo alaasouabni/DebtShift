@@ -613,15 +613,33 @@ export interface DebtShiftApiOperations {
           version: number;
         };
         recoveryCases: Array<{
+          actionDeadline: string;
           createdAt: string;
+          escalationOwner: string;
+          escalationState:
+            'AUTOMATED_RECOVERY_PENDING' | 'MANUAL_REVIEW_REQUIRED' | 'RESOLVED_FAILED_SAFE';
           migrationId: string;
+          nextPermittedAction:
+            | 'EXECUTE_SIGNED_RECOVERY'
+            | 'RECONCILE_TRANSPORT_CUSTODY'
+            | 'RECONCILE_TARGET_AND_PAYOUT'
+            | 'RECONCILE_SETTLEMENT'
+            | 'RECONCILE_RECOVERY_EXECUTION'
+            | 'RECONCILE_CANONICAL_STATE';
           openedAt: string;
-          policy: string;
+          policy:
+            | 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE'
+            | 'RETURN_VERIFIED_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE'
+            | 'MANUAL_CUSTODY_RECONCILIATION'
+            | 'MANUAL_TARGET_AND_PAYOUT_RECONCILIATION'
+            | 'MANUAL_SETTLEMENT_RECONCILIATION'
+            | 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION'
+            | 'HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION';
           reason: string;
           recoveryId: string;
           residualAssets: Array<{} & Record<string, unknown>>;
           resolvedAt: string | null;
-          status: string;
+          status: 'OPEN' | 'RESOLVED_FAILED_SAFE';
           updatedAt: string;
         }>;
         reservations: Array<{

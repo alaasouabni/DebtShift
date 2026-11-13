@@ -64,6 +64,12 @@ const expectedEvidenceByCommand: Readonly<Record<string, readonly (readonly Evid
   EXECUTE_RECOVERY: [['RECOVERY_COMPLETED']],
 };
 
+const expectedRetryExhaustionEvidenceByCommand: Readonly<
+  Partial<Record<string, readonly (readonly EvidenceType[])[]>>
+> = {
+  EXECUTE_RECOVERY: [['RECOVERY_OPENED']],
+};
+
 export class DurableCommandProcessor {
   constructor(
     private readonly persistence: CommandPersistence,
@@ -123,7 +129,11 @@ export class DurableCommandProcessor {
           const exhaustedEvidence =
             (await handler.onRetryExhausted?.(command, error)) ?? ([] as const);
           if (exhaustedEvidence.length > 0) {
-            this.assertEvidenceContract(command, expectedEvidence, exhaustedEvidence);
+            this.assertEvidenceContract(
+              command,
+              expectedRetryExhaustionEvidenceByCommand[command.type] ?? expectedEvidence,
+              exhaustedEvidence,
+            );
             for (const record of exhaustedEvidence) {
               const phase = await this.persistence.advance(record);
               this.log(

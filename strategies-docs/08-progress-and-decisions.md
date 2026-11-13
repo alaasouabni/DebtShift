@@ -1212,6 +1212,30 @@ operative source of truth.
 - Focused database verification passed with seven files and 19 tests, followed by database lint and
   type checks.
 
+### 2026-11-13 - Recovery responsibility and terminal escalation completed
+
+- Replaced free-form recovery metadata with a strict domain contract. Every recovery case now
+  records its typed policy, exact residual custody/receivable claims, next permitted action, action
+  deadline, escalation owner, and escalation state.
+- Added a forward-safe database migration that backfills existing recovery cases before enforcing
+  non-null columns and database checks. Automatic cases may permit only signed recovery execution;
+  manual cases cannot schedule that financial action, and resolved cases must be explicitly
+  `RESOLVED_FAILED_SAFE`. The isolated PostgreSQL recovery drill passed all 12 checked-in
+  migrations, rollback, backup/restore, pre-change recovery, and idempotent reapplication checks.
+- Classified verified refund/known-custody and post-source deterioration as automatic signed
+  recovery. Ambiguous custody, canonical-chain incidents, exhausted transport, target/payout, and
+  settlement commands require their exact manual reconciliation paths.
+- Made recovery execution failures retryable and added a final-attempt transition from
+  `AUTOMATED_RECOVERY_PENDING` to `MANUAL_RECOVERY_EXECUTION_RECONCILIATION`, preserving exact
+  collateral, solver receivable, and recovery-reserve claims without emitting false completion.
+- Added a critical, deduplicated `RECOVERY_ACTION_DEADLINE_EXCEEDED` alert with the assigned owner,
+  action, state, and overdue duration. API/OpenAPI/SDK and the borrower/operator recovery view expose
+  the responsibility fields.
+- Domain, handler, processor, database migration/workflow/alert, and dual-Anvil workflow tests pass,
+  including the injected recovery-receipt outage that remains in `RECOVERY` with a terminal command
+  and open manual case. The full repository gate passed deterministic OpenAPI generation, formatting,
+  lint, type checks, all tests (including 58 worker tests), and all production builds.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

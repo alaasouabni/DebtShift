@@ -60,6 +60,63 @@ export const evidenceVerificationStateSchema = z.enum([
   'REJECTED',
 ]);
 
+export const recoveryPolicySchema = z.enum([
+  'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+  'RETURN_VERIFIED_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+  'MANUAL_CUSTODY_RECONCILIATION',
+  'MANUAL_TARGET_AND_PAYOUT_RECONCILIATION',
+  'MANUAL_SETTLEMENT_RECONCILIATION',
+  'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+  'HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION',
+]);
+
+export const recoveryNextPermittedActionSchema = z.enum([
+  'EXECUTE_SIGNED_RECOVERY',
+  'RECONCILE_TRANSPORT_CUSTODY',
+  'RECONCILE_TARGET_AND_PAYOUT',
+  'RECONCILE_SETTLEMENT',
+  'RECONCILE_RECOVERY_EXECUTION',
+  'RECONCILE_CANONICAL_STATE',
+]);
+
+export const recoveryEscalationStateSchema = z.enum([
+  'AUTOMATED_RECOVERY_PENDING',
+  'MANUAL_REVIEW_REQUIRED',
+  'RESOLVED_FAILED_SAFE',
+]);
+
+export const recoveryCaseStatusSchema = z.enum(['OPEN', 'RESOLVED_FAILED_SAFE']);
+
+export const recoveryOpeningPayloadSchema = z
+  .object({
+    reason: canonicalTextSchema,
+    policy: recoveryPolicySchema,
+    requiresManualReview: z.boolean(),
+    nextPermittedAction: recoveryNextPermittedActionSchema,
+    actionDeadline: isoTimestampSchema,
+    escalationOwner: canonicalTextSchema,
+    escalationState: z.enum(['AUTOMATED_RECOVERY_PENDING', 'MANUAL_REVIEW_REQUIRED']),
+    residualAssets: z.array(z.record(z.string(), z.unknown())).min(1),
+  })
+  .catchall(z.unknown())
+  .superRefine((payload, context) => {
+    const manual = payload.escalationState === 'MANUAL_REVIEW_REQUIRED';
+    if (payload.requiresManualReview !== manual) {
+      context.addIssue({
+        code: 'custom',
+        path: ['requiresManualReview'],
+        message: 'Manual-review flag and escalation state must agree.',
+      });
+    }
+    if (manual === (payload.nextPermittedAction === 'EXECUTE_SIGNED_RECOVERY')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['nextPermittedAction'],
+        message: 'Only an automated recovery may permit signed recovery execution.',
+      });
+    }
+  });
+
 export const evidenceSchema = z
   .object({
     evidenceId: bytes32Schema,
@@ -416,6 +473,11 @@ export const auditEventSchema = z
 export type MigrationPhase = z.infer<typeof migrationPhaseSchema>;
 export type EvidenceType = z.infer<typeof evidenceTypeSchema>;
 export type Evidence = z.infer<typeof evidenceSchema>;
+export type RecoveryPolicy = z.infer<typeof recoveryPolicySchema>;
+export type RecoveryNextPermittedAction = z.infer<typeof recoveryNextPermittedActionSchema>;
+export type RecoveryEscalationState = z.infer<typeof recoveryEscalationStateSchema>;
+export type RecoveryCaseStatus = z.infer<typeof recoveryCaseStatusSchema>;
+export type RecoveryOpeningPayload = z.infer<typeof recoveryOpeningPayloadSchema>;
 export type Migration = z.infer<typeof migrationSchema>;
 export type Command = z.infer<typeof commandSchema>;
 export type LedgerCategory = z.infer<typeof ledgerCategorySchema>;

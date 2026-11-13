@@ -180,6 +180,29 @@ describe('durable command processor', () => {
     expect(store.complete).not.toHaveBeenCalled();
   });
 
+  it('persists manual escalation when automated recovery exhausts without treating its opening as completion', async () => {
+    const store = persistence({
+      begin: vi.fn(async () => command('EXECUTE_RECOVERY')),
+      hasEvidence: vi.fn(async (_migrationId, type) => type === 'RECOVERY_OPENED'),
+    });
+    const error = new RetryableCommandError('Recovery receipt unavailable');
+    const escalation = evidence('RECOVERY_OPENED');
+    const execute = vi.fn(async () => Promise.reject(error));
+    const onRetryExhausted = vi.fn(async () => [escalation]);
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([['EXECUTE_RECOVERY', { execute, onRetryExhausted }]]),
+    );
+
+    await processor.process(envelope(), true);
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(onRetryExhausted).toHaveBeenCalledOnce();
+    expect(store.advance).toHaveBeenCalledWith(escalation);
+    expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, false);
+    expect(store.complete).not.toHaveBeenCalled();
+  });
+
   it('fails terminally when a handler violates its evidence contract', async () => {
     const store = persistence();
     const processor = new DurableCommandProcessor(

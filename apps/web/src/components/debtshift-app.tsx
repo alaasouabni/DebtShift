@@ -197,6 +197,10 @@ interface MigrationRecoveryCase {
   readonly policy: string;
   readonly status: string;
   readonly reason: string;
+  readonly nextPermittedAction: string;
+  readonly actionDeadline: string;
+  readonly escalationOwner: string;
+  readonly escalationState: string;
   readonly residualAssets: readonly Record<string, unknown>[];
   readonly openedAt: string;
   readonly resolvedAt: string | null;
@@ -1067,6 +1071,13 @@ function AuditAndRecoveryRecords({ migration }: { readonly migration: MigrationD
           <span>{humanize(recovery.status)}</span>
           <strong>{humanize(recovery.policy)}</strong>
           <p>{recovery.reason}</p>
+          <p>
+            {humanize(recovery.escalationState)} · next: {humanize(recovery.nextPermittedAction)}
+          </p>
+          <p>
+            Owner: {humanize(recovery.escalationOwner)} · deadline:{' '}
+            {formatDateTime(recovery.actionDeadline)}
+          </p>
           <ul>
             {recovery.residualAssets.map((asset, index) => (
               <li key={`${recovery.recoveryId}-${index}`}>{describeResidualAsset(asset)}</li>

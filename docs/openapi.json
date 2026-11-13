@@ -2342,13 +2342,40 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "actionDeadline": {
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                            "type": "string"
+                          },
                           "createdAt": {
                             "format": "date-time",
                             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
                             "type": "string"
                           },
+                          "escalationOwner": {
+                            "type": "string"
+                          },
+                          "escalationState": {
+                            "enum": [
+                              "AUTOMATED_RECOVERY_PENDING",
+                              "MANUAL_REVIEW_REQUIRED",
+                              "RESOLVED_FAILED_SAFE"
+                            ],
+                            "type": "string"
+                          },
                           "migrationId": {
                             "pattern": "^0x[0-9a-fA-F]{64}$",
+                            "type": "string"
+                          },
+                          "nextPermittedAction": {
+                            "enum": [
+                              "EXECUTE_SIGNED_RECOVERY",
+                              "RECONCILE_TRANSPORT_CUSTODY",
+                              "RECONCILE_TARGET_AND_PAYOUT",
+                              "RECONCILE_SETTLEMENT",
+                              "RECONCILE_RECOVERY_EXECUTION",
+                              "RECONCILE_CANONICAL_STATE"
+                            ],
                             "type": "string"
                           },
                           "openedAt": {
@@ -2357,6 +2384,15 @@
                             "type": "string"
                           },
                           "policy": {
+                            "enum": [
+                              "RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE",
+                              "RETURN_VERIFIED_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE",
+                              "MANUAL_CUSTODY_RECONCILIATION",
+                              "MANUAL_TARGET_AND_PAYOUT_RECONCILIATION",
+                              "MANUAL_SETTLEMENT_RECONCILIATION",
+                              "MANUAL_RECOVERY_EXECUTION_RECONCILIATION",
+                              "HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION"
+                            ],
                             "type": "string"
                           },
                           "reason": {
@@ -2389,6 +2425,7 @@
                             ]
                           },
                           "status": {
+                            "enum": ["OPEN", "RESOLVED_FAILED_SAFE"],
                             "type": "string"
                           },
                           "updatedAt": {
@@ -2403,6 +2440,10 @@
                           "policy",
                           "status",
                           "reason",
+                          "nextPermittedAction",
+                          "actionDeadline",
+                          "escalationOwner",
+                          "escalationState",
                           "residualAssets",
                           "openedAt",
                           "resolvedAt",

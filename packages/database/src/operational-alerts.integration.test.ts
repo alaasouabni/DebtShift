@@ -45,7 +45,7 @@ describe('durable operational alert scan', () => {
     } as const;
 
     const first = await scanOperationalAlerts(database, policy, NOW);
-    expect(first.openedCount).toBe(17);
+    expect(first.openedCount).toBe(18);
     expect(first.resolvedCount).toBe(0);
     expect(first.active.map(({ type }) => type)).toEqual([
       'ACCOUNTING_IMBALANCE',
@@ -57,6 +57,7 @@ describe('durable operational alert scan', () => {
       'FEASIBILITY_EXPIRED',
       'NEAR_RECEIPT_MISMATCH',
       'POST_DELIVERY_PAYOUT_FAILURE',
+      'RECOVERY_ACTION_DEADLINE_EXCEEDED',
       'RESERVATION_SHORTFALL',
       'SETTLED_LEDGER_MISSING',
       'SOLVER_EXPOSURE_OUTSTANDING',
@@ -75,13 +76,24 @@ describe('durable operational alert scan', () => {
         mismatchReasons: ['DESTINATION_BALANCE_EVIDENCE_MISMATCH'],
       },
     });
+    expect(
+      first.active.find(({ type }) => type === 'RECOVERY_ACTION_DEADLINE_EXCEEDED'),
+    ).toMatchObject({
+      severity: 'CRITICAL',
+      details: {
+        nextPermittedAction: 'RECONCILE_TRANSPORT_CUSTODY',
+        escalationOwner: 'DEBTSHIFT_OPERATIONS',
+        escalationState: 'MANUAL_REVIEW_REQUIRED',
+        overdueMs: 900_000,
+      },
+    });
 
     const repeated = await scanOperationalAlerts(database, policy, NOW);
     expect(repeated).toMatchObject({ openedCount: 0, resolvedCount: 0 });
     const openRows = await postgres.query<{ count: number | string }>(
       `SELECT count(*) FROM operational_alerts WHERE status = 'OPEN'`,
     );
-    expect(Number(openRows.rows[0]?.count)).toBe(17);
+    expect(Number(openRows.rows[0]?.count)).toBe(18);
 
     const expired = await scanOperationalAlerts(
       database,
@@ -108,11 +120,11 @@ describe('durable operational alert scan', () => {
       WHERE migration_id IN ('${hash('5')}', '${hash('6')}');
     `);
     const resolved = await scanOperationalAlerts(database, policy, NOW);
-    expect(resolved).toMatchObject({ openedCount: 0, resolvedCount: 17, active: [] });
+    expect(resolved).toMatchObject({ openedCount: 0, resolvedCount: 18, active: [] });
     const resolvedRows = await postgres.query<{ count: number | string }>(
       `SELECT count(*) FROM operational_alerts WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL`,
     );
-    expect(Number(resolvedRows.rows[0]?.count)).toBe(17);
+    expect(Number(resolvedRows.rows[0]?.count)).toBe(18);
   });
 });
 
@@ -170,10 +182,13 @@ function seedSql(): string {
       'FAILED_TERMINAL', 4, '{}', '${hash('e')}', 'provider response invalid',
       '2026-11-13T02:00:00.000Z', '2026-11-13T02:59:00.000Z');
     INSERT INTO recovery_cases
-      (recovery_id, migration_id, policy, status, reason, residual_assets, opened_at,
+      (recovery_id, migration_id, policy, status, reason, next_permitted_action,
+       action_deadline, escalation_owner, escalation_state, residual_assets, opened_at,
        created_at, updated_at)
     VALUES ('${hash('f')}', '${hash('5')}', 'MANUAL_CUSTODY_RECONCILIATION', 'OPEN',
-      'UNKNOWN_PROVIDER_STATE', '[]', '2026-11-13T02:00:00.000Z',
+      'UNKNOWN_PROVIDER_STATE', 'RECONCILE_TRANSPORT_CUSTODY',
+      '2026-11-13T02:45:00.000Z', 'DEBTSHIFT_OPERATIONS', 'MANUAL_REVIEW_REQUIRED', '[]',
+      '2026-11-13T02:00:00.000Z',
       '2026-11-13T02:00:00.000Z', '2026-11-13T02:40:00.000Z');
     INSERT INTO evidence
       (evidence_id, migration_id, type, schema_version, provider, network, chain_id,

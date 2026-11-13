@@ -1,4 +1,10 @@
-import type { PersistedTargetLendingAuthorization } from '@debtshift/domain';
+import type {
+  PersistedTargetLendingAuthorization,
+  RecoveryCaseStatus,
+  RecoveryEscalationState,
+  RecoveryNextPermittedAction,
+  RecoveryPolicy,
+} from '@debtshift/domain';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -686,9 +692,17 @@ export const recoveryCases = pgTable(
     migrationId: bytes32('migration_id')
       .notNull()
       .references(() => migrations.migrationId),
-    policy: varchar('policy', { length: 128 }).notNull(),
-    status: varchar('status', { length: 64 }).notNull(),
+    policy: varchar('policy', { length: 128 }).$type<RecoveryPolicy>().notNull(),
+    status: varchar('status', { length: 64 }).$type<RecoveryCaseStatus>().notNull(),
     reason: text('reason').notNull(),
+    nextPermittedAction: varchar('next_permitted_action', { length: 96 })
+      .$type<RecoveryNextPermittedAction>()
+      .notNull(),
+    actionDeadline: timestamp('action_deadline', { withTimezone: true, mode: 'date' }).notNull(),
+    escalationOwner: varchar('escalation_owner', { length: 128 }).notNull(),
+    escalationState: varchar('escalation_state', { length: 64 })
+      .$type<RecoveryEscalationState>()
+      .notNull(),
     residualAssets: jsonb('residual_assets')
       .$type<ReadonlyArray<Record<string, unknown>>>()
       .notNull(),
@@ -697,7 +711,18 @@ export const recoveryCases = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (table) => [unique('recovery_cases_migration_unique').on(table.migrationId)],
+  (table) => [
+    unique('recovery_cases_migration_unique').on(table.migrationId),
+    index('recovery_cases_escalation_idx').on(table.escalationState, table.actionDeadline),
+    check(
+      'recovery_cases_action_state_consistent',
+      sql`(${table.escalationState} = 'AUTOMATED_RECOVERY_PENDING' AND ${table.nextPermittedAction} = 'EXECUTE_SIGNED_RECOVERY') OR (${table.escalationState} = 'MANUAL_REVIEW_REQUIRED' AND ${table.nextPermittedAction} <> 'EXECUTE_SIGNED_RECOVERY') OR ${table.escalationState} = 'RESOLVED_FAILED_SAFE'`,
+    ),
+    check(
+      'recovery_cases_status_state_consistent',
+      sql`(${table.status} = 'OPEN' AND ${table.escalationState} <> 'RESOLVED_FAILED_SAFE') OR (${table.status} = 'RESOLVED_FAILED_SAFE' AND ${table.escalationState} = 'RESOLVED_FAILED_SAFE')`,
+    ),
+  ],
 );
 
 export const operationalAlerts = pgTable(

@@ -235,3 +235,73 @@ describe('initial PostgreSQL migration', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('recovery responsibility forward migration', () => {
+  it('normalizes and backfills a legacy recovery case before enforcing constraints', async () => {
+    const database = new PGlite();
+    try {
+      const recoveryMigration = migrationFiles.at(-1);
+      if (recoveryMigration !== '0011_groovy_pete_wisdom.sql') {
+        throw new Error('Expected the recovery responsibility migration to be last.');
+      }
+      for (const migrationFile of migrationFiles.slice(0, -1)) {
+        await database.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
+      }
+      await database.exec(`
+        INSERT INTO wallets (wallet_id, chain_id, address, account_type)
+        VALUES ('00000000-0000-0000-0000-000000000001', 31337,
+          '0xa1d79dfa76e98d5e8a776114d9524c4b6e888daa', 'EOA');
+        INSERT INTO intents (intent_hash, wallet_id, nonce, expiration, payload, signature)
+        VALUES ('${hash('1')}', '00000000-0000-0000-0000-000000000001', 1,
+          2000000000, '{}', '0x00');
+        INSERT INTO execution_plans
+          (plan_hash, migration_id, intent_hash, nonce, deadline, route_hash, payload, signature)
+        VALUES ('${hash('2')}', '${hash('5')}', '${hash('1')}', 2, 1999999999,
+          '${hash('6')}', '{}', '0x00');
+        INSERT INTO provider_quotes
+          (quote_hash, quote_id, provider, mode, amount_in_units, expected_amount_out_units,
+           minimum_amount_out_units, payload, raw_response_hash, expires_at)
+        VALUES ('${hash('3')}', 'legacy-recovery', 'DEBTSHIFT_SIMULATOR', 'SIMULATED',
+          100, 99, 98, '{}', '${hash('4')}', now() + interval '1 hour');
+        INSERT INTO migrations
+          (migration_id, intent_hash, plan_hash, quote_hash, phase, expires_at)
+        VALUES ('${hash('5')}', '${hash('1')}', '${hash('2')}', '${hash('3')}', 'RECOVERY',
+          now() + interval '1 hour');
+        INSERT INTO recovery_cases
+          (recovery_id, migration_id, policy, status, reason, residual_assets, opened_at)
+        VALUES ('${hash('7')}', '${hash('5')}', 'DETERMINISTIC_RECOVERY_POLICY', 'OPEN',
+          'TRANSPORT_REFUNDED', '[{"kind":"TRANSPORT_CUSTODY"}]',
+          '2026-11-13T07:00:00.000Z');
+      `);
+
+      await database.exec(readFileSync(`${migrationsDirectory}/${recoveryMigration}`, 'utf8'));
+
+      const migrated = await database.query<{
+        policy: string;
+        next_permitted_action: string;
+        action_deadline: Date | string;
+        escalation_owner: string;
+        escalation_state: string;
+      }>(`
+        SELECT policy, next_permitted_action, action_deadline, escalation_owner, escalation_state
+        FROM recovery_cases
+      `);
+      expect(migrated.rows[0]).toEqual({
+        policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        next_permitted_action: 'EXECUTE_SIGNED_RECOVERY',
+        action_deadline: new Date('2026-11-13T07:00:00.000Z'),
+        escalation_owner: 'DEBTSHIFT_WORKER',
+        escalation_state: 'AUTOMATED_RECOVERY_PENDING',
+      });
+      await expect(
+        database.exec(`
+          UPDATE recovery_cases
+          SET escalation_state = 'MANUAL_REVIEW_REQUIRED'
+          WHERE recovery_id = '${hash('7')}'
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
+});

@@ -182,7 +182,13 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Add transport polling with strict unknown-status behavior.
 - [x] Add destination balance and receipt reconciliation.
 - [x] Add retry budgets and deadline-aware scheduling.
-- [ ] Add each recovery policy and operator escalation state.
+- [x] Add each recovery policy and operator escalation state.
+  - [x] Every recovery opening records a typed policy, exact residual assets, the single next
+        permitted action, action deadline, escalation owner, and either automated-pending or
+        manual-review-required state; failed-safe resolution is a separate terminal state.
+  - [x] Unknown/canonical custody, target-and-payout, settlement, and exhausted automated-recovery
+        branches stop financial automation and name the exact manual reconciliation action.
+  - [x] Crossing a recorded recovery-action deadline opens a deterministic critical operator alert.
   - [x] Persist final queue-attempt exhaustion terminally; transport exhaustion opens manual custody
         reconciliation, atomic target/payout exhaustion opens manual target reconciliation, and
         post-payout settlement exhaustion opens exact manual receivable/reserve reconciliation.

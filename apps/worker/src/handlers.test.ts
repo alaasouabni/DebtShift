@@ -120,7 +120,7 @@ describe('simulated workflow handlers', () => {
       outcome: 'REFUNDED',
     });
     const context = await buildContext(simulator, true);
-    const store = new MemoryContextStore(context);
+    const store = settlementStore(context);
     const execution = fakeExecution();
     const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
@@ -130,6 +130,13 @@ describe('simulated workflow handlers', () => {
 
     expect(execution.deliverDestination).not.toHaveBeenCalled();
     expect(records.map((record) => record.type)).toEqual(['RECOVERY_OPENED']);
+    expect(records[0]?.normalizedPayload).toEqual(
+      expect.objectContaining({
+        nextPermittedAction: 'EXECUTE_SIGNED_RECOVERY',
+        escalationOwner: 'DEBTSHIFT_WORKER',
+        escalationState: 'AUTOMATED_RECOVERY_PENDING',
+      }),
+    );
     expect(store.updates[0]).toEqual(
       expect.objectContaining({
         providerState: 'REFUNDED',
@@ -144,7 +151,7 @@ describe('simulated workflow handlers', () => {
       now: () => 2_000_000_000_000,
     });
     const context = await buildContext(simulator, true, '1900000000');
-    const store = new MemoryContextStore(context);
+    const store = settlementStore(context);
     const execution = fakeExecution();
     const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
@@ -202,6 +209,9 @@ describe('simulated workflow handlers', () => {
         reason: 'TRANSPORT_DISPATCH_RETRY_BUDGET_EXHAUSTED',
         policy: 'MANUAL_CUSTODY_RECONCILIATION',
         requiresManualReview: true,
+        nextPermittedAction: 'RECONCILE_TRANSPORT_CUSTODY',
+        escalationOwner: 'DEBTSHIFT_OPERATIONS',
+        escalationState: 'MANUAL_REVIEW_REQUIRED',
         residualAssets: expect.arrayContaining([
           expect.objectContaining({
             kind: 'TRANSPORT_COLLATERAL',
@@ -223,7 +233,7 @@ describe('simulated workflow handlers', () => {
       now: () => 2_000_000_000_000,
     });
     const context = await buildContext(simulator, true, '1900000000');
-    const store = new MemoryContextStore(context);
+    const store = settlementStore(context);
     const execution = fakeExecution();
     const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
@@ -235,7 +245,12 @@ describe('simulated workflow handlers', () => {
     expect(store.updates[0]).toEqual(expect.objectContaining({ providerState: 'UNKNOWN' }));
     expect(records.map((record) => record.type)).toEqual(['MIGRATION_EXPIRED', 'RECOVERY_OPENED']);
     expect(records[1]?.normalizedPayload).toEqual(
-      expect.objectContaining({ reason: 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED' }),
+      expect.objectContaining({
+        reason: 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED',
+        policy: 'MANUAL_CUSTODY_RECONCILIATION',
+        nextPermittedAction: 'RECONCILE_TRANSPORT_CUSTODY',
+        escalationState: 'MANUAL_REVIEW_REQUIRED',
+      }),
     );
   });
 
@@ -301,6 +316,8 @@ describe('simulated workflow handlers', () => {
           reason: 'TARGET_OPEN_RETRY_BUDGET_EXHAUSTED',
           policy: 'MANUAL_TARGET_AND_PAYOUT_RECONCILIATION',
           requiresManualReview: true,
+          nextPermittedAction: 'RECONCILE_TARGET_AND_PAYOUT',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
           targetAndPayoutState: 'UNCONFIRMED',
           residualAssets: expect.arrayContaining([
             expect.objectContaining({
@@ -347,6 +364,8 @@ describe('simulated workflow handlers', () => {
           reason: 'SETTLEMENT_RETRY_BUDGET_EXHAUSTED',
           policy: 'MANUAL_SETTLEMENT_RECONCILIATION',
           requiresManualReview: true,
+          nextPermittedAction: 'RECONCILE_SETTLEMENT',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
           payoutReceiver: '0x4000000000000000000000000000000000000004',
           residualAssets: expect.arrayContaining([
             expect.objectContaining({
@@ -358,6 +377,48 @@ describe('simulated workflow handlers', () => {
               debtUnits: '10050000000',
               solverPayoutUnits: '10050000000',
             }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('escalates automated recovery to manual reconciliation when its retry budget exhausts', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      executeRecovery: vi.fn(async () => {
+        throw new Error('recovery receipt unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const recoveryHandler = getHandler(handlers, 'EXECUTE_RECOVERY');
+
+    await expect(recoveryHandler.execute(command('EXECUTE_RECOVERY'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (recoveryHandler.onRetryExhausted === undefined) {
+      throw new Error('Recovery handler is missing retry-exhaustion escalation.');
+    }
+    const records = await recoveryHandler.onRetryExhausted(
+      command('EXECUTE_RECOVERY'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        type: 'RECOVERY_OPENED',
+        normalizedPayload: expect.objectContaining({
+          reason: 'AUTOMATED_RECOVERY_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+          nextPermittedAction: 'RECONCILE_RECOVERY_EXECUTION',
+          escalationOwner: 'DEBTSHIFT_OPERATIONS',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({ kind: 'DESTINATION_COLLATERAL' }),
+            expect.objectContaining({ kind: 'SOLVER_RECEIVABLE' }),
           ]),
         }),
       }),

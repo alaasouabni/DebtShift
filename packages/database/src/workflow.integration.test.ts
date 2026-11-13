@@ -268,6 +268,11 @@ describe('durable workflow and transactional outbox', () => {
       normalizedPayload: {
         reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
         policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        requiresManualReview: false,
+        nextPermittedAction: 'EXECUTE_SIGNED_RECOVERY',
+        actionDeadline: '2026-11-09T01:30:00.000Z',
+        escalationOwner: 'DEBTSHIFT_WORKER',
+        escalationState: 'AUTOMATED_RECOVERY_PENDING',
         residualAssets,
       },
       observedAt: '2026-11-09T01:02:00.000Z',
@@ -286,16 +291,63 @@ describe('durable workflow and transactional outbox', () => {
       status: string;
       reason: string;
       policy: string;
+      next_permitted_action: string;
+      action_deadline: Date | string;
+      escalation_owner: string;
+      escalation_state: string;
       residual_assets: ReadonlyArray<Record<string, unknown>>;
-    }>(`SELECT status, reason, policy, residual_assets FROM recovery_cases`);
+    }>(
+      `SELECT status, reason, policy, next_permitted_action, action_deadline,
+        escalation_owner, escalation_state, residual_assets FROM recovery_cases`,
+    );
     expect(active.rows).toEqual([
       {
         status: 'OPEN',
         reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
         policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        next_permitted_action: 'EXECUTE_SIGNED_RECOVERY',
+        action_deadline: new Date('2026-11-09T01:30:00.000Z'),
+        escalation_owner: 'DEBTSHIFT_WORKER',
+        escalation_state: 'AUTOMATED_RECOVERY_PENDING',
         residual_assets: residualAssets,
       },
     ]);
+
+    const escalated = evidenceSchema.parse({
+      ...opened,
+      evidenceId: pairHash('28'),
+      rawObservationHash: pairHash('82'),
+      normalizedPayload: {
+        reason: 'AUTOMATED_RECOVERY_RETRY_BUDGET_EXHAUSTED',
+        policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+        requiresManualReview: true,
+        nextPermittedAction: 'RECONCILE_RECOVERY_EXECUTION',
+        actionDeadline: '2026-11-09T01:30:00.000Z',
+        escalationOwner: 'DEBTSHIFT_OPERATIONS',
+        escalationState: 'MANUAL_REVIEW_REQUIRED',
+        residualAssets,
+      },
+      observedAt: '2026-11-09T01:02:30.000Z',
+      verificationMethod: 'RETRY_BUDGET_AND_DURABLE_STATE_RECONCILIATION',
+    });
+    await expect(advanceMigrationWithEvidence(database, escalated, 'worker')).resolves.toBe(
+      'RECOVERY',
+    );
+    const manual = await postgres.query<{
+      policy: string;
+      next_permitted_action: string;
+      escalation_owner: string;
+      escalation_state: string;
+    }>(
+      `SELECT policy, next_permitted_action, escalation_owner, escalation_state
+       FROM recovery_cases`,
+    );
+    expect(manual.rows[0]).toEqual({
+      policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+      next_permitted_action: 'RECONCILE_RECOVERY_EXECUTION',
+      escalation_owner: 'DEBTSHIFT_OPERATIONS',
+      escalation_state: 'MANUAL_REVIEW_REQUIRED',
+    });
 
     const completed = evidenceSchema.parse({
       ...opened,
@@ -312,10 +364,13 @@ describe('durable workflow and transactional outbox', () => {
     await expect(advanceMigrationWithEvidence(database, completed, 'worker')).resolves.toBe(
       'FAILED_SAFE',
     );
-    const resolved = await postgres.query<{ status: string; resolved_at: Date | string | null }>(
-      `SELECT status, resolved_at FROM recovery_cases`,
-    );
+    const resolved = await postgres.query<{
+      status: string;
+      escalation_state: string;
+      resolved_at: Date | string | null;
+    }>(`SELECT status, escalation_state, resolved_at FROM recovery_cases`);
     expect(resolved.rows[0]?.status).toBe('RESOLVED_FAILED_SAFE');
+    expect(resolved.rows[0]?.escalation_state).toBe('RESOLVED_FAILED_SAFE');
     expect(resolved.rows[0]?.resolved_at).not.toBeNull();
   });
 

@@ -246,6 +246,43 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
     });
   }, 60_000);
 
+  it('durably escalates an exhausted automated recovery without claiming failed-safe completion', async () => {
+    await withWorkflow('REFUNDED', async ({ database, deployment, source, createProcessor }) => {
+      const migrationId = await createMigration(database, deployment, source, 'REFUNDED');
+      await runUntil(database, createProcessor, migrationId, 'RECOVERY');
+      const messages: OutboxEnvelope[] = [];
+      await publishPendingOutbox(database, async (message) => {
+        messages.push(message);
+      });
+      const recoveryMessage = messages.find(({ payload }) => payload.commandId !== undefined);
+      if (recoveryMessage === undefined) throw new Error('Recovery command was not published.');
+      const processor = createProcessor({
+        executeRecovery: async () => {
+          throw new Error('injected recovery receipt outage');
+        },
+      });
+
+      await processor.process(recoveryMessage, true);
+
+      const details = await getMigrationDetails(database, migrationId);
+      expect(details?.migration.phase).toBe('RECOVERY');
+      expect(details?.commands.find(({ type }) => type === 'EXECUTE_RECOVERY')).toEqual(
+        expect.objectContaining({ status: 'FAILED_TERMINAL' }),
+      );
+      expect(details?.evidence.some(({ type }) => type === 'RECOVERY_COMPLETED')).toBe(false);
+      expect(details?.recoveryCases[0]).toEqual(
+        expect.objectContaining({
+          status: 'OPEN',
+          reason: 'AUTOMATED_RECOVERY_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+          nextPermittedAction: 'RECONCILE_RECOVERY_EXECUTION',
+          escalationOwner: 'DEBTSHIFT_OPERATIONS',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
+        }),
+      );
+    });
+  }, 60_000);
+
   it('moves known transport custody into recovery after the signed deadline', async () => {
     await withWorkflow(
       'TIMEOUT',

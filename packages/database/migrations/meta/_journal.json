@@ -78,6 +78,13 @@
       "when": 1794548152451,
       "tag": "0010_rich_dexter_bennett",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794552963473,
+      "tag": "0011_groovy_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

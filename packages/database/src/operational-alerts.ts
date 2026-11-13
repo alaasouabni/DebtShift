@@ -43,6 +43,7 @@ const managedAlertTypes = [
   'EXECUTION_DEADLINE_APPROACHING',
   'STALE_MIGRATION',
   'STALE_RECOVERY',
+  'RECOVERY_ACTION_DEADLINE_EXCEEDED',
   'UNKNOWN_TRANSPORT_CUSTODY',
   'COMMAND_FAILED_TERMINAL',
   'SETTLED_LEDGER_MISSING',
@@ -176,6 +177,29 @@ export async function scanOperationalAlerts(
     const evidenceByMigration = groupByMigration(evidenceRows);
     const ledgerByMigration = groupByMigration(ledgerRows);
     for (const recovery of recoveries) {
+      if (
+        activeIds.has(recovery.migrationId) &&
+        recovery.actionDeadline.getTime() <= now.getTime()
+      ) {
+        conditions.push(
+          condition(
+            recovery.migrationId,
+            'RECOVERY_ACTION_DEADLINE_EXCEEDED',
+            'CRITICAL',
+            `Recovery action for ${recovery.migrationId} crossed its recorded deadline.`,
+            {
+              recoveryId: recovery.recoveryId,
+              policy: recovery.policy,
+              nextPermittedAction: recovery.nextPermittedAction,
+              actionDeadline: recovery.actionDeadline.toISOString(),
+              escalationOwner: recovery.escalationOwner,
+              escalationState: recovery.escalationState,
+              overdueMs: now.getTime() - recovery.actionDeadline.getTime(),
+            },
+            recovery.recoveryId,
+          ),
+        );
+      }
       if (
         activeIds.has(recovery.migrationId) &&
         recovery.updatedAt.getTime() <= now.getTime() - policy.staleRecoveryMs
