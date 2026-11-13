@@ -375,6 +375,9 @@ operative source of truth.
   while the repository correctly requires `1.9.0`; the unchanged contract gate remains enforced
   with the pinned toolchain in CI. No external transaction was signed or broadcast, and mainnet
   execution remained disabled.
+- GitHub Actions quality run `43433864649` passed the TypeScript, pinned EVM/deployment/demo, Linux
+  NEAR sandbox, dependency and full-history secret scans, production-container scan, and runtime
+  SBOM gates for checkpoint `aa07317`.
 
 ### 2026-11-13 - Guarded NEAR deployment and startup attestation implemented
 
@@ -404,6 +407,8 @@ operative source of truth.
   builds. Compose configuration also parses with the new values. The preceding safe-failover commit
   passed GitHub quality run `43427515013`, including TypeScript, EVM/deployment/demo, Linux NEAR
   sandbox, dependency/secret/container scans, and SBOM generation.
+- GitHub Actions quality run `43430774187` passed the same complete gate for guarded NEAR deployment
+  checkpoint `6200643`.
 - The public testnet deployment checkbox remains open: no funded registry/deployer/verifier
   credentials are present, no NEAR transaction was signed or broadcast, and mainnet execution
   remained disabled. The complete operator procedure and evidence requirements are in

@@ -20,22 +20,28 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Verified implementation checkpoint: `f0a807e`; verified documentation checkpoint: `b7413ec`.
+- Verified implementation checkpoint: `aa07317`; the verified documentation checkpoint is the
+  newest pushed commit containing this file.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the current checkpoint adds
 
-1. A repository-wide Foundry `1.9.0` pin and fail-fast version check, aligned with CI, setup docs,
-   and the checksum-verified Docker build.
-2. The exact Solidity formatting required by the pinned toolchain plus passing compiler, unit, fuzz,
-   invariant, two-node deployment, and tamper-rejection gates.
-3. A rebuilt healthy Compose stack and successful end-to-end migration smoke with zero unexplained
-   accounting imbalance.
-4. An exact sandbox evidence example containing image/provenance identifiers and all 17 evidence
-   references, including every private-chain transaction hash and its explicit scope label.
-5. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
+1. Source-commit-bound EVM and NEAR manifests, clean-worktree guarded deployers, independent
+   read-only readiness CLIs, and exact operator runbooks.
+2. Production workers await EVM and NEAR startup attestation before queue consumption. EVM startup
+   checks the manifest, route, addresses, canonical receipts, runtime hashes, bindings, roles, pause
+   state, and disabled write switch. NEAR startup checks code bytes/hash, owner/pending owner, and
+   verifier role.
+3. Safe NEAR RPC failover validates every configured network, fails over idempotent final-state
+   reads, never blindly rebroadcasts a write, and reconciles ambiguous results on the next durable
+   attempt.
+4. Credential-safe OpenTelemetry propagation, Prometheus metrics, Grafana/Jaeger deployment,
+   low-cardinality dashboards, and exact observability runbooks.
+5. A healthy Compose sandbox and end-to-end migration evidence with real dual-chain transactions,
+   durable ledger reconciliation, and zero unexplained imbalance.
+6. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
    no credentialed or write-capable external action was attempted.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
@@ -47,10 +53,10 @@ RPC URLs or secrets.
 
 | Gate                                  | Result                                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
-| Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds     |
-| Worker suite                          | Pass: 75 tests, including absent-write and incomplete-final-state registry rejection   |
-| Domain suite                          | Pass: 97 tests, including all 15 phase entries and all 225 transition pairs            |
-| Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
+| Full `npm run check`                  | Pass: OpenAPI drift, format, scripts, lint/types, all tests, and all 11 builds         |
+| Worker suite                          | Pass: 82 tests, including adapter startup ordering and exact final registry state      |
+| Domain suite                          | Pass: 108 tests, including mode/manifest/failover schemas and all transition pairs     |
+| Database suite and migration drill    | Pass: 22 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
 | API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
 | Agent and web suites                  | Pass: 9 agent/security tests and 4 browser tests                                       |
 | `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, lint, and taxed-token rollback gates            |
@@ -64,6 +70,10 @@ RPC URLs or secrets.
 | GitHub quality run `43403559848`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `e31683c`                |
 | GitHub quality run `43409003610`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `f0a807e`                |
 | GitHub quality run `43409934145`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `b7413ec`                |
+| GitHub quality run `43424094454`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for observability            |
+| GitHub quality run `43427515013`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for safe NEAR RPC failover   |
+| GitHub quality run `43430774187`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for guarded NEAR deployment  |
+| GitHub quality run `43433864649`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `aa07317`                |
 | `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
@@ -76,18 +86,20 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
+1. Finish the reproducible public EVM testnet dependency/deployment plan and transport startup gate;
+   do not substitute a mock protocol or call simulated transport official 1Click.
+2. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
-2. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
+3. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
    storage, and sandbox/testnet evidence.
-3. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
+4. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
    web UI with `NEXT_PUBLIC_API_URL` set at image build time.
-4. Deploy the public EVM testnet path if suitable Aave/Morpho test markets and funding exist; keep
-   the unavailable 1Click boundary explicitly simulated.
-5. Run the full acceptance and security gate from a clean checkout.
-6. Only after those gates, prepare external production deployment with
+5. Deploy the public EVM testnet path when the reviewed protocol dependencies, signer, RPCs, test
+   assets, and gas are available; keep only the unavailable 1Click boundary explicitly simulated.
+6. Run the full acceptance and security gate from a clean checkout.
+7. Only after those gates, prepare external production deployment with
    `MAINNET_EXECUTION_ENABLED=false`, generate real manifests, and run `npm run check:deployment`.
-7. Treat a real mainnet refinance as a separate final authorization event.
+8. Treat a real mainnet refinance as a separate final authorization event.
 
 ## Required external inputs
 
