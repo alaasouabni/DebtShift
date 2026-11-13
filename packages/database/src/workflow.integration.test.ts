@@ -80,11 +80,11 @@ describe('durable workflow and transactional outbox', () => {
           'DETERMINISTIC_ENGINE_V1', 'eip155:31337', '${hash('0')}', '{}', now(),
           'FINALIZED', 'TEST', '1');
     `);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await postgres.close();
-  });
+  }, 30_000);
 
   it('enqueues one logical command and publishes it with retry state', async () => {
     const migrationId = hash('5');
