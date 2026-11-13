@@ -158,15 +158,18 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
   }, 60_000);
 
   it('moves known transport custody into recovery after the signed deadline', async () => {
-    await withWorkflow('TIMEOUT', async ({ database, deployment, source, createProcessor }) => {
-      const migrationId = await createMigration(database, deployment, source, 'TIMEOUT');
-      await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE', true);
-      const details = await getMigrationDetails(database, migrationId);
+    await withWorkflow(
+      'TIMEOUT',
+      async ({ database, deployment, source, createProcessor, expireTransport }) => {
+        const migrationId = await createMigration(database, deployment, source, 'TIMEOUT');
+        await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE', expireTransport);
+        const details = await getMigrationDetails(database, migrationId);
 
-      expect(details?.evidence.map((record) => record.type)).toEqual(
-        expect.arrayContaining(['MIGRATION_EXPIRED', 'RECOVERY_OPENED', 'RECOVERY_COMPLETED']),
-      );
-    });
+        expect(details?.evidence.map((record) => record.type)).toEqual(
+          expect.arrayContaining(['MIGRATION_EXPIRED', 'RECOVERY_OPENED', 'RECOVERY_COMPLETED']),
+        );
+      },
+    );
   }, 60_000);
 
   it('halts before source close when the finalized reservation block is orphaned', async () => {
@@ -592,6 +595,7 @@ interface WorkflowFixture {
   readonly source: LocalAnvilChain;
   readonly destination: LocalAnvilChain;
   readonly createProcessor: () => DurableCommandProcessor;
+  readonly expireTransport: () => void;
 }
 
 async function withWorkflow(
@@ -601,6 +605,7 @@ async function withWorkflow(
   const source = await startAnvil({ chainId: 31_337, port: 19_555, anvilPath: ANVIL_PATH });
   const destination = await startAnvil({ chainId: 31_338, port: 19_556, anvilPath: ANVIL_PATH });
   const postgres = new PGlite();
+  let transportClockOffsetMs = 0;
   try {
     for (const migrationFile of migrationFiles) {
       await postgres.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
@@ -634,6 +639,7 @@ async function withWorkflow(
         outcome: outcome === 'REFUNDED' ? 'REFUNDED' : 'SUCCESS',
         feeBps: 100,
         processingPolls: outcome === 'TIMEOUT' ? 100 : 1,
+        now: () => Date.now() + transportClockOffsetMs,
       });
       return new DurableCommandProcessor(
         new PostgresCommandPersistence(database),
@@ -646,7 +652,16 @@ async function withWorkflow(
         }),
       );
     };
-    await test({ database, deployment, source, destination, createProcessor });
+    await test({
+      database,
+      deployment,
+      source,
+      destination,
+      createProcessor,
+      expireTransport: () => {
+        transportClockOffsetMs = 360_000;
+      },
+    });
   } finally {
     await postgres.close();
     await Promise.all([source.stop(), destination.stop()]);
@@ -739,7 +754,7 @@ async function createMigration(
   );
   const planNonce = scenarioNonces[outcome].plan;
   const migrationId = computeMigrationId(intentHash, quote.quoteHash, planNonce);
-  const planDeadline = nowSeconds + (outcome === 'TIMEOUT' ? 5 : 300);
+  const planDeadline = nowSeconds + 300;
   const unsignedPlan = executionPlanSchema.parse({
     intentHash,
     migrationId,
@@ -959,17 +974,21 @@ async function runUntil(
   createProcessor: () => DurableCommandProcessor,
   migrationId: string,
   terminalPhase: MigrationPhase,
-  waitForTimeout = false,
+  expireTransport?: () => void,
 ): Promise<void> {
   const ready: OutboxEnvelope[] = [];
   let active: OutboxEnvelope | undefined;
-  let timeoutWaited = false;
+  let transportExpired = false;
   for (let iteration = 0; iteration < 30; iteration += 1) {
     const details = await getMigrationDetails(database, migrationId);
     if (details?.migration.phase === terminalPhase) return;
-    if (waitForTimeout && details?.migration.phase === 'ROUTING' && !timeoutWaited) {
-      timeoutWaited = true;
-      await new Promise((resolvePromise) => setTimeout(resolvePromise, 6_000));
+    if (
+      expireTransport !== undefined &&
+      details?.migration.phase === 'ROUTING' &&
+      !transportExpired
+    ) {
+      transportExpired = true;
+      expireTransport();
     }
 
     if (active === undefined) {
