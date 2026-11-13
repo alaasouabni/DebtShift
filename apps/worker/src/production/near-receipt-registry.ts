@@ -9,6 +9,7 @@ import {
 import { Account, JsonRpcProvider, KeyPairSigner } from 'near-api-js';
 
 import type { ReceiptRegistryPort } from '../handlers.js';
+import { NearRpcFailoverClient, type NearRpcEndpoint } from './near-rpc-failover.js';
 
 const REQUIRED_COMPLETION_EVIDENCE: readonly EvidenceType[] = [
   'LIQUIDITY_RESERVATION',
@@ -28,6 +29,7 @@ type RegistryEnvironment = Pick<
   DebtShiftEnvironment,
   | 'NEAR_NETWORK'
   | 'NEAR_RPC_URL'
+  | 'NEAR_RPC_FALLBACK_URLS_JSON'
   | 'NEAR_REGISTRY_ACCOUNT'
   | 'NEAR_SIGNER_ACCOUNT_ID'
   | 'NEAR_SIGNER_PRIVATE_KEY'
@@ -109,7 +111,7 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
   }: NearReceiptRegistryDependencies) {
     this.#environment = environment;
     this.#loadActiveFinalizedEvidence = loadActiveFinalizedEvidence;
-    this.#client = client ?? new NearApiRegistryClient(environment);
+    this.#client = client ?? createNearApiRegistryClient(environment);
   }
 
   async finalize(context: MigrationExecutionContext): Promise<Evidence> {
@@ -226,11 +228,14 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
   }
 }
 
-class NearApiRegistryClient implements NearRegistryClient {
+class NearApiRegistryEndpoint implements NearRpcEndpoint {
   readonly #provider: JsonRpcProvider;
   readonly #account: Account;
 
-  constructor(private readonly environment: RegistryEnvironment) {
+  constructor(
+    private readonly environment: RegistryEnvironment,
+    rpcUrl: string,
+  ) {
     if (
       environment.NEAR_REGISTRY_ACCOUNT.length === 0 ||
       environment.NEAR_SIGNER_ACCOUNT_ID.length === 0 ||
@@ -238,11 +243,15 @@ class NearApiRegistryClient implements NearRegistryClient {
     ) {
       throw new Error('NEAR registry writes require registry and verifier signer configuration.');
     }
-    this.#provider = new JsonRpcProvider({ url: environment.NEAR_RPC_URL });
+    this.#provider = new JsonRpcProvider({ url: rpcUrl }, { retries: 1, wait: 200, backoff: 1 });
     const signer = KeyPairSigner.fromSecretKey(
       environment.NEAR_SIGNER_PRIVATE_KEY as Parameters<typeof KeyPairSigner.fromSecretKey>[0],
     );
     this.#account = new Account(environment.NEAR_SIGNER_ACCOUNT_ID, this.#provider, signer);
+  }
+
+  getNetworkId(): Promise<string> {
+    return this.#provider.getNetworkId();
   }
 
   async view(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -264,6 +273,14 @@ class NearApiRegistryClient implements NearRegistryClient {
       waitUntil: 'FINAL',
     });
   }
+}
+
+function createNearApiRegistryClient(environment: RegistryEnvironment): NearRegistryClient {
+  const urls = [environment.NEAR_RPC_URL, ...environment.NEAR_RPC_FALLBACK_URLS_JSON];
+  return new NearRpcFailoverClient(
+    environment.NEAR_NETWORK,
+    urls.map((url) => new NearApiRegistryEndpoint(environment, url)),
+  );
 }
 
 function agreementRequest(

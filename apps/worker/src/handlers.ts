@@ -131,6 +131,10 @@ export interface ReceiptRegistryPort {
   finalize(context: MigrationExecutionContext): Promise<Evidence>;
 }
 
+export class RetryableReceiptRegistryError extends Error {
+  override readonly name = 'RetryableReceiptRegistryError';
+}
+
 export interface WorkflowContextStore {
   get(migrationId: string): Promise<MigrationExecutionContext>;
   listActiveFinalizedChainEvidence(migrationId: string): Promise<readonly Evidence[]>;
@@ -538,7 +542,18 @@ export function createWorkflowHandlers({
     ],
     [
       'FINALIZE_NEAR_RECEIPT',
-      handler(store, execution, async (context) => [await registry.finalize(context)]),
+      handler(store, execution, async (context) => {
+        try {
+          return [await registry.finalize(context)];
+        } catch (error) {
+          if (error instanceof RetryableReceiptRegistryError) {
+            throw new RetryableCommandError(
+              'Receipt registry RPC is unavailable or a write outcome is uncertain; final state must be reconciled before retry.',
+            );
+          }
+          throw error;
+        }
+      }),
     ],
     [
       'EXECUTE_RECOVERY',

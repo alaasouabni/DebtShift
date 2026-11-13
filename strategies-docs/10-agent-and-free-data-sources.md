@@ -152,7 +152,7 @@ Invalid, incomplete, or unsupported output is discarded and replaced by determin
 | Morpho market identity         | Official API/SDK using all five market parameters                           | Market ID is re-derived locally      | Direct Morpho contract state                                       |
 | 1Click assets and preview      | `https://1click.chaindefuser.com/v0/tokens` and `dry: true` quote           | No                                   | Runtime schema validation; unavailable means no live route         |
 | 1Click execution status        | Production `/v0/status` plus returned transaction data                      | Provider observation only            | Independent origin/destination RPC receipts and balances           |
-| NEAR testnet registry          | `https://test.rpc.fastnear.com`                                             | NEAR receipt and contract view       | `https://archival-rpc.testnet.near.org` with strict rate limiting  |
+| NEAR testnet registry          | Operator-selected endpoint from the current official provider list          | NEAR receipt and final contract view | Up to four explicitly configured, network-validated provider URLs  |
 | Token prices for authorization | Protocol-native Aave and Morpho oracles                                     | Yes, within protocol-specific policy | Cross-check indexed values; mismatch fails closed                  |
 | USD values for display         | Aave/Morpho public APIs derived from their market data                      | No                                   | Hide USD view when unavailable                                     |
 | Gas price and gas usage        | `eth_estimateGas`, `eth_feeHistory`, and receipts                           | Quote input only                     | Conservative configured buffer                                     |
@@ -202,6 +202,14 @@ Every cached record retains provider, fetch time, chain, block number, block has
 - Disable quoting or execution when freshness requirements cannot be met.
 - Never rotate silently to an unapproved RPC endpoint.
 
+NEAR registry RPC failover is deliberately asymmetric. Final-state views may try the ordered
+operator-approved endpoints immediately. A registry transaction is submitted through exactly one
+endpoint; a timeout or missing response ends that durable command attempt. The next attempt first
+reconciles the agreement, attestations, and receipt through a final-state view, then submits only
+the still-missing mutation. This avoids unsafe automatic rebroadcast after an ambiguous response.
+Each endpoint must report the configured NEAR network before use, and provider-specific errors are
+replaced by generic retryable errors before they reach workflow persistence or telemetry.
+
 Morpho’s public API currently documents a standard limit of 750 requests per minute, which is well above the demonstration’s cached usage. Public EVM and NEAR RPCs remain rate-limited and have no SLA, so direct reads are batched where supported and minimized.
 
 ## Cost boundary
@@ -224,7 +232,7 @@ NEAR testnet deployment uses test tokens. Local chains, simulators, PostgreSQL, 
 - [ ] Implement Morpho REST discovery and direct-read verification.
 - [x] Implement 1Click catalog/dry-quote reads and the committed quote, deposit, status, refund, and
       receipt adapter used by the complete `mainnet` workflow.
-- [ ] Implement NEAR testnet RPC failover.
+- [x] Implement NEAR testnet RPC failover.
 - [ ] Add provider health, caching, rate limiting, and circuit breakers.
 - [x] Implement the canonical sources-and-uses feasibility analysis and exclusive cost-component
       classification.

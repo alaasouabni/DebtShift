@@ -94,6 +94,7 @@ function createPort(client: NearRegistryClient, records: readonly Evidence[]) {
     environment: {
       NEAR_NETWORK: 'testnet',
       NEAR_RPC_URL: 'https://rpc.testnet.near.org',
+      NEAR_RPC_FALLBACK_URLS_JSON: [],
       NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
       NEAR_SIGNER_ACCOUNT_ID: 'verifier.testnet',
       NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test',

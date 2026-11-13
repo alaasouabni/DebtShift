@@ -14,8 +14,8 @@ This file is updated throughout implementation. It is the first place to inspect
 | M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                                                                                                                                                   |
 | M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, asset-safe pre-source expiry/cancellation/revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                             |
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains.                                                 |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                                                                                                                                              |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.                                                                                                                                  |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                                                                                                         |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.                                                                                                                             |
 | M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, credential-safe distributed traces, provisioned operations dashboards, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. External alert delivery, operator acknowledgement, and provenance publication acceptance remain deployment gates. |
 | M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                                                                                   |
 
@@ -345,6 +345,29 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Safe NEAR testnet RPC failover completed
+
+- Added a typed primary plus ordered fallback configuration with at most four fallbacks. URLs must
+  be unique HTTP(S) endpoints, and public NEAR networks require HTTPS.
+- Added per-endpoint network-ID validation before responses are accepted. Idempotent registry views
+  use final-state reads and fail over immediately across only the configured endpoints.
+- Kept transaction semantics deliberately single-endpoint: no registry write is automatically
+  rebroadcast after a timeout or ambiguous response. The preferred endpoint rotates for the next
+  durable command attempt, which re-reads agreement, attestation, and receipt state before any
+  still-missing mutation can be submitted.
+- Converted only typed RPC unavailability/ambiguity into a generic retryable workflow error.
+  Immutable registry conflicts remain terminal, and raw provider messages, tokens, and URLs do not
+  enter durable errors or telemetry.
+- Added configuration, failover, no-rebroadcast, wrong-network, redaction, and workflow retry tests.
+  The repository gate passed OpenAPI drift, formatting, lint, all workspace type checks, 105 domain
+  tests, 80 worker tests, the remaining package tests, and all 11 production builds. Compose
+  configuration parsed successfully, and the production npm audit reported zero vulnerabilities.
+- Read-only status probes confirmed the currently documented FASTNEAR, dRPC, and Intear endpoints
+  all reported `testnet`, protocol version 88, matching heads, and `syncing=false`. These are
+  deployment-time observations, not baked-in trust: operators must revalidate the approved list.
+- No NEAR transaction was signed or broadcast, no external deployment changed, and mainnet
+  execution remained disabled.
 
 ### 2026-11-13 - Credential-safe tracing and operations dashboards implemented
 

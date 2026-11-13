@@ -10,6 +10,30 @@ const booleanString = z
 
 const optionalUrl = z.union([z.url(), z.literal('')]).default('');
 const optionalString = z.string().default('');
+const httpUrl = z.url().refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
+  message: 'RPC URL must use HTTP or HTTPS.',
+});
+const urlListJson = z
+  .string()
+  .default('[]')
+  .transform((value, context): readonly string[] => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      context.addIssue({ code: 'custom', message: 'RPC fallback URLs must be a JSON array.' });
+      return z.NEVER;
+    }
+    const result = z.array(httpUrl).max(4).safeParse(parsed);
+    if (!result.success) {
+      context.addIssue({
+        code: 'custom',
+        message: 'RPC fallback URLs must contain at most four HTTP(S) URLs.',
+      });
+      return z.NEVER;
+    }
+    return result.data;
+  });
 const optionalPrivateKey = z
   .union([z.string().regex(/^0x[0-9a-fA-F]{64}$/), z.literal('')])
   .default('');
@@ -127,7 +151,8 @@ export const debtShiftEnvironmentSchema = z
       .default('SUCCESS'),
     SIMULATOR_PROCESSING_POLLS: z.coerce.number().int().min(0).max(100).default(1),
     NEAR_NETWORK: z.enum(['sandbox', 'testnet', 'mainnet']).default('sandbox'),
-    NEAR_RPC_URL: z.url().default('https://test.rpc.fastnear.com'),
+    NEAR_RPC_URL: httpUrl.default('https://test.rpc.fastnear.com'),
+    NEAR_RPC_FALLBACK_URLS_JSON: urlListJson,
     NEAR_REGISTRY_ACCOUNT: optionalString,
     NEAR_SIGNER_ACCOUNT_ID: optionalString,
     NEAR_SIGNER_PRIVATE_KEY: optionalString,
@@ -148,6 +173,25 @@ export const debtShiftEnvironmentSchema = z
     OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   })
   .superRefine((environment, context) => {
+    const nearRpcUrls = [environment.NEAR_RPC_URL, ...environment.NEAR_RPC_FALLBACK_URLS_JSON];
+    if (new Set(nearRpcUrls).size !== nearRpcUrls.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'NEAR RPC primary and fallback URLs must be unique.',
+        path: ['NEAR_RPC_FALLBACK_URLS_JSON'],
+      });
+    }
+    if (
+      environment.NEAR_NETWORK !== 'sandbox' &&
+      nearRpcUrls.some((value) => new URL(value).protocol !== 'https:')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Public NEAR network RPC endpoints must use HTTPS.',
+        path: ['NEAR_RPC_FALLBACK_URLS_JSON'],
+      });
+    }
+
     if (
       environment.NODE_ENV === 'production' &&
       (new URL(environment.WEB_PUBLIC_URL).protocol !== 'https:' ||

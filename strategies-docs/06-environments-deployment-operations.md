@@ -37,7 +37,8 @@ Configuration schemas are divided into:
     confirmation depths; the checked-in local default is `1`, not a mainnet recommendation.
 - Protocol deployment and asset allowlists.
 - Transport mode, URL, and authentication reference.
-- NEAR network, RPC, registry account, and verifier identity.
+- NEAR network, primary RPC, bounded approved fallback RPC list, registry account, and verifier
+  identity.
 - Relayer key references.
 - Risk, fee, timeout, and exposure policy.
 - Capacity buffers, cost-classification policy, approved shortfall-resolution modes, and
@@ -72,6 +73,30 @@ must confirm chain, token metadata, market identity, and oracle identity before 
 accepted.
 
 Secrets are referenced through environment or a secret manager. `.env.example` contains names and safe examples only.
+
+### NEAR RPC failover policy
+
+`NEAR_RPC_URL` selects the primary endpoint. `NEAR_RPC_FALLBACK_URLS_JSON` is an ordered JSON array
+of at most four operator-approved fallback URLs. Public `testnet` and `mainnet` endpoints must use
+HTTPS, all configured URLs must be unique, and every endpoint must report the configured
+`NEAR_NETWORK` before its response can be used. Public providers have no SLA, so the deployment
+owner must verify the current provider list and terms before each deployment; the application does
+not silently add an endpoint.
+
+Failover differs by operation type:
+
+- Idempotent contract views use final-state reads and may immediately try the next configured
+  endpoint. The first healthy, network-matched endpoint becomes preferred.
+- A function-call transaction is submitted through exactly one endpoint. DebtShift never sends the
+  same signed write to another RPC merely because the response was missing or timed out.
+- An unavailable pre-submit RPC or ambiguous write outcome becomes a generic retryable registry
+  error. The durable worker attempt ends, rotates the preferred endpoint, and the next attempt reads
+  the agreement, attestations, and final receipt before deciding whether any write remains.
+- Network mismatch and immutable registry conflicts fail closed. Raw provider errors and endpoint
+  details are not copied into durable command errors or traces.
+
+This policy prevents RPC redundancy from becoming duplicate transaction broadcast. It does not
+replace final receipt reconciliation, signer nonce handling, or the operator failover runbook.
 
 ## 1Click network constraint
 

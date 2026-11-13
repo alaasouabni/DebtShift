@@ -120,12 +120,22 @@ Use this sequence before a recovery-specific runbook unless it would delay an ac
    contract code hashes from the manifest.
 4. Compare every persisted finalized block hash for active migrations. A mismatch requires evidence
    retraction/reconciliation, not blind continuation.
-5. Replace only `SOURCE_RPC_URL` or `DESTINATION_RPC_URL`; retain chain IDs, deployment blocks,
-   confirmation policy, and contract addresses.
+5. For an EVM endpoint, replace only `SOURCE_RPC_URL` or `DESTINATION_RPC_URL`; retain chain IDs,
+   deployment blocks, confirmation policy, and contract addresses. For NEAR, edit the ordered
+   `NEAR_RPC_URL`/`NEAR_RPC_FALLBACK_URLS_JSON` allowlist only after every candidate reports the
+   configured `NEAR_NETWORK` and final-state registry views agree.
 6. Restart read-only services first and run live route/deployment readiness checks. Start the worker
    only after canonical history agrees.
 7. Re-enable only after both RPCs, code, roles, balances, finality, and active evidence pass. Failover
    never extends a signed deadline.
+
+For NEAR specifically, reads may move immediately to the next configured endpoint. Writes do not.
+If a registry call times out or loses its response, stop that worker attempt and inspect the final
+agreement, ordered attestations, final receipt, signer nonce, and transaction history. The durable
+retry path performs these contract reads before it can issue a still-missing mutation. Never copy
+the original signed transaction to another provider or manually repeat a call based only on an RPC
+error. Wrong-network endpoints, immutable conflicts, or divergent final state require containment
+and reconciliation rather than retry.
 
 ## Redis loss and reconstruction from PostgreSQL
 

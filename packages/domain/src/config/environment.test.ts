@@ -11,6 +11,7 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.TRANSPORT_PROVIDER).toBe('DEBTSHIFT_SIMULATOR');
     expect(environment.INTENTS_MODE).toBe('simulated');
     expect(environment.NEAR_NETWORK).toBe('sandbox');
+    expect(environment.NEAR_RPC_FALLBACK_URLS_JSON).toEqual([]);
     expect(environment.AGENT_MODE).toBe('DETERMINISTIC');
     expect(environment.MAINNET_EXECUTION_ENABLED).toBe(false);
     expect(environment.SOURCE_FINALITY_CONFIRMATIONS).toBe(1);
@@ -93,6 +94,36 @@ describe('parseDebtShiftEnvironment', () => {
         NEAR_NETWORK: 'testnet',
       }),
     ).toThrow('Testnet mode requires onchain market reads and the NEAR testnet registry.');
+  });
+
+  it('accepts a bounded, unique list of HTTPS NEAR RPC fallbacks', () => {
+    expect(
+      parseDebtShiftEnvironment({
+        NEAR_NETWORK: 'testnet',
+        NEAR_RPC_URL: 'https://test.rpc.fastnear.com',
+        NEAR_RPC_FALLBACK_URLS_JSON: JSON.stringify([
+          'https://near-testnet.drpc.org',
+          'https://testnet-rpc.intea.rs',
+        ]),
+      }).NEAR_RPC_FALLBACK_URLS_JSON,
+    ).toEqual(['https://near-testnet.drpc.org', 'https://testnet-rpc.intea.rs']);
+  });
+
+  it('rejects malformed, duplicate, or insecure public NEAR RPC fallbacks', () => {
+    expect(() => parseDebtShiftEnvironment({ NEAR_RPC_FALLBACK_URLS_JSON: 'not-json' })).toThrow(
+      'RPC fallback URLs must be a JSON array',
+    );
+    expect(() =>
+      parseDebtShiftEnvironment({
+        NEAR_RPC_FALLBACK_URLS_JSON: JSON.stringify(['https://test.rpc.fastnear.com']),
+      }),
+    ).toThrow('NEAR RPC primary and fallback URLs must be unique');
+    expect(() =>
+      parseDebtShiftEnvironment({
+        NEAR_NETWORK: 'testnet',
+        NEAR_RPC_FALLBACK_URLS_JSON: JSON.stringify(['http://near-testnet.internal']),
+      }),
+    ).toThrow('Public NEAR network RPC endpoints must use HTTPS');
   });
 
   it('prevents sandbox market data from loading in mainnet read-only mode', () => {

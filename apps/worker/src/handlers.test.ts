@@ -17,6 +17,7 @@ import {
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
   PreSourceCloseFailureError,
+  RetryableReceiptRegistryError,
   type FinalizedChainAction,
   type MigrationExecutionPort,
   type WorkflowContextStore,
@@ -59,6 +60,49 @@ class MemoryContextStore implements WorkflowContextStore {
 }
 
 describe('simulated workflow handlers', () => {
+  it('retries an unavailable receipt registry but preserves deterministic conflicts', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const retryableRegistry = {
+      finalize: vi.fn(async () => {
+        throw new RetryableReceiptRegistryError('provider response contained a secret');
+      }),
+    };
+    const retryableHandlers = createWorkflowHandlers({
+      store,
+      execution: fakeExecution(),
+      transport: new SimulatedTransportExecutionPort(simulator),
+      registry: retryableRegistry,
+      evidenceProviders: sandboxEvidenceProviders,
+    });
+
+    await expect(
+      getHandler(retryableHandlers, 'FINALIZE_NEAR_RECEIPT').execute(
+        command('FINALIZE_NEAR_RECEIPT'),
+      ),
+    ).rejects.toMatchObject({
+      name: 'RetryableCommandError',
+      message: expect.not.stringContaining('secret'),
+    });
+
+    const conflictingHandlers = createWorkflowHandlers({
+      store,
+      execution: fakeExecution(),
+      transport: new SimulatedTransportExecutionPort(simulator),
+      registry: {
+        finalize: vi.fn(async () => {
+          throw new Error('immutable agreement conflict');
+        }),
+      },
+      evidenceProviders: sandboxEvidenceProviders,
+    });
+    await expect(
+      getHandler(conflictingHandlers, 'FINALIZE_NEAR_RECEIPT').execute(
+        command('FINALIZE_NEAR_RECEIPT'),
+      ),
+    ).rejects.toThrow('immutable agreement conflict');
+  });
+
   it('expires before reservation without executing a chain action', async () => {
     const simulator = new DeterministicTransportSimulator();
     const store = new MemoryContextStore(await buildContext(simulator, false));
