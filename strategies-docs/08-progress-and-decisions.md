@@ -1141,6 +1141,34 @@ operative source of truth.
 - Verification passes: 5 optimizer tests, 7 agent/security tests, 4 API tests including the signed
   dual-Anvil flow, API/web lint and type checks, and production API/web builds.
 
+### 2026-11-13 - Durable borrower wallet sessions completed
+
+- Added five-minute, one-time EIP-4361 challenges and eight-hour opaque sessions. Raw session
+  tokens are sent only as `HttpOnly`, `SameSite=Strict` cookies; PostgreSQL stores only SHA-256
+  token hashes, expiry, revocation, and last-seen metadata. Production public URLs now fail startup
+  unless both web and API origins use HTTPS.
+- Added challenge, verification, session, and logout endpoints; exact-origin credentialed CORS;
+  borrower-scoped guards for positions, analysis, preparation, execution, migration details,
+  evidence, and cursor-resumable SSE. Unknown or mismatched migration ownership returns not found.
+- Kept API login separate from financial consent: the EIP-4361 message states that it does not
+  authorize a refinance or transaction, while the bounded intent and exact plan still require two
+  independent EIP-712 signatures.
+- Added migration `0010_rich_dexter_bennett.sql` for challenge/session persistence, atomic
+  challenge consumption, replay rejection, session revocation, malformed-input handling, and EOA
+  plus configured-RPC EIP-1271-compatible verification.
+- Updated the browser flow to prove wallet control before loading borrower data, send credentialed
+  requests, and reconnect SSE with credentials. Updated the real-service smoke to prove an
+  unauthenticated `401` before completing the signed session flow.
+- `npm run check` passed across all ten packages. The rebuilt production-shaped Compose stack was
+  healthy and `npm run smoke:local` reached `SETTLED` for migration
+  `0x97bffe60cd19977942f2553d5b62ccebfcfa48e46f048f953e38caa85cc83023` with 17 evidence records,
+  16 balanced ledger entries, authenticated SSE replay, and zero unexplained imbalance.
+- The isolated migration recovery drill applied all 11 checked-in migrations, verified 24 public
+  tables, rolled back a failed transactional candidate, restored the pre-change backup, and proved
+  the migrator idempotent without accessing the source database.
+- GitHub Actions run `43372781927` for the preceding reload-safe evidence checkpoint passed the
+  TypeScript, EVM, NEAR, and security/container jobs.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

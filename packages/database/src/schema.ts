@@ -107,6 +107,50 @@ export const wallets = pgTable(
   ],
 );
 
+export const walletAuthChallenges = pgTable(
+  'wallet_auth_challenges',
+  {
+    challengeId: uuid('challenge_id').primaryKey(),
+    walletAddress: evmAddress('wallet_address').notNull(),
+    chainId: uint('chain_id').notNull(),
+    nonce: varchar('nonce', { length: 64 }).notNull(),
+    message: text('message').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique('wallet_auth_challenges_nonce_unique').on(table.nonce),
+    check('wallet_auth_challenges_chain_uint', sql`${table.chainId} > 0`),
+    check(
+      'wallet_auth_challenges_address_format',
+      sql`${table.walletAddress} ~ '^0x[0-9a-f]{40}$'`,
+    ),
+    check('wallet_auth_challenges_nonce_format', sql`${table.nonce} ~ '^[a-zA-Z0-9]{8,64}$'`),
+    check('wallet_auth_challenges_message_nonempty', sql`length(${table.message}) > 0`),
+    index('wallet_auth_challenges_wallet_expiry_idx').on(table.walletAddress, table.expiresAt),
+  ],
+);
+
+export const walletSessions = pgTable(
+  'wallet_sessions',
+  {
+    sessionHash: bytes32('session_hash').primaryKey(),
+    walletAddress: evmAddress('wallet_address').notNull(),
+    chainId: uint('chain_id').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    check('wallet_sessions_hash_format', sql`${table.sessionHash} ~ '^0x[0-9a-f]{64}$'`),
+    check('wallet_sessions_chain_uint', sql`${table.chainId} > 0`),
+    check('wallet_sessions_address_format', sql`${table.walletAddress} ~ '^0x[0-9a-f]{40}$'`),
+    index('wallet_sessions_wallet_expiry_idx').on(table.walletAddress, table.expiresAt),
+  ],
+);
+
 export const markets = pgTable(
   'markets',
   {

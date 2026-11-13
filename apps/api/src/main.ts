@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module.js';
+import { SESSION_COOKIE_NAME } from './authentication.service.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -19,6 +20,7 @@ async function bootstrap(): Promise<void> {
     .setTitle('DebtShift API')
     .setDescription('Deterministic refinance analysis and evidence-driven migration orchestration.')
     .setVersion('0.1.0')
+    .addCookieAuth(SESSION_COOKIE_NAME)
     .build();
   SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
 

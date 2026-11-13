@@ -48,6 +48,14 @@ interface PreparedMigration {
   readonly routeAnalysis: RouteAnalysisResponse;
 }
 
+interface WalletAuthChallenge {
+  readonly challengeId: string;
+  readonly wallet: Address;
+  readonly chainId: number;
+  readonly message: string;
+  readonly expiresAt: string;
+}
+
 type ExplanationMode = 'DETERMINISTIC' | 'LOCAL_AI' | 'USER_API';
 type RemoteProvider = 'OPENAI' | 'OPENROUTER' | 'CUSTOM';
 type ExplanationRequest =
@@ -264,7 +272,9 @@ export function DebtShiftApp() {
           return;
         }
         const cursor = latestMigrationEventSequence(details.events);
-        eventSource = new EventSource(migrationStreamUrl(apiBase, migrationId, cursor));
+        eventSource = new EventSource(migrationStreamUrl(apiBase, migrationId, cursor), {
+          withCredentials: true,
+        });
         eventSource.onopen = () => {
           if (!disposed) setStreamStatus('live');
         };
@@ -309,6 +319,25 @@ export function DebtShiftApp() {
       const wallet = createWalletClient({ transport: custom(injected) });
       const [selected] = await wallet.requestAddresses();
       if (selected === undefined) throw new Error('The wallet returned no account.');
+      const challenge = await api<WalletAuthChallenge>('/auth/challenge', {
+        method: 'POST',
+        body: JSON.stringify({ wallet: selected }),
+      });
+      await wallet.switchChain({ id: challenge.chainId });
+      const authenticationSignature = await wallet.signMessage({
+        account: selected,
+        message: challenge.message,
+      });
+      await api<{ session: { wallet: Address; chainId: number; expiresAt: string } }>(
+        '/auth/verify',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            challengeId: challenge.challengeId,
+            signature: authenticationSignature,
+          }),
+        },
+      );
       const [positions, analysis] = await Promise.all([
         api<PositionSnapshot[]>(`/positions/${selected}`),
         api<RouteAnalysisResponse>('/analysis/routes', {
@@ -491,7 +520,7 @@ export function DebtShiftApp() {
         <div className="actions">
           <button type="button" onClick={() => void connect()} disabled={busy !== null}>
             {busy === 'connect'
-              ? 'Reading position…'
+              ? 'Proving wallet control…'
               : account
                 ? shortAddress(account)
                 : 'Connect test wallet'}
@@ -508,7 +537,7 @@ export function DebtShiftApp() {
               ? 'Official 1Click transport'
               : 'External transport boundary simulated'}
           </span>
-          <span>Two explicit wallet signatures</span>
+          <span>Session proof + two financial authorizations</span>
         </div>
       </section>
 
@@ -1204,6 +1233,7 @@ function PhaseBadge({ phase }: { readonly phase: string }) {
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
+    credentials: 'include',
     headers: { 'content-type': 'application/json', ...init?.headers },
   });
   const payload = (await response.json()) as unknown;

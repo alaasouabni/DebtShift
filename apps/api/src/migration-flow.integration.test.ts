@@ -92,7 +92,13 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
         new TransportService(),
         config,
       );
-      const prepared = await preparation.prepare({ borrower: deployment.borrower });
+      await expect(
+        preparation.prepare({ borrower: deployment.borrower }, deployment.deployer),
+      ).rejects.toThrow('Wallet session does not match the requested borrower.');
+      const prepared = await preparation.prepare(
+        { borrower: deployment.borrower },
+        deployment.borrower,
+      );
       const borrower = privateKeyToAccount(DEFAULT_ANVIL_BORROWER_KEY);
       const [intentSignature, planSignature] = await Promise.all([
         borrower.signTypedData(
@@ -128,14 +134,17 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
           MAINNET_EXECUTION_ENABLED: false,
         }),
       );
-      await expect(lockedMainnet.execute(request)).rejects.toThrow(
+      await expect(lockedMainnet.execute(request, deployment.borrower)).rejects.toThrow(
         'Mainnet execution is disabled by MAINNET_EXECUTION_ENABLED=false.',
       );
       const migrations = new MigrationsService(databaseService, protocols, marketTools, config);
-      const created = await migrations.execute(request);
+      await expect(migrations.execute(request, deployment.deployer)).rejects.toThrow(
+        'Wallet session does not match the signed borrower.',
+      );
+      const created = await migrations.execute(request, deployment.borrower);
       expect(created.created).toBe(true);
 
-      const repeated = await migrations.execute(request);
+      const repeated = await migrations.execute(request, deployment.borrower);
       expect(repeated).toEqual({ created: false, migrationId: created.migrationId });
       const details = await getMigrationDetails(database, created.migrationId);
       expect(details?.migration.phase).toBe('AUTHORIZED');

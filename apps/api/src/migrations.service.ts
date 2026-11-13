@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 import {
   createAuthorizedMigration,
+  getMigrationBorrower,
   getProviderQuote,
   getMigrationDetails,
   listEnabledMarkets,
@@ -27,6 +28,7 @@ import {
 } from '@debtshift/domain';
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -102,9 +104,12 @@ export class MigrationsService {
     this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
   }
 
-  async execute(input: unknown) {
+  async execute(input: unknown, authenticatedWallet: Address) {
     try {
       const parsed = executeMigrationRequestSchema.parse(input);
+      if (!isAddressEqual(parsed.signedIntent.intent.borrower, authenticatedWallet)) {
+        throw new ForbiddenException('Wallet session does not match the signed borrower.');
+      }
       assertFundedExecutionEnabled(this.#executionEnvironment);
       const signedIntent = {
         ...parsed.signedIntent,
@@ -191,13 +196,17 @@ export class MigrationsService {
       );
       return result;
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) throw error;
       const message = error instanceof Error ? error.message : 'Invalid migration request.';
       throw new BadRequestException(message);
     }
   }
 
-  async getMigration(migrationId: string) {
+  async getMigration(migrationId: string, authenticatedWallet: Address) {
+    const borrower = await getMigrationBorrower(this.database.db, migrationId);
+    if (borrower === undefined || !isAddressEqual(borrower as Address, authenticatedWallet)) {
+      throw new NotFoundException('Migration not found.');
+    }
     const result = await getMigrationDetails(this.database.db, migrationId);
     if (result === undefined) throw new NotFoundException('Migration not found.');
     return result;
@@ -206,8 +215,9 @@ export class MigrationsService {
   async streamMigrationEvents(
     migrationId: string,
     initialAfterSequence: number,
+    authenticatedWallet: Address,
   ): Promise<Observable<MessageEvent>> {
-    await this.getMigration(migrationId);
+    await this.getMigration(migrationId, authenticatedWallet);
     let cursor = initialAfterSequence;
     let emptyPolls = 0;
 

@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { AppController } from './app.controller.js';
+import { AuthenticationController } from './authentication.controller.js';
+import { AuthenticationService } from './authentication.service.js';
 import { DatabaseService } from './database.service.js';
 import { MigrationsController } from './migrations.controller.js';
 import { MigrationsService } from './migrations.service.js';
@@ -23,6 +25,7 @@ import { PreparationService } from './preparation.service.js';
 import { QuotesController } from './quotes.controller.js';
 import { RouteAnalysisController } from './route-analysis.controller.js';
 import { RouteAnalysisService } from './route-analysis.service.js';
+import { SessionGuard } from './session.guard.js';
 import { LocalMarketToolsService } from './simulator/local-market-tools.service.js';
 import { LocalProtocolService } from './simulator/local-protocol.service.js';
 import { TransportService } from './transport.service.js';
@@ -37,6 +40,7 @@ import { TransportService } from './transport.service.js';
   ],
   controllers: [
     AppController,
+    AuthenticationController,
     MetricsController,
     QuotesController,
     RouteAnalysisController,
@@ -44,6 +48,8 @@ import { TransportService } from './transport.service.js';
   ],
   providers: [
     DatabaseService,
+    AuthenticationService,
+    SessionGuard,
     MetricsService,
     TransportService,
     {

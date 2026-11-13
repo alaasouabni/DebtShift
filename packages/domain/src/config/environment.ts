@@ -148,6 +148,18 @@ export const debtShiftEnvironmentSchema = z
     OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   })
   .superRefine((environment, context) => {
+    if (
+      environment.NODE_ENV === 'production' &&
+      (new URL(environment.WEB_PUBLIC_URL).protocol !== 'https:' ||
+        new URL(environment.API_PUBLIC_URL).protocol !== 'https:')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Production public web and API URLs must use HTTPS for secure wallet sessions.',
+        path: ['API_PUBLIC_URL'],
+      });
+    }
+
     if (environment.INTENTS_RETRY_MAX_DELAY_MS < environment.INTENTS_RETRY_BASE_DELAY_MS) {
       context.addIssue({
         code: 'custom',

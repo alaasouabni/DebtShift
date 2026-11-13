@@ -95,6 +95,8 @@ describe('initial PostgreSQL migration', () => {
       'provider_quotes',
       'recovery_cases',
       'transport_legs',
+      'wallet_auth_challenges',
+      'wallet_sessions',
       'wallets',
     ]);
   });
@@ -119,6 +121,14 @@ describe('initial PostgreSQL migration', () => {
       'provider_observations_response_unique',
       'provider_quotes_min_lte_expected',
       'transport_legs_migration_id_leg_index_pk',
+      'wallet_auth_challenges_address_format',
+      'wallet_auth_challenges_chain_uint',
+      'wallet_auth_challenges_message_nonempty',
+      'wallet_auth_challenges_nonce_format',
+      'wallet_auth_challenges_nonce_unique',
+      'wallet_sessions_address_format',
+      'wallet_sessions_chain_uint',
+      'wallet_sessions_hash_format',
       'wallets_chain_address_unique',
     ];
     const result = await database.query<{ conname: string }>(

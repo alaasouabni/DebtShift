@@ -57,6 +57,12 @@ durable timeline, evidence, ledger, and recovery state. Live updates use the cur
 `GET /v1/migrations/:migrationId/stream` SSE endpoint and fall back to the last PostgreSQL audit
 sequence after a disconnect.
 
+Connecting a wallet also proves API identity through a five-minute, one-time EIP-4361 challenge.
+The API returns an eight-hour opaque `HttpOnly`, `SameSite=Strict` session cookie and persists only
+its SHA-256 hash. This login signature is not financial authorization: refinance execution still
+requires the separate bounded intent and exact execution-plan EIP-712 signatures. All borrower and
+migration routes are scoped to the authenticated wallet; production public URLs must use HTTPS.
+
 For application hot reload instead, start only the service dependencies:
 
 ```sh

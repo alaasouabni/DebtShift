@@ -1,5 +1,6 @@
 export * from './client.js';
 export * from './command-lifecycle.js';
+export * from './authentication.js';
 export * from './migration-repository.js';
 export * from './operational-alerts.js';
 export * from './operational-metrics.js';

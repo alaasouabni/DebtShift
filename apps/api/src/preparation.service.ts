@@ -14,9 +14,15 @@ import {
   evmAddressSchema,
 } from '@debtshift/domain';
 import { transportQuoteRequestSchema } from '@debtshift/intents';
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Address } from 'viem';
+import { isAddressEqual, type Address } from 'viem';
 import { z } from 'zod';
 
 import { DatabaseService } from './database.service.js';
@@ -64,9 +70,12 @@ export class PreparationService {
     }
   }
 
-  async prepare(input: unknown) {
+  async prepare(input: unknown, authenticatedWallet: Address) {
     try {
       const { borrower } = preparationRequestSchema.parse(input);
+      if (!isAddressEqual(borrower, authenticatedWallet)) {
+        throw new ForbiddenException('Wallet session does not match the requested borrower.');
+      }
       const route = this.protocols.route;
       if (route.execution.kind !== 'EXECUTABLE') {
         throw new Error('Funded debt-migration preparation is disabled in mainnet-readonly mode.');
@@ -76,7 +85,10 @@ export class PreparationService {
           `Route execution mode ${route.execution.mode} does not match runtime mode ${this.#mode}.`,
         );
       }
-      const routeAnalysis = await this.routeAnalysis.analyze({ wallet: borrower });
+      const routeAnalysis = await this.routeAnalysis.analyze(
+        { wallet: borrower },
+        authenticatedWallet,
+      );
       const positionAnalysis = routeAnalysis.analysis.analyses[0];
       if (positionAnalysis === undefined) throw new Error('No route analysis was produced.');
       const snapshot = positionAnalysis.sourcePosition;
@@ -283,6 +295,7 @@ export class PreparationService {
       );
       return prepared;
     } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
       throw badRequest(error);
     }
   }

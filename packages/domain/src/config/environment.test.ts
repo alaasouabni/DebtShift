@@ -66,12 +66,24 @@ describe('parseDebtShiftEnvironment', () => {
     expect(() =>
       parseDebtShiftEnvironment({
         NODE_ENV: 'production',
+        WEB_PUBLIC_URL: 'https://debtshift.example',
+        API_PUBLIC_URL: 'https://api.debtshift.example',
         NEAR_NETWORK: 'testnet',
         NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
         NEAR_SIGNER_ACCOUNT_ID: 'verifier.testnet',
         NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test-private-key',
       }),
     ).not.toThrow();
+  });
+
+  it('requires HTTPS public origins in production so wallet cookies are secure', () => {
+    expect(() =>
+      parseDebtShiftEnvironment({
+        NODE_ENV: 'production',
+        WEB_PUBLIC_URL: 'https://debtshift.example',
+        API_PUBLIC_URL: 'http://api.debtshift.example',
+      }),
+    ).toThrow('Production public web and API URLs must use HTTPS');
   });
 
   it('requires public onchain reads and the NEAR testnet registry in testnet mode', () => {

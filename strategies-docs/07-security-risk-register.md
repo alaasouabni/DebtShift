@@ -60,6 +60,7 @@
 | R-32 | Destination price, liquidity, rate, or risk limit deteriorates after source close  | Critical | Conservative buffers, short quote life, checkpoint revalidation, signed recovery sources, exposure caps, no unsafe borrow                                                      | Price/liquidity shock E2E and recovery drills                          | OPEN                   |
 | R-33 | A cost is omitted or counted twice across principal, fees, and external funding    | High     | Typed component ledger, unique component IDs, exclusive classification, sources-and-uses reconciliation                                                                        | Mutation, property, and ledger-invariant tests                         | OPEN                   |
 | R-34 | Smart contracts are described as guaranteeing cross-chain solver repayment         | High     | Explicit non-atomicity disclosure, residual receivable states, loss/exposure policy, UI and documentation review                                                               | Content review and failed-settlement E2E                               | OPEN                   |
+| R-35 | Wallet address selection or session replay exposes another borrower's data/actions | Critical | One-time EIP-4361 challenges, opaque hashed sessions, strict cookies, expiry/revocation, and borrower ownership checks                                                         | Auth replay, revocation, mismatch, and full-stack smoke tests          | MITIGATED              |
 
 ## Security review gates
 

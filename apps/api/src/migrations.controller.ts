@@ -9,15 +9,21 @@ import {
   Post,
   Query,
   Sse,
+  UseGuards,
   type MessageEvent,
 } from '@nestjs/common';
-import { ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import type { Observable } from 'rxjs';
+import { getAddress } from 'viem';
 
+import { SESSION_COOKIE_NAME, type AuthenticatedWalletSession } from './authentication.service.js';
 import { MigrationsService } from './migrations.service.js';
 import { PreparationService } from './preparation.service.js';
+import { assertSessionWallet, CurrentSession, SessionGuard } from './session.guard.js';
 
 @ApiTags('migrations')
+@ApiCookieAuth(SESSION_COOKIE_NAME)
+@UseGuards(SessionGuard)
 @Controller()
 export class MigrationsController {
   constructor(
@@ -27,14 +33,24 @@ export class MigrationsController {
 
   @Get('positions/:wallet')
   @ApiOperation({ summary: 'List persisted lending positions for a wallet' })
-  async listPositions(@Param('wallet') wallet: string) {
-    return [await this.preparation.getPosition(wallet)];
+  async listPositions(
+    @Param('wallet') wallet: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    const walletAddress = parseWalletAddress(wallet);
+    assertSessionWallet(session, walletAddress);
+    return [await this.preparation.getPosition(walletAddress)];
   }
 
   @Get('positions/:wallet/history')
   @ApiOperation({ summary: 'List persisted source position history for a wallet' })
-  listPersistedPositions(@Param('wallet') wallet: string) {
-    return this.migrations.listPositions(wallet);
+  listPersistedPositions(
+    @Param('wallet') wallet: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    const walletAddress = parseWalletAddress(wallet);
+    assertSessionWallet(session, walletAddress);
+    return this.migrations.listPositions(walletAddress);
   }
 
   @Get('markets')
@@ -45,26 +61,32 @@ export class MigrationsController {
 
   @Post('migrations/execute')
   @ApiOperation({ summary: 'Validate authorizations and durably start a migration' })
-  execute(@Body() body: unknown) {
-    return this.migrations.execute(body);
+  execute(@Body() body: unknown, @CurrentSession() session: AuthenticatedWalletSession) {
+    return this.migrations.execute(body, session.walletAddress);
   }
 
   @Post('migrations/prepare')
   @ApiOperation({ summary: 'Prepare an exact local route for borrower EIP-712 review' })
-  prepare(@Body() body: unknown) {
-    return this.preparation.prepare(body);
+  prepare(@Body() body: unknown, @CurrentSession() session: AuthenticatedWalletSession) {
+    return this.preparation.prepare(body, session.walletAddress);
   }
 
   @Get('migrations/:migrationId')
   @ApiOperation({ summary: 'Read migration state, evidence, events, commands, and ledger' })
-  getMigration(@Param('migrationId') migrationId: string) {
-    return this.migrations.getMigration(migrationId);
+  getMigration(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.getMigration(migrationId, session.walletAddress);
   }
 
   @Get('migrations/:migrationId/events')
   @ApiOperation({ summary: 'Read authoritative migration event history' })
-  async getEvents(@Param('migrationId') migrationId: string) {
-    return (await this.migrations.getMigration(migrationId)).events;
+  async getEvents(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return (await this.migrations.getMigration(migrationId, session.walletAddress)).events;
   }
 
   @Sse('migrations/:migrationId/stream')
@@ -74,17 +96,30 @@ export class MigrationsController {
     @Param('migrationId') migrationId: string,
     @Query('after') after: string | undefined,
     @Headers('last-event-id') lastEventId: string | undefined,
+    @CurrentSession() session: AuthenticatedWalletSession,
   ): Promise<Observable<MessageEvent>> {
     return this.migrations.streamMigrationEvents(
       migrationId,
       parseMigrationEventCursor(after, lastEventId),
+      session.walletAddress,
     );
   }
 
   @Get('migrations/:migrationId/evidence')
   @ApiOperation({ summary: 'Read normalized migration evidence' })
-  async getEvidence(@Param('migrationId') migrationId: string) {
-    return (await this.migrations.getMigration(migrationId)).evidence;
+  async getEvidence(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return (await this.migrations.getMigration(migrationId, session.walletAddress)).evidence;
+  }
+}
+
+function parseWalletAddress(wallet: string) {
+  try {
+    return getAddress(wallet);
+  } catch {
+    throw new BadRequestException('Wallet route parameter must be a valid EVM address.');
   }
 }
 

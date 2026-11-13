@@ -5,11 +5,11 @@
 This document is the durable priority override for the DebtShift submission window. It exists so
 the deadline plan survives chat compaction, a new work session, or a contributor handoff.
 
-- **Plan revised:** 2026-11-12
+- **Plan revised:** 2026-11-13
 - **Time remaining:** one final development/deployment day, as confirmed by the project owner
 - **Portal cutoff:** exact date, time, and timezone still require confirmation
-- **Previous pushed checkpoint:** `ddec917` on `main`; the account-handoff checkpoint is the commit
-  containing this document and `15-account-handoff.md`.
+- **Latest pushed checkpoint before current work:** `de6e2cd` on `main`, containing the reload-safe
+  borrower evidence stream and UI.
 - **Primary objective:** finish normal, functional production-oriented code for one complete
   Aave-to-Morpho refinance through official NEAR Intents/1Click, prove that code with contract-backed
   sandbox, testnet, fork, and integration tests, then deploy and attempt one small mainnet refinance
@@ -118,6 +118,12 @@ model are post-submission work.
 
 ## Required authorizations
 
+- Before borrower-scoped API access, the connected wallet signs a five-minute, one-time EIP-4361
+  challenge. This login proof creates an eight-hour opaque session and does not authorize a
+  refinance, transaction, liquidity reservation, or provider deposit.
+- Raw session tokens exist only in `HttpOnly`, `SameSite=Strict` cookies; PostgreSQL stores only
+  SHA-256 token hashes. Production public origins must use HTTPS, sessions are revocable, and every
+  borrower/migration route verifies session ownership.
 - Borrower signs a broad bounded `RefinanceIntent` and one short-lived exact `ExecutionPlan`.
 - The plan binds chain IDs, protocol/market identities, tokens, amounts, 1Click quote hash, deposit
   and destination receivers, refund receiver, solver payout, fees, nonce, and deadline.

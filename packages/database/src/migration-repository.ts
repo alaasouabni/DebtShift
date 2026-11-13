@@ -363,6 +363,20 @@ export async function getMigrationDetails(database: DebtShiftDatabase, migration
   };
 }
 
+export async function getMigrationBorrower(
+  database: DebtShiftDatabase,
+  migrationId: string,
+): Promise<string | undefined> {
+  const [owner] = await database
+    .select({ address: wallets.address })
+    .from(migrations)
+    .innerJoin(intents, eq(migrations.intentHash, intents.intentHash))
+    .innerJoin(wallets, eq(intents.walletId, wallets.walletId))
+    .where(eq(migrations.migrationId, migrationId))
+    .limit(1);
+  return owner?.address;
+}
+
 export async function listMigrationEventsAfter(
   database: DebtShiftDatabase,
   migrationId: string,

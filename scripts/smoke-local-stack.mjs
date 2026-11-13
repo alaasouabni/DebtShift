@@ -8,8 +8,14 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 const apiBase = process.env.API_PUBLIC_URL ?? 'http://127.0.0.1:3001';
 const borrower = privateKeyToAccount(DEFAULT_ANVIL_BORROWER_KEY);
+let sessionCookie;
 
 await waitForHealth();
+const unauthenticated = await fetch(`${apiBase}/v1/positions/${borrower.address}`);
+if (unauthenticated.status !== 401) {
+  throw new Error('Borrower position endpoint did not reject a request without a wallet session.');
+}
+await authenticateWallet();
 const positions = await request(`/v1/positions/${borrower.address}`);
 if (!Array.isArray(positions) || positions.length !== 1) {
   throw new Error('Local position discovery did not return exactly one source position.');
@@ -136,10 +142,33 @@ process.stdout.write(
     evidenceCount: details.evidence.length,
     ledgerEntryCount: details.ledger.length,
     unexplainedImbalanceUnits: reconciliation.unexplainedImbalanceUnits,
+    walletSessionVerified: true,
     eventStreamVerified: true,
     metricsVerified: true,
   })}\n`,
 );
+
+async function authenticateWallet() {
+  const challenge = await request('/v1/auth/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ wallet: borrower.address }),
+  });
+  const signature = await borrower.signMessage({ message: challenge.message });
+  const response = await fetch(`${apiBase}/v1/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ challengeId: challenge.challengeId, signature }),
+  });
+  const body = await response.json();
+  if (!response.ok || body.session?.wallet?.toLowerCase() !== borrower.address.toLowerCase()) {
+    throw new Error('Wallet challenge verification did not create the expected session.');
+  }
+  const setCookie = response.headers.get('set-cookie');
+  sessionCookie = setCookie?.split(';', 1)[0];
+  if (!sessionCookie?.startsWith('debtshift_session=')) {
+    throw new Error('Wallet verification did not return the opaque HttpOnly session cookie.');
+  }
+}
 
 async function verifyMigrationEventStream(migrationId, expectedLatestSequence) {
   if (expectedLatestSequence < 1) {
@@ -151,7 +180,7 @@ async function verifyMigrationEventStream(migrationId, expectedLatestSequence) {
   let buffer = '';
   try {
     const response = await fetch(`${apiBase}/v1/migrations/${migrationId}/stream?after=0`, {
-      headers: { accept: 'text/event-stream' },
+      headers: { accept: 'text/event-stream', cookie: sessionCookie },
       signal: controller.signal,
     });
     if (
@@ -220,7 +249,11 @@ async function waitForHealth() {
 async function request(path, init = {}) {
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', ...init.headers },
+    headers: {
+      'content-type': 'application/json',
+      ...(sessionCookie === undefined ? {} : { cookie: sessionCookie }),
+      ...init.headers,
+    },
   });
   const body = await response.json();
   if (!response.ok) {

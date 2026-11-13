@@ -16,6 +16,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 ## Product behavior
 
 - [x] Borrower connects a wallet and sees a source position with block provenance.
+- [x] Borrower APIs require a one-time EIP-4361 wallet challenge and an opaque, revocable,
+      borrower-scoped session whose raw token is never stored server-side.
 - [x] At least two route outcomes display costs, savings, safety, and rejection explanations.
 - [x] Every route displays reconciled obligations, financing classifications, maximum safe capacity,
       required destination borrow, confirmed external funding, and exact shortfall.
