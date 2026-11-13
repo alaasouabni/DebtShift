@@ -154,6 +154,21 @@ invoke their Node entry points directly.
 
 ## Operational metrics
 
+The API exposes Prometheus text format at `GET /v1/metrics`. It is generated from authoritative
+PostgreSQL state and exports no migration, command, transaction, wallet, receiver, quote, or evidence
+identifier as a label. Deployments must restrict this path to the monitoring network at the ingress;
+the local sandbox exposes it on loopback with the rest of the API. Base-unit amount series are
+aggregate operational signals stored by Prometheus as floating-point samples; they never replace the
+exact durable ledger or authorize a financial action.
+
+The current endpoint exports every migration phase (including zero values), current phase-age
+histograms, persisted phase transitions, command status/attempts, evidence verification state,
+chain-action finality, transport state, reservation principal/fee caps, recovery counts/age,
+operational alerts, transactional outbox state, and ledger count/volume. API preparation and
+authorization plus worker command/evidence/phase/retry outcomes emit structured JSON records with
+the migration/command correlation fields and chain context. Secret material and signed payloads are
+not logged.
+
 - Active migrations by phase and route.
 - Phase duration histogram.
 - Command attempts and terminal failures.

@@ -50,7 +50,8 @@ npm run smoke:local
 
 This builds and starts PostgreSQL, Redis, both private chains, migrations, the API, worker, and web
 application. Open `http://localhost:3000`; API documentation is at
-`http://localhost:3001/docs`. Stop the stack with `npm run infra:down`.
+`http://localhost:3001/docs`; Prometheus text metrics are at
+`http://localhost:3001/v1/metrics`. Stop the stack with `npm run infra:down`.
 
 For application hot reload instead, start only the service dependencies:
 

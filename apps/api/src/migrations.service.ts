@@ -24,7 +24,7 @@ import {
   verifySignedExecutionPlan,
   verifySignedRefinanceIntent,
 } from '@debtshift/domain';
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { compareRoutes } from '@debtshift/optimizer';
 import { createPublicClient, http, isAddressEqual, type Address, type Hex } from 'viem';
@@ -160,7 +160,7 @@ export class MigrationsService {
         signedPlan.plan,
       );
 
-      return await createAuthorizedMigration(this.database.db, {
+      const result = await createAuthorizedMigration(this.database.db, {
         signedIntent,
         signedPlan,
         quote: parsed.quote,
@@ -168,6 +168,19 @@ export class MigrationsService {
         sourceLendingAuthorization,
         targetLendingAuthorization,
       });
+      Logger.log(
+        JSON.stringify({
+          event: result.created ? 'workflow_migration_authorized' : 'workflow_migration_reconciled',
+          migrationId: result.migrationId,
+          phase: 'AUTHORIZED',
+          ...(result.initialCommandId === undefined
+            ? {}
+            : { commandId: result.initialCommandId, commandType: 'RESERVE_LIQUIDITY' }),
+          mode: this.#executionEnvironment.DEBTSHIFT_MODE,
+        }),
+        'Workflow',
+      );
+      return result;
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       const message = error instanceof Error ? error.message : 'Invalid migration request.';

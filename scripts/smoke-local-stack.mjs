@@ -109,6 +109,23 @@ const finalizedEvidenceIds = new Set(
 if (!details.ledger.every((entry) => finalizedEvidenceIds.has(entry.evidenceId))) {
   throw new Error('A durable ledger row is not linked to finalized migration evidence.');
 }
+const metricsResponse = await fetch(`${apiBase}/v1/metrics`);
+const metricsContentType = metricsResponse.headers.get('content-type') ?? '';
+const metrics = await metricsResponse.text();
+if (!metricsResponse.ok || !metricsContentType.startsWith('text/plain; version=0.0.4')) {
+  throw new Error('Prometheus metrics endpoint did not return the required text exposition.');
+}
+for (const metric of [
+  `debtshift_migrations{phase="${details.migration.phase}"}`,
+  'debtshift_commands{status="SUCCEEDED",type="SETTLE_LIQUIDITY"}',
+  'debtshift_liquidity_reservation_principal_units{status="SETTLED"}',
+  'debtshift_ledger_entries{category="PRINCIPAL"}',
+]) {
+  if (!metrics.includes(metric)) throw new Error(`Prometheus output is missing ${metric}.`);
+}
+if (metrics.includes(execution.migrationId)) {
+  throw new Error('Prometheus output leaked a high-cardinality migration identifier.');
+}
 
 process.stdout.write(
   `${JSON.stringify({
@@ -118,6 +135,7 @@ process.stdout.write(
     evidenceCount: details.evidence.length,
     ledgerEntryCount: details.ledger.length,
     unexplainedImbalanceUnits: reconciliation.unexplainedImbalanceUnits,
+    metricsVerified: true,
   })}\n`,
 );
 

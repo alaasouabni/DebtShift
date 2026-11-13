@@ -102,7 +102,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Formatting, lint, type checks, builds, and all implemented test layers pass.
 - [x] Dependency, full-history secret, and built-container scans pass within documented policy; CI
       also publishes the runtime CycloneDX SBOM.
-- [ ] Metrics and structured logs cover all migration phases.
+- [x] Low-cardinality Prometheus metrics enumerate every migration phase and durable operational
+      state; structured JSON logs cover preparation, authorization, commands, evidence-derived phase
+      changes, retries, failures, and chain context without signed payloads or secrets.
 - [x] Critical alerts are exercised.
 - [x] Recovery and key-rotation runbooks are documented; the isolated database restore drill
       verifies every public table, exact row count, and migration history without mutating source.

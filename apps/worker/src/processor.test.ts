@@ -1,5 +1,5 @@
 import type { DurableCommand, OutboxEnvelope } from '@debtshift/database';
-import type { Evidence, EvidenceType } from '@debtshift/domain';
+import type { Evidence, EvidenceType, MigrationPhase } from '@debtshift/domain';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -60,7 +60,7 @@ function persistence(overrides: Partial<CommandPersistence> = {}): CommandPersis
   return {
     begin: vi.fn(async () => command()),
     hasEvidence: vi.fn(async () => false),
-    advance: vi.fn(async () => undefined),
+    advance: vi.fn(async () => 'RESERVED' as MigrationPhase),
     complete: vi.fn(async () => undefined),
     fail: vi.fn(async () => undefined),
     ...overrides,
@@ -81,6 +81,40 @@ describe('durable command processor', () => {
     expect(store.advance).toHaveBeenCalledOnce();
     expect(store.complete).toHaveBeenCalledWith(COMMAND_ID);
     expect(store.fail).not.toHaveBeenCalled();
+  });
+
+  it('emits structured lifecycle records with command, phase, evidence, and chain context', async () => {
+    const store = persistence();
+    const record = { ...evidence('LIQUIDITY_RESERVATION'), chainId: 31_337 };
+    const log = vi.fn();
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([['RESERVE_LIQUIDITY', { execute: vi.fn(async () => [record]) }]]),
+      log,
+    );
+
+    await processor.process(envelope());
+
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'workflow_command_started',
+        migrationId: MIGRATION_ID,
+        commandId: COMMAND_ID,
+        commandType: 'RESERVE_LIQUIDITY',
+      }),
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'workflow_evidence_persisted',
+        phase: 'RESERVED',
+        evidenceType: 'LIQUIDITY_RESERVATION',
+        verificationState: 'FINALIZED',
+        chainId: '31337',
+      }),
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'workflow_command_succeeded', phase: 'RESERVED' }),
+    );
   });
 
   it('checks evidence before side effects on duplicate delivery', async () => {

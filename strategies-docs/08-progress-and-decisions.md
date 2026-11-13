@@ -16,7 +16,7 @@ This file is updated throughout implementation. It is the first place to inspect
 | M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                               |
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                        |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.            |
-| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | All required alert and security gates pass. Recovery, pause, RPC/Redis, funding, solver, evidence, and add-before-remove key-rotation runbooks are documented; an isolated exact database restore drill passes. Metrics, migration rollback, and broader provenance remain.                                     |
+| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, structured workflow logs, recovery/key-rotation runbooks, and an isolated exact restore drill pass. Tracing, dashboards, migration rollback, and broader provenance remain.                                                                |
 | M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                             |
 
 ## Submission-critical mode
@@ -345,6 +345,31 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Authoritative metrics and structured workflow logs
+
+- Added `GET /v1/metrics` in Prometheus text format. It reads authoritative PostgreSQL aggregates
+  for all 14 phases, phase-age histograms, transitions, commands/attempts, evidence, chain finality,
+  transport, reservations, recoveries, alerts, outbox, and ledger state without identifiers in
+  labels.
+- Added structured JSON workflow records for API preparation/authorization and worker command
+  start, reconciliation, evidence persistence, evidence-derived phase, retry failure, exhaustion,
+  and success. Records contain correlation IDs, command type, phase, and chain where applicable but
+  no signed payload, credential, or private key.
+- Added one PGlite aggregation integration test, one Prometheus escaping/histogram test, and worker
+  lifecycle log assertions. The full repository gate passed: database 17 tests, API 10 tests, worker
+  55 tests, formatting, lint, types, and builds.
+- Rebuilt the production-shaped local image and exercised the preserved Docker stack. The endpoint
+  returned HTTP 200 with the Prometheus content type and real non-zero phase, command, reservation,
+  alert, transport, and ledger series.
+- After resetting only the disposable Anvil service, the strengthened signed HTTP-to-chain smoke
+  reached `SETTLED` with migration
+  `0x91a73a4fad92ad8c2aa564efb3063a5ccd13f6c72cacc645d1c294417e948c74`, 17 evidence records,
+  16 ledger entries, zero unexplained imbalance, and `metricsVerified: true`; its structured log
+  covered the complete executable phase chain. Sandbox NEAR receipt registration remains
+  intentionally pending without credentials.
+- Mainnet execution remained disabled; no external deployment, credential use, mainnet broadcast,
+  or real-fund movement occurred.
 
 ### 2026-11-13 - Operator runbooks and isolated database restore drill
 

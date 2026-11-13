@@ -61,6 +61,7 @@ async function bootstrap(): Promise<void> {
   const processor = new DurableCommandProcessor(
     new PostgresCommandPersistence(databaseClient.db),
     handlers,
+    (event) => Logger.log(JSON.stringify(event), 'Workflow'),
   );
   const worker = createCommandWorker(redis, processor, commandQueuePolicy);
 

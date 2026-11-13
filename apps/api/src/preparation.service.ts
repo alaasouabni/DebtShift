@@ -14,7 +14,7 @@ import {
   evmAddressSchema,
 } from '@debtshift/domain';
 import { transportQuoteRequestSchema } from '@debtshift/intents';
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Address } from 'viem';
 import { z } from 'zod';
@@ -250,7 +250,7 @@ export class PreparationService {
         this.protocols.prepareTargetAuthorization(borrower, BigInt(plan.deadline)),
       ]);
 
-      return {
+      const prepared = {
         execution: {
           mode: this.#mode,
           transportProvider: quote.provider,
@@ -270,6 +270,18 @@ export class PreparationService {
         sourceSnapshot: snapshot,
         routeAnalysis,
       };
+      Logger.log(
+        JSON.stringify({
+          event: 'workflow_migration_prepared',
+          migrationId,
+          phase: 'QUOTED',
+          mode: this.#mode,
+          transportProvider: quote.provider,
+          transportMode: quote.mode,
+        }),
+        'Workflow',
+      );
+      return prepared;
     } catch (error) {
       throw badRequest(error);
     }

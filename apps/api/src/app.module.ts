@@ -6,6 +6,8 @@ import { AppController } from './app.controller.js';
 import { DatabaseService } from './database.service.js';
 import { MigrationsController } from './migrations.controller.js';
 import { MigrationsService } from './migrations.service.js';
+import { MetricsController } from './metrics.controller.js';
+import { MetricsService } from './metrics.service.js';
 import { LiveMarketToolsService } from './live/live-market-tools.service.js';
 import { LiveProtocolService } from './live/live-protocol.service.js';
 import {
@@ -33,9 +35,16 @@ import { TransportService } from './transport.service.js';
       validate: parseDebtShiftEnvironment,
     }),
   ],
-  controllers: [AppController, QuotesController, RouteAnalysisController, MigrationsController],
+  controllers: [
+    AppController,
+    MetricsController,
+    QuotesController,
+    RouteAnalysisController,
+    MigrationsController,
+  ],
   providers: [
     DatabaseService,
+    MetricsService,
     TransportService,
     {
       provide: PROTOCOL_DATA_PORT,

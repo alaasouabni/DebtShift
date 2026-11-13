@@ -317,6 +317,10 @@ workflow.
 - [ ] Complete the security test matrix and risk-register evidence.
 - [ ] Run static analysis and dependency vulnerability checks.
 - [ ] Add structured logs, traces, and Prometheus metrics.
+  - [x] Add phase/command/evidence/chain structured workflow logs and low-cardinality Prometheus
+        metrics backed by authoritative PostgreSQL state.
+  - [ ] Add deployment-selected distributed tracing without placing credentials or signed payloads
+        in spans.
 - [ ] Add dashboards for phases, latency, failures, health, and ledger imbalance.
 - [x] Complete alerts for reservation shortfall, receipt mismatch, and accounting imbalance.
   - [x] Persist and exercise deadline-approach and stale-recovery alerts.
