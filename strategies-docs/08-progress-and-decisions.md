@@ -1317,6 +1317,19 @@ operative source of truth.
   asset-movement acceptance item. Redis remains non-authoritative delivery infrastructure.
 - All 18 durable two-chain scenarios and all 68 worker tests pass after the change.
 
+### 2026-11-13 - Refund custody acceptance evidence tightened
+
+- Strengthened the real two-Anvil refunded-transport scenario to inspect the durable recovery
+  opening: exact input/refund amount, refund transaction hash, provider state, and custody
+  disposition must all be present before the signed recovery command is planned.
+- The finalized recovery evidence now has explicit test assertions for the signed borrower receiver,
+  full 10 WETH refund, and isolated recovery-reserve settlement. Direct chain reads prove source
+  escrow custody is zero, the borrower holds the full refund, no destination loan exists, and the
+  solver principal receivable is zero.
+- The production execution path independently verifies the finalized refund transaction's exact
+  token, source escrow receiver, amount, block, and confirmation depth before registering custody;
+  provider status alone is never sufficient.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

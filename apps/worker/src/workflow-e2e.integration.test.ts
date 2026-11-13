@@ -279,26 +279,86 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
   }, 60_000);
 
   it('derives recovery from refund evidence and terminates failed-safe with full collateral', async () => {
-    await withWorkflow('REFUNDED', async ({ database, deployment, source, createProcessor }) => {
-      const migrationId = await createMigration(database, deployment, source, 'REFUNDED');
-      await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE');
-      const details = await getMigrationDetails(database, migrationId);
+    await withWorkflow(
+      'REFUNDED',
+      async ({ database, deployment, source, destination, createProcessor }) => {
+        const migrationId = await createMigration(database, deployment, source, 'REFUNDED');
+        await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE');
+        const details = await getMigrationDetails(database, migrationId);
+        const recoveryOpened = details?.evidence.find(
+          (record) => record.type === 'RECOVERY_OPENED',
+        );
+        const recoveryCompleted = details?.evidence.find(
+          (record) => record.type === 'RECOVERY_COMPLETED',
+        );
 
-      expect(details?.migration.phase).toBe('FAILED_SAFE');
-      expect(details?.evidence.map((record) => record.type)).toEqual(
-        expect.arrayContaining(['RECOVERY_OPENED', 'RECOVERY_COMPLETED']),
-      );
-      const tokenArtifact = await import('@debtshift/protocols').then(({ loadFoundryArtifact }) =>
-        loadFoundryArtifact('TestToken'),
-      );
-      const refund = await source.publicClient.readContract({
-        address: deployment.source.collateralToken,
-        abi: tokenArtifact.abi,
-        functionName: 'balanceOf',
-        args: [deployment.borrower],
-      });
-      expect(refund).toBe(10n * 10n ** 18n);
-    });
+        expect(details?.migration.phase).toBe('FAILED_SAFE');
+        expect(recoveryOpened?.normalizedPayload).toEqual(
+          expect.objectContaining({
+            reason: 'TRANSPORT_REFUNDED',
+            policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+            residualAssets: expect.arrayContaining([
+              expect.objectContaining({
+                kind: 'TRANSPORT_CUSTODY',
+                providerState: 'REFUNDED',
+                inputUnits: '10000000000000000000',
+                observedOutputUnits: '10000000000000000000',
+                refundTransactionHash: expect.stringMatching(/^0x[0-9a-f]{64}$/),
+                disposition: 'VERIFIED_CUSTODY_ELIGIBLE_FOR_SIGNED_RECOVERY',
+              }),
+            ]),
+          }),
+        );
+        expect(recoveryCompleted?.normalizedPayload).toEqual(
+          expect.objectContaining({
+            action: 'executeRecovery',
+            reason: 'POLICY_SELECTED_RECOVERY',
+            refundReceiver: deployment.borrower,
+            refundUnits: '10000000000000000000',
+            recoveryReserveSettlement: expect.objectContaining({
+              status: 'SETTLED_FROM_ISOLATED_RESERVE',
+            }),
+          }),
+        );
+
+        const [tokenArtifact, targetArtifact, vaultArtifact] = await Promise.all([
+          loadFoundryArtifact('TestToken'),
+          loadFoundryArtifact('MockTargetLending'),
+          loadFoundryArtifact('LiquidityVault'),
+        ]);
+        const [borrowerRefund, sourceEscrowCustody, destinationPosition, receivable] =
+          await Promise.all([
+            source.publicClient.readContract({
+              address: deployment.source.collateralToken,
+              abi: tokenArtifact.abi,
+              functionName: 'balanceOf',
+              args: [deployment.borrower],
+            }),
+            source.publicClient.readContract({
+              address: deployment.source.collateralToken,
+              abi: tokenArtifact.abi,
+              functionName: 'balanceOf',
+              args: [deployment.source.escrow],
+            }),
+            destination.publicClient.readContract({
+              address: deployment.destination.lending,
+              abi: targetArtifact.abi,
+              functionName: 'positions',
+              args: [deployment.borrower],
+            }),
+            source.publicClient.readContract({
+              address: deployment.source.vault,
+              abi: vaultArtifact.abi,
+              functionName: 'principalReceivable',
+              args: [deployment.source.debtToken],
+            }),
+          ]);
+        expect(borrowerRefund).toBe(10n * 10n ** 18n);
+        expect(sourceEscrowCustody).toBe(0n);
+        expect(destinationPosition).toEqual([0n, 0n]);
+        expect(receivable).toBe(0n);
+      },
+    );
   }, 60_000);
 
   it('durably escalates an exhausted automated recovery without claiming failed-safe completion', async () => {

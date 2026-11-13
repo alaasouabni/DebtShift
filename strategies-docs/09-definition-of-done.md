@@ -41,7 +41,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] A proven pre-broadcast source revert or finalized reverted receipt leaves the source position
       unchanged, releases the undrawn reservation onchain, and requires a fresh quote; uncertain
       broadcast/receipt failures never release optimistically.
-- [ ] Transport refund enters recovery and verifies actual custody.
+- [x] Transport refund enters recovery only after exact provider/quote/token/receiver/amount checks;
+      recovery verifies escrow custody, returns the full collateral to the signed borrower receiver,
+      settles the isolated reserve, and proves zero destination loan and solver receivable.
 - [ ] Wrong destination token, amount, or receiver cannot open the target position.
 - [ ] Unsafe destination market state prevents target borrowing.
 - [ ] Insufficient quote-time capacity rejects the migration before reservation or source movement.

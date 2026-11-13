@@ -20,23 +20,23 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `71325d5`.
+- Previous remote checkpoint before this handoff: `003235d`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. A real two-Anvil interruption scenario that reconstructs the worker processor before every
-   command and redelivers every completed durable queue message.
-2. Exact proof that six irreversible financial evidence types retain one distinct finalized
-   transaction each and completed-command attempt counts do not change on redelivery.
-3. Final source and target lending positions matching a single successful execution after all
-   restarts/replays.
-4. A reconciled evidence set combining the new worker test with API execute deduplication,
-   transactional outbox publish recovery, stale-command recovery, and direct EVM action replay.
-5. Closure of risk-register items R-07 and R-14 and the interruption acceptance checkbox without
-   treating Redis as a financial source of truth.
+1. Stronger refunded-transport E2E assertions for exact provider state, amount, refund transaction,
+   and custody disposition in durable recovery-opening evidence.
+2. Finalized recovery receipt assertions for the signed borrower receiver, full collateral amount,
+   and isolated reserve settlement.
+3. Direct two-chain proof that source escrow custody and solver receivable are zero, the borrower has
+   the full 10 WETH refund, and no destination loan was opened.
+4. Documentation of the production adapter's independent finalized transaction/log verification
+   before source-refund custody registration.
+5. Closure of risk R-11 and the refund-custody acceptance item without trusting provider status as
+   proof of onchain delivery.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
