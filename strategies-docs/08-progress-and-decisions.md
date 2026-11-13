@@ -345,6 +345,30 @@ The journal preserves historical implementation context. Entries before ADR-022 
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
 
+### 2026-11-13 - Unknown 1Click state and retry boundary hardened
+
+- Changed official 1Click status parsing so a future undocumented provider state is still validated
+  against the signed quote/deposit binding, hashed, and returned as a fail-closed `UNKNOWN`
+  observation instead of being discarded by schema parsing.
+- The production transport adapter now persists that raw response in `provider_observations`; the
+  workflow also records `UNKNOWN` on the transport leg, emits no destination evidence, and performs
+  no target action.
+- Before the signed deadline, ambiguous custody raises only a retryable command failure. At or after
+  the deadline it appends `MIGRATION_EXPIRED` and `RECOVERY_OPENED` with
+  `AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED`, preserving custody uncertainty for an operator rather than
+  inventing a provider terminal state.
+- Made BullMQ command attempts, exponential base delay, and stale-worker lease recovery explicit,
+  bounded, environment-validated configuration. Provider HTTP retry, timeout, token-bucket rate
+  limiting, cache/coalescing, and circuit-breaker tests were already present and remain green.
+- Focused verification passes: 24 intents tests, 41 domain tests, 46 worker tests, the TypeScript
+  project graph, formatting, and Compose configuration validation.
+- The complete repository check passed, the updated production image rebuilt with zero npm
+  vulnerabilities, and in-place Compose smoke migration
+  `0xecf74088a1225d1ec58e8b517c4e964ef214b0533f4261199561b39ba738e110` reached `SETTLED` with
+  17 evidence records, 16 durable ledger entries, and zero unexplained imbalance.
+- Checkpoint `32886b8` is on `main`; GitHub Actions run `43347466040` passed TypeScript, all EVM
+  contract/deployment/API/worker/demo gates, and the Linux NEAR sandbox gate.
+
 ### 2026-11-13 - Durable settlement ledger implemented and clean-stack verified
 
 - Found that the contract-backed smoke migration reached `SETTLED` with finalized reconciliation

@@ -125,6 +125,34 @@ describe('OneClickTransportExecutionPort', () => {
       },
     });
   });
+
+  it('persists and maps an undocumented provider status as fail-closed unknown custody', async () => {
+    const store = observationStore();
+    const port = new OneClickTransportExecutionPort(
+      {
+        submitDepositTransaction: vi.fn(),
+        getStatus: vi.fn(async () =>
+          providerObservation('UNKNOWN', {
+            providerStatus: 'NEW_PROVIDER_STATE',
+            rawResponse: { status: 'NEW_PROVIDER_STATE' },
+          }),
+        ),
+      },
+      store,
+    );
+
+    await expect(port.observe(context())).resolves.toMatchObject({
+      observation: { status: 'UNKNOWN' },
+    });
+    expect(store.store).toHaveBeenCalledWith(
+      'STATUS',
+      expect.objectContaining({
+        status: 'UNKNOWN',
+        providerStatus: 'NEW_PROVIDER_STATE',
+        rawResponse: { status: 'NEW_PROVIDER_STATE' },
+      }),
+    );
+  });
 });
 
 function observationStore(): OneClickObservationStore & { store: ReturnType<typeof vi.fn> } {
@@ -217,6 +245,7 @@ function providerObservation(
 ): OneClickStatusObservation {
   return {
     status,
+    providerStatus: status,
     correlationId: 'status-correlation',
     depositAddress: DEPOSIT,
     depositMemo: 'debtshift-route',

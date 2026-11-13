@@ -114,7 +114,7 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] Remote provider requests contain only allowlisted structured explanation data.
 - [x] Custom endpoint validation and SSRF protections pass security tests.
 - [x] Disabling or changing the explanation model cannot change the selected route or signed values.
-- [ ] Public API cache, retry, rate-limit, and circuit-breaker behavior is tested.
+- [x] Public API cache, retry, rate-limit, and circuit-breaker behavior is tested.
 - [x] Stale or conflicting indexed data cannot advance an irreversible phase.
 - [x] Execution-critical Aave and Morpho state is read directly from contracts at a recorded block.
 - [x] The Route/Risk Agent computes protocol capacity, DebtShift policy capacity, safe liquidity,
@@ -127,12 +127,12 @@ DebtShift’s first implementation is complete only when every mandatory item be
       production modes never fall back to simulation.
 - [x] The core workflow contains no simulator dependency and runs unchanged with sandbox/testnet or
       production adapters.
-- [ ] The hosted sandbox executes real local-chain contracts, signatures, transfers, receipts,
+- [x] The hosted sandbox executes real local-chain contracts, signatures, transfers, receipts,
       lending state changes, settlement, and recovery; only the unavailable transport-provider
       boundary is simulated and clearly labeled.
 - [ ] Public testnet evidence contains real contract/registry transactions and labels its transport
       evidence simulated rather than claiming 1Click testnet.
-- [ ] `mainnet-readonly` uses the official production service for live catalogs and dry quotes and
+- [x] `mainnet-readonly` uses the official production service for live catalogs and dry quotes and
       cannot instantiate write-capable handlers.
 - [x] `MAINNET_EXECUTION_ENABLED` is required, defaults to `false`, is rejected as `true` outside
       `mainnet`, and blocks every irreversible command while false.

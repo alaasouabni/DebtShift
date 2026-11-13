@@ -153,6 +153,12 @@ Applications refuse to start if required manifest entries or chain IDs disagree 
 - Recovery age.
 - SSE connected clients and replay count.
 
+Durable workflow retries are bounded by `WORKFLOW_COMMAND_MAX_ATTEMPTS` and exponential backoff from
+`WORKFLOW_COMMAND_RETRY_DELAY_MS`, capped by `WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS`.
+`WORKFLOW_COMMAND_STALE_AFTER_MS` controls recovery of abandoned worker leases. These operational
+limits never extend a signed execution deadline; the transport handler transitions unresolved
+custody to explicit recovery when that deadline is crossed.
+
 ## Required alerts
 
 - Liquidity reservation below commitment.

@@ -95,7 +95,7 @@ describe('OneClickCommittedClient', () => {
     });
   });
 
-  it('rejects unknown statuses and deposit bindings that do not match the request', async () => {
+  it('normalizes unknown statuses without losing raw evidence and rejects mismatched bindings', async () => {
     const unknownStatusClient = committedClient(
       vi.fn(async () => {
         const response = statusResponse('SUCCESS') as Record<string, unknown>;
@@ -104,7 +104,12 @@ describe('OneClickCommittedClient', () => {
       }) as unknown as typeof fetch,
       () => true,
     );
-    await expect(unknownStatusClient.getStatus(DEPOSIT, 'route-7')).rejects.toThrow();
+    await expect(unknownStatusClient.getStatus(DEPOSIT, 'route-7')).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      providerStatus: 'UNDOCUMENTED_PROVIDER_STATE',
+      depositAddress: DEPOSIT,
+      rawResponse: { status: 'UNDOCUMENTED_PROVIDER_STATE' },
+    });
 
     const mismatchedDepositClient = committedClient(
       vi.fn(async () => {

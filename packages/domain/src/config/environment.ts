@@ -97,6 +97,20 @@ export const debtShiftEnvironmentSchema = z
     INTENTS_RATE_LIMIT_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(10),
     INTENTS_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
     INTENTS_CACHE_MAX_ENTRIES: z.coerce.number().int().min(1).max(10_000).default(100),
+    WORKFLOW_COMMAND_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(25),
+    WORKFLOW_COMMAND_RETRY_DELAY_MS: z.coerce.number().int().min(100).max(60_000).default(500),
+    WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(300_000)
+      .default(30_000),
+    WORKFLOW_COMMAND_STALE_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(3_600_000)
+      .default(300_000),
     SIMULATOR_TERMINAL_OUTCOME: z
       .enum([
         'SUCCESS',
@@ -135,6 +149,16 @@ export const debtShiftEnvironmentSchema = z
         code: 'custom',
         message: '1Click maximum retry delay cannot be lower than its base retry delay.',
         path: ['INTENTS_RETRY_MAX_DELAY_MS'],
+      });
+    }
+
+    if (
+      environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS < environment.WORKFLOW_COMMAND_RETRY_DELAY_MS
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Workflow maximum retry delay cannot be lower than its base retry delay.',
+        path: ['WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS'],
       });
     }
 

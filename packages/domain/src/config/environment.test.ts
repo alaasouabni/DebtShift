@@ -18,6 +18,10 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.SOURCE_DEPLOYMENT_BLOCK_NUMBER).toBe(0);
     expect(environment.DESTINATION_DEPLOYMENT_BLOCK_NUMBER).toBe(0);
     expect(environment.DESTINATION_FINALITY_CONFIRMATIONS).toBe(1);
+    expect(environment.WORKFLOW_COMMAND_MAX_ATTEMPTS).toBe(25);
+    expect(environment.WORKFLOW_COMMAND_RETRY_DELAY_MS).toBe(500);
+    expect(environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS).toBe(30_000);
+    expect(environment.WORKFLOW_COMMAND_STALE_AFTER_MS).toBe(300_000);
   });
 
   it('accepts exactly the four approved runtime modes', () => {
@@ -149,6 +153,31 @@ describe('parseDebtShiftEnvironment', () => {
         INTENTS_RETRY_MAX_DELAY_MS: '999',
       }),
     ).toThrow('maximum retry delay cannot be lower');
+  });
+
+  it('bounds durable workflow retry and stale-lease policy', () => {
+    expect(() => parseDebtShiftEnvironment({ WORKFLOW_COMMAND_MAX_ATTEMPTS: '0' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ WORKFLOW_COMMAND_RETRY_DELAY_MS: '99' })).toThrow();
+    expect(() =>
+      parseDebtShiftEnvironment({
+        WORKFLOW_COMMAND_RETRY_DELAY_MS: '1000',
+        WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: '999',
+      }),
+    ).toThrow('Workflow maximum retry delay cannot be lower');
+    expect(() => parseDebtShiftEnvironment({ WORKFLOW_COMMAND_STALE_AFTER_MS: '9999' })).toThrow();
+    expect(
+      parseDebtShiftEnvironment({
+        WORKFLOW_COMMAND_MAX_ATTEMPTS: '12',
+        WORKFLOW_COMMAND_RETRY_DELAY_MS: '750',
+        WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: '15000',
+        WORKFLOW_COMMAND_STALE_AFTER_MS: '120000',
+      }),
+    ).toMatchObject({
+      WORKFLOW_COMMAND_MAX_ATTEMPTS: 12,
+      WORKFLOW_COMMAND_RETRY_DELAY_MS: 750,
+      WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: 15_000,
+      WORKFLOW_COMMAND_STALE_AFTER_MS: 120_000,
+    });
   });
 });
 

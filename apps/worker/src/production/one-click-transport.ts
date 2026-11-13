@@ -162,6 +162,8 @@ function mapStatus(status: OneClickStatusObservation['status']): TransportObserv
       return 'REFUNDED';
     case 'FAILED':
       return 'FAILED_AMBIGUOUS_CUSTODY';
+    case 'UNKNOWN':
+      return 'UNKNOWN';
   }
 }
 

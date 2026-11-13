@@ -46,7 +46,12 @@ async function bootstrap(): Promise<void> {
 
   const redis = redisConnection(environment.REDIS_URL);
   const queue = createCommandQueue(redis);
-  const publisher = new BullCommandPublisher(queue);
+  const commandQueuePolicy = {
+    maximumAttempts: environment.WORKFLOW_COMMAND_MAX_ATTEMPTS,
+    retryDelayMs: environment.WORKFLOW_COMMAND_RETRY_DELAY_MS,
+    maximumRetryDelayMs: environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS,
+  } as const;
+  const publisher = new BullCommandPublisher(queue, commandQueuePolicy);
   const handlers = composeWorkflowHandlers({
     environment,
     store: new PostgresWorkflowContextStore(databaseClient.db),
@@ -56,7 +61,7 @@ async function bootstrap(): Promise<void> {
     new PostgresCommandPersistence(databaseClient.db),
     handlers,
   );
-  const worker = createCommandWorker(redis, processor);
+  const worker = createCommandWorker(redis, processor, commandQueuePolicy);
 
   worker.on('failed', (job, error) => {
     Logger.warn(
@@ -68,7 +73,7 @@ async function bootstrap(): Promise<void> {
 
   const recovered = await recoverStaleCommands(
     databaseClient.db,
-    new Date(Date.now() - 5 * 60 * 1000),
+    new Date(Date.now() - environment.WORKFLOW_COMMAND_STALE_AFTER_MS),
   );
   let closing = false;
   let activePublication: Promise<void> = Promise.resolve();

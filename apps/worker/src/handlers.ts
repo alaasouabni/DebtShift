@@ -289,6 +289,12 @@ export function createWorkflowHandlers({
         ) {
           return [recoveryEvidence(context, observation, observation.status)];
         }
+        if (isPastExecutionDeadline(context, observation.observedAt)) {
+          return [
+            expirationEvidence(context, observation, 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED'),
+            recoveryEvidence(context, observation, 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED'),
+          ];
+        }
         throw new RetryableCommandError(`Transport custody is ambiguous: ${observation.status}.`);
       }),
     ],

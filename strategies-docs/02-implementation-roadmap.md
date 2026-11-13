@@ -119,7 +119,7 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 ### Tasks
 
-- [ ] Implement Aave and Morpho snapshot adapters with block references.
+- [x] Implement Aave and Morpho snapshot adapters with block references.
 - [x] Normalize rates without losing native units or calculation provenance.
 - [x] Calculate target rate impact after the requested borrow.
 - [x] Add gas, approval, transport, slippage, funding, and protocol costs.
@@ -176,9 +176,9 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Add chain-specific finality configuration.
 - [x] Add canonical-block and transaction-receipt rechecks before each subsequent financial side
       effect, append-only retractions, and manual incident handling for deep reorgs.
-- [ ] Add transport polling with strict unknown-status behavior.
+- [x] Add transport polling with strict unknown-status behavior.
 - [x] Add destination balance and receipt reconciliation.
-- [ ] Add retry budgets and deadline-aware scheduling.
+- [x] Add retry budgets and deadline-aware scheduling.
 - [ ] Add each recovery policy and operator escalation state.
 - [x] Persist recovery cases atomically with opening evidence, exact residual custody/receivable
       claims, phase changes, and failed-safe resolution.
@@ -272,7 +272,7 @@ workflow.
 - [x] Validate the 1Click client against the current official OpenAPI/API reference.
 - [x] Encode the absence of public 1Click testnet as an environment rule without making simulation
       the primary workflow.
-- [ ] Fetch/version the live token catalog and map asset IDs by chain and contract address.
+- [x] Fetch/version the live token catalog and map asset IDs by chain and contract address.
 - [x] Retain `dry: true` quotes in `mainnet-readonly` and implement committed quotes only in `mainnet`.
 - [x] Implement committed quote validation, deposit-address binding, origin transaction submission,
       strict status normalization, refund handling, and raw-payload persistence.
@@ -280,7 +280,7 @@ workflow.
       confirmations, and canonical block before target open.
 - [x] Connect production source close, vault/escrow, official transport, Morpho target open, atomic
       settlement, residual return, and NEAR receipt registration.
-- [ ] Add bounded retry, timeout, rate limit, circuit breaker, and fail-closed unknown-status behavior.
+- [x] Add bounded retry, timeout, rate limit, circuit breaker, and fail-closed unknown-status behavior.
 - [x] Restrict the first deployment to one versioned route and explicit principal, collateral, fee,
       slippage, gas, receiver, deadline, and recovery-exposure limits.
 - [x] Require a separately isolated recovery reserve before source close.

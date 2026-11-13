@@ -123,7 +123,10 @@ const oneClickStatusResponseSchema = z
   .object({
     correlationId: z.string().trim().min(1),
     quoteResponse: oneClickQuoteResponseSchema,
-    status: oneClickExecutionStatusSchema,
+    // Parse the provider value before normalizing it so a newly introduced
+    // status can still be signature-checked, persisted, and handled as an
+    // explicit fail-closed UNKNOWN observation.
+    status: z.string().trim().min(1),
     updatedAt: isoTimestampSchema,
     swapDetails: oneClickSwapDetailsSchema,
   })
@@ -208,7 +211,8 @@ export type OneClickDryQuoteObservation = OneClickQuoteObservation;
 export type OneClickCommittedQuoteObservation = OneClickQuoteObservation;
 
 export interface OneClickStatusObservation {
-  readonly status: OneClickExecutionStatus;
+  readonly status: OneClickExecutionStatus | 'UNKNOWN';
+  readonly providerStatus: string;
   readonly correlationId: string;
   readonly depositAddress: string;
   readonly depositMemo?: string;
@@ -674,8 +678,10 @@ function parseStatusObservation(
   if (quote.depositMemo !== expectedDepositMemo) {
     throw new Error('1Click status response deposit memo does not match the requested quote.');
   }
+  const status = oneClickExecutionStatusSchema.safeParse(response.status);
   return {
-    status: response.status,
+    status: status.success ? status.data : 'UNKNOWN',
+    providerStatus: response.status,
     correlationId: response.correlationId,
     depositAddress: expectedDepositAddress,
     ...(expectedDepositMemo === undefined ? {} : { depositMemo: expectedDepositMemo }),

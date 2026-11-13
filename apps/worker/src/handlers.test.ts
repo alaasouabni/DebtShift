@@ -156,6 +156,47 @@ describe('simulated workflow handlers', () => {
     expect(records.map((record) => record.type)).toEqual(['MIGRATION_EXPIRED', 'RECOVERY_OPENED']);
   });
 
+  it('persists unknown provider state and retries without advancing before the deadline', async () => {
+    const simulator = new DeterministicTransportSimulator({
+      processingPolls: 0,
+      outcome: 'UNKNOWN',
+    });
+    const context = await buildContext(simulator, true);
+    const store = new MemoryContextStore(context);
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    await expect(
+      getHandler(handlers, 'VERIFY_DESTINATION').execute(command('VERIFY_DESTINATION')),
+    ).rejects.toThrow('Transport custody is ambiguous: UNKNOWN');
+
+    expect(execution.deliverDestination).not.toHaveBeenCalled();
+    expect(store.updates[0]).toEqual(expect.objectContaining({ providerState: 'UNKNOWN' }));
+  });
+
+  it('moves unknown provider custody into recovery after the signed deadline', async () => {
+    const simulator = new DeterministicTransportSimulator({
+      processingPolls: 0,
+      outcome: 'UNKNOWN',
+      now: () => 2_000_000_000_000,
+    });
+    const context = await buildContext(simulator, true, '1900000000');
+    const store = new MemoryContextStore(context);
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
+      command('VERIFY_DESTINATION'),
+    );
+
+    expect(execution.deliverDestination).not.toHaveBeenCalled();
+    expect(store.updates[0]).toEqual(expect.objectContaining({ providerState: 'UNKNOWN' }));
+    expect(records.map((record) => record.type)).toEqual(['MIGRATION_EXPIRED', 'RECOVERY_OPENED']);
+    expect(records[1]?.normalizedPayload).toEqual(
+      expect.objectContaining({ reason: 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED' }),
+    );
+  });
+
   it('emits both settlement and reconciliation evidence from one finalized action', async () => {
     const simulator = new DeterministicTransportSimulator();
     const store = settlementStore(await buildContext(simulator, true));

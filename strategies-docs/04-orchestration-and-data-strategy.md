@@ -148,7 +148,13 @@ For each migration:
 - Bind a committed quote to the exact execution plan before source closure.
 - Submit the origin transaction identifier at most once per leg.
 - Poll status idempotently.
-- Persist unknown statuses, stop advancement, and alert.
+- Preserve the exact provider status and raw response before normalization. An undocumented status
+  becomes `UNKNOWN`, persists in provider observations and the transport leg, and cannot advance the
+  workflow.
+- Retry pending or ambiguous custody with the environment-validated BullMQ attempt/backoff budget.
+  The signed execution deadline remains authoritative: unresolved custody at that boundary appends
+  expiration and recovery evidence instead of exhausting retries into an unowned stuck state.
+- Emit a structured failed-job warning for operator alert routing on every retryable unknown state.
 - On provider success, independently verify destination token, receiver, amount, transaction, and finality.
 - On refund, independently verify token, receiver, amount, transaction, and finality.
 - On incomplete deposit, failed, or ambiguous custody, enter recovery.
