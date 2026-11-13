@@ -70,6 +70,9 @@ const migrationFiles = readdirSync(migrationsDirectory)
 type WorkflowScenario =
   | 'SUCCESS'
   | 'REFUNDED'
+  | 'WRONG_DESTINATION_TOKEN'
+  | 'WRONG_DESTINATION_RECEIVER'
+  | 'BELOW_MINIMUM_DELIVERY'
   | 'TIMEOUT'
   | 'CAPACITY_DETERIORATED'
   | 'PRE_SOURCE_CAPACITY_DETERIORATED'
@@ -86,6 +89,9 @@ const scenarioNonces: Readonly<
 > = {
   SUCCESS: { intent: '1', plan: 2n },
   REFUNDED: { intent: '3', plan: 4n },
+  WRONG_DESTINATION_TOKEN: { intent: '25', plan: 26n },
+  WRONG_DESTINATION_RECEIVER: { intent: '27', plan: 28n },
+  BELOW_MINIMUM_DELIVERY: { intent: '29', plan: 30n },
   TIMEOUT: { intent: '5', plan: 6n },
   CAPACITY_DETERIORATED: { intent: '7', plan: 8n },
   PRE_SOURCE_CAPACITY_DETERIORATED: { intent: '9', plan: 10n },
@@ -360,6 +366,75 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
       },
     );
   }, 60_000);
+
+  it.each([
+    {
+      scenario: 'WRONG_DESTINATION_TOKEN' as const,
+      failure: 'OUTPUT_ASSET_MISMATCH',
+    },
+    {
+      scenario: 'WRONG_DESTINATION_RECEIVER' as const,
+      failure: 'DESTINATION_RECEIVER_MISMATCH',
+    },
+    {
+      scenario: 'BELOW_MINIMUM_DELIVERY' as const,
+      failure: 'OUTPUT_BELOW_MINIMUM',
+    },
+  ])(
+    'never opens the target position for $failure transport evidence',
+    async ({ scenario, failure }) => {
+      await withWorkflow(
+        scenario,
+        async ({ database, deployment, source, destination, createProcessor }) => {
+          const migrationId = await createMigration(database, deployment, source, scenario);
+          await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE');
+          const details = await getMigrationDetails(database, migrationId);
+          const recoveryOpened = details?.evidence.find(
+            (record) => record.type === 'RECOVERY_OPENED',
+          );
+
+          expect(details?.migration.phase).toBe('FAILED_SAFE');
+          expect(recoveryOpened?.normalizedPayload).toEqual(
+            expect.objectContaining({ reason: failure }),
+          );
+          expect(details?.evidence.map((record) => record.type)).not.toEqual(
+            expect.arrayContaining(['TRANSPORT_DESTINATION', 'TARGET_POSITION']),
+          );
+
+          const [tokenArtifact, targetArtifact] = await Promise.all([
+            loadFoundryArtifact('TestToken'),
+            loadFoundryArtifact('MockTargetLending'),
+          ]);
+          const [borrowerRefund, destinationEscrowBalance, destinationPosition] = await Promise.all(
+            [
+              source.publicClient.readContract({
+                address: deployment.source.collateralToken,
+                abi: tokenArtifact.abi,
+                functionName: 'balanceOf',
+                args: [deployment.borrower],
+              }),
+              destination.publicClient.readContract({
+                address: deployment.destination.collateralToken,
+                abi: tokenArtifact.abi,
+                functionName: 'balanceOf',
+                args: [deployment.destination.escrow],
+              }),
+              destination.publicClient.readContract({
+                address: deployment.destination.lending,
+                abi: targetArtifact.abi,
+                functionName: 'positions',
+                args: [deployment.borrower],
+              }),
+            ],
+          );
+          expect(borrowerRefund).toBe(10n * 10n ** 18n);
+          expect(destinationEscrowBalance).toBe(0n);
+          expect(destinationPosition).toEqual([0n, 0n]);
+        },
+      );
+    },
+    60_000,
+  );
 
   it('durably escalates an exhausted automated recovery without claiming failed-safe completion', async () => {
     await withWorkflow('REFUNDED', async ({ database, deployment, source, createProcessor }) => {
@@ -1088,6 +1163,20 @@ async function withWorkflow(
         feeBps: 100,
         processingPolls: outcome === 'TIMEOUT' ? 100 : 1,
         now: () => Date.now() + transportClockOffsetMs,
+        ...(outcome === 'WRONG_DESTINATION_TOKEN'
+          ? {
+              deliveredAsset: {
+                chainId: 31_338,
+                address: deployment.destination.debtToken,
+                decimals: 6,
+                symbol: 'dUSDC',
+              },
+            }
+          : {}),
+        ...(outcome === 'WRONG_DESTINATION_RECEIVER'
+          ? { deliveredReceiver: deployment.deployer }
+          : {}),
+        ...(outcome === 'BELOW_MINIMUM_DELIVERY' ? { deliveredAmountUnits: '1' } : {}),
       });
       const execution = withExecutionOverrides(
         new DualAnvilSandboxExecutionPort(environment),

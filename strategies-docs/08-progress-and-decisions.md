@@ -1330,6 +1330,22 @@ operative source of truth.
   token, source escrow receiver, amount, block, and confirmation depth before registering custody;
   provider status alone is never sufficient.
 
+### 2026-11-13 - Invalid destination delivery evidence stopped before chain movement
+
+- Added three durable two-Anvil provider-adversary scenarios for the exact signed quote with a wrong
+  destination token, wrong destination receiver, or below-minimum output amount.
+- Each scenario must record the exact deterministic verification failure, omit both
+  `TRANSPORT_DESTINATION` and `TARGET_POSITION` evidence, keep destination escrow empty, and prove the
+  borrower has no destination loan. The contract-backed recovery returns the full source collateral
+  in the controlled simulator boundary.
+- The production-neutral handler invokes destination delivery only after provider, simulation mode,
+  quote hash, transaction presence, token/chain/decimals, receiver, and minimum amount all match.
+  Production then independently verifies finalized chain delivery before target borrowing.
+- The complete repository gate passes with all 21 durable two-chain scenarios and all 71 worker
+  tests, in addition to OpenAPI drift, format, lint, type, and production-build checks.
+- GitHub Actions quality run `43393718314` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for interruption checkpoint `003235d`.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

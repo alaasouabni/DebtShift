@@ -20,23 +20,21 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `003235d`.
+- Previous remote checkpoint before this handoff: `4ab2ad3`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. Stronger refunded-transport E2E assertions for exact provider state, amount, refund transaction,
-   and custody disposition in durable recovery-opening evidence.
-2. Finalized recovery receipt assertions for the signed borrower receiver, full collateral amount,
-   and isolated reserve settlement.
-3. Direct two-chain proof that source escrow custody and solver receivable are zero, the borrower has
-   the full 10 WETH refund, and no destination loan was opened.
-4. Documentation of the production adapter's independent finalized transaction/log verification
-   before source-refund custody registration.
-5. Closure of risk R-11 and the refund-custody acceptance item without trusting provider status as
-   proof of onchain delivery.
+1. Three durable provider-adversary scenarios for a wrong destination token, wrong receiver, and
+   below-minimum amount.
+2. Exact mismatch reasons in durable recovery-opening evidence and absence of both destination
+   delivery and target-position evidence.
+3. Direct two-chain reads proving zero destination escrow balance and zero target position in every
+   invalid-delivery scenario.
+4. Full source-collateral return through the controlled simulator recovery boundary.
+5. Closure of risk R-05 and the invalid destination delivery acceptance item.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -48,13 +46,13 @@ RPC URLs or secrets.
 | Gate                                  | Result                                                                                     |
 | ------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds         |
-| Worker suite                          | Pass: 68 tests, including 18 durable workflows and duplicate-delivery interruption proof   |
+| Worker suite                          | Pass: 71 tests, including 21 durable workflows and 3 invalid-delivery adversary cases      |
 | Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified     |
 | API suite                             | Pass: 24 tests, including owner-scoped artifacts, cancellation race rejection, and OpenAPI |
 | `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                      |
 | `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                                   |
 | NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                     |
-| GitHub quality run `43392652909`      | Pass for pre-source expiry checkpoint `71325d5`                                            |
+| GitHub quality run `43393718314`      | Pass for interruption checkpoint `003235d`                                                 |
 | `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push     |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                                  |
 
@@ -67,8 +65,8 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Push this pending checkpoint and confirm CI, especially the EVM deployment job and Linux NEAR
-   sandbox test.
+1. Run the full repository gate, push this pending checkpoint, and confirm CI, especially the EVM
+   deployment job and Linux NEAR sandbox test.
 2. Supply a trusted archival `BASE_FORK_RPC_URL` and run `npm run check:forks` on this commit.
 3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
