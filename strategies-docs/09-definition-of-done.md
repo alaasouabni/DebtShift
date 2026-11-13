@@ -108,6 +108,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Critical alerts are exercised.
 - [x] Recovery and key-rotation runbooks are documented; the isolated database restore drill
       verifies every public table, exact row count, and migration history without mutating source.
+- [x] The migration recovery drill applies all checked-in migrations in an empty sibling database,
+      proves transactional DDL rollback, restores a pre-change snapshot after a forward candidate,
+      and revalidates migrator idempotency without accessing the application database.
 - [x] Deployment manifests identify every contract artifact and configuration.
 - [x] Known limitations and deferred production requirements are documented.
 

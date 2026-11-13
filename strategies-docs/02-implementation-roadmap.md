@@ -326,9 +326,10 @@ workflow.
   - [x] Persist and exercise deadline-approach and stale-recovery alerts.
 - [x] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
       exposure, and payout failure after collateral delivery.
-- [ ] Add database backup/restore and migration rollback drills.
+- [x] Add database backup/restore and migration recovery drills.
   - [x] Add and execute an isolated full-database backup/restore verification drill.
-  - [ ] Add a checked-in migration rollback/forward-recovery drill.
+  - [x] Add and execute a checked-in forward-migration/restore-recovery drill without destructive
+        reverse SQL.
 - [x] Add secret rotation and relayer-key replacement procedures.
 - [ ] Generate an SBOM and container provenance metadata.
 

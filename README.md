@@ -92,6 +92,18 @@ Without NEAR registry credentials the local development stack reaches financiall
 and keeps receipt registration retryable; a credentialed hosted stack reaches `COMPLETED` only
 after the registry receipt is verified.
 
+Exercise the PostgreSQL recovery controls against isolated sibling databases with:
+
+```sh
+npm run ops:drill:database-restore
+npm run ops:drill:database-migration-recovery
+```
+
+The first command verifies an exact source backup/restore without mutating the source. The second
+starts from an empty disposable database, applies every checked-in migration, proves transactional
+DDL rollback, applies a forward candidate, restores the pre-change backup, and proves that the
+checked-in migrator remains idempotent. Neither command points a worker at its temporary database.
+
 ## Safety boundary
 
 No real or funded borrower private key belongs in this repository or backend; only Foundry's

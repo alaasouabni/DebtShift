@@ -168,6 +168,55 @@ source database. Production restore must use an isolated server or database. The
 
 Never point a worker at the restore until RPCs, manifest, signer, mode, and active state are reviewed.
 
+## PostgreSQL migration recovery drill
+
+DebtShift uses forward-only application migrations. A production schema rollback must not improvise
+reverse SQL against append-only financial history: reverse DDL can silently discard durable
+commands, evidence, ledger entries, or recovery state. The supported rollback boundary is an exact
+pre-change backup restored into an isolated database, followed by application and chain-state
+reconciliation.
+
+For the repository Docker stack run:
+
+```text
+npm run ops:drill:database-migration-recovery
+```
+
+The checked-in drill never connects to the DebtShift application database. It:
+
+1. creates a random `debtshift_migration_*` database from `template0`;
+2. applies every checked-in migration through the real Drizzle migration entry point;
+3. creates one isolated baseline fixture and a custom-format pre-change backup;
+4. runs a deliberately failing transactional DDL candidate and proves PostgreSQL removed its
+   partial column change;
+5. runs a successful forward DDL/data candidate and verifies the changed state;
+6. drops only the generated database, recreates it, and restores the pre-change backup;
+7. verifies the complete public-table set, exact row counts, migration fingerprint, absence of both
+   candidate columns, and original fixture state;
+8. reruns the checked-in migrator and proves the recovered migration history and schema remain
+   idempotent; and
+9. prints backup size/SHA-256 evidence, removes the generated database, and deletes the temporary
+   artifact.
+
+This proves the repository mechanisms and recovery sequence, not a production recovery point
+objective. For a deployment migration:
+
+1. stop workers and disable write ingress before the backup boundary;
+2. record the release image digest, migration set/hash, database version, backup identity, and exact
+   chain/provider checkpoint;
+3. take and independently verify the encrypted pre-change backup;
+4. run the forward migration, constraints, application read checks, and workflow invariants before
+   reopening writes;
+5. if validation fails before writes reopen, restore into a fresh database, repeat the drill's
+   equality checks, reconcile every non-terminal migration against live chains/providers, and only
+   then repoint the application; and
+6. if any post-migration application write occurred, preserve both databases and use an explicit
+   forward repair/data reconciliation plan. Never restore over new financial history.
+
+Do not treat transactional DDL success as proof that an application migration is reversible. Do not
+run a generated `down` migration on production, overwrite the source database in place, or start a
+worker against a recovered database before independent reconciliation.
+
 ## Stuck reservation before source close
 
 1. Confirm the source did not close from adapter event, lending position, escrow balance, and

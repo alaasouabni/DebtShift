@@ -16,7 +16,7 @@ This file is updated throughout implementation. It is the first place to inspect
 | M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                               |
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                        |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.            |
-| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, structured workflow logs, recovery/key-rotation runbooks, and an isolated exact restore drill pass. Tracing, dashboards, migration rollback, and broader provenance remain.                                                                |
+| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, structured workflow logs, recovery/key-rotation runbooks, and isolated exact restore plus forward-migration recovery drills pass. Tracing, dashboards, and broader provenance remain.                                                      |
 | M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                             |
 
 ## Submission-critical mode
@@ -387,6 +387,22 @@ operative source of truth.
   and no source-database mutation.
 - Mainnet execution remained disabled; no deployment, credential use, broadcast, or real-fund
   movement occurred.
+
+### 2026-11-13 - Isolated forward-migration and restore-recovery drill
+
+- Added `npm run ops:drill:database-migration-recovery` and documented the forward-only production
+  policy: never improvise reverse DDL over append-only financial history; recover a verified
+  pre-change snapshot only before reopening writes, otherwise preserve history and forward-repair.
+- The drill creates a random sibling database from `template0`, applies all ten checked-in migrations
+  through the real Drizzle migrator, and never connects to the application database.
+- A deliberately invalid transactional candidate proved atomic DDL rollback. A valid forward
+  candidate then changed schema and data, after which the script recreated only its generated
+  database from the pre-change custom-format backup.
+- The drill passed with 22 public tables, one fixture row, 69,792 backup bytes, SHA-256
+  `faa7bb1a9087da482c7ceddd04ec4c1bdb999cb6d52a4c2a012f0f5a6fe1d495`, exact schema/count/history
+  recovery, candidate-column absence, and an idempotent post-recovery migration run.
+- Mainnet execution remained disabled; no external deployment, credential use, broadcast, or
+  real-fund movement occurred.
 
 ### 2026-11-13 - Fail-closed security scans and minimized runtime image
 
