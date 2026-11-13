@@ -20,7 +20,7 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Latest verified remote checkpoint: `f0a807e`.
+- Verified implementation checkpoint: `f0a807e`; verified documentation checkpoint: `b7413ec`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
@@ -63,7 +63,8 @@ RPC URLs or secrets.
 | GitHub quality run `43402193495`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `d527bf6`                |
 | GitHub quality run `43403559848`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `e31683c`                |
 | GitHub quality run `43409003610`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `f0a807e`                |
-| `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push |
+| GitHub quality run `43409934145`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `b7413ec`                |
+| `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
 The live route observation used Base block `56,863,212` and Arbitrum block `523,828,471`. The
@@ -75,24 +76,22 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Supply a trusted archival `BASE_FORK_RPC_URL` and run `npm run check:forks` on this commit.
-2. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
+1. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
-3. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
+2. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
    storage, and sandbox/testnet evidence.
-4. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
+3. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
    web UI with `NEXT_PUBLIC_API_URL` set at image build time.
-5. Deploy the public EVM testnet path if suitable Aave/Morpho test markets and funding exist; keep
+4. Deploy the public EVM testnet path if suitable Aave/Morpho test markets and funding exist; keep
    the unavailable 1Click boundary explicitly simulated.
-6. Run the full acceptance and security gate from a clean checkout.
-7. Only after those gates, prepare external production deployment with
+5. Run the full acceptance and security gate from a clean checkout.
+6. Only after those gates, prepare external production deployment with
    `MAINNET_EXECUTION_ENABLED=false`, generate real manifests, and run `npm run check:deployment`.
-8. Treat a real mainnet refinance as a separate final authorization event.
+7. Treat a real mainnet refinance as a separate final authorization event.
 
 ## Required external inputs
 
 - Git hosting/CI access for the pushed branch.
-- A trusted archival Base RPC URL for the pinned fork.
 - An official 1Click authentication token for a dry quote and later committed lifecycle.
 - NEAR testnet account/key and funded testnet signer.
 - Hosted environment credentials and PostgreSQL/Redis services.

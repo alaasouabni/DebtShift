@@ -1516,6 +1516,12 @@ operative source of truth.
   deployment gates, NEAR format/test/clippy/WASM/sandbox checks, dependency and full-history secret
   scans, production-container build and vulnerability scan, and runtime SBOM publication for
   checkpoint `f0a807e`.
+- GitHub Actions quality run `43409934145` repeated every required job successfully for handoff
+  checkpoint `b7413ec`.
+- Reran `npm run check:forks` on `b7413ec` against the official free Base RPC and pinned block
+  `55,600,000`. The complete production Aave/Morpho adapter workflow passed using disposable local
+  Anvil state and Foundry `1.9.0`; no public-chain transaction was broadcast. This removes the
+  previously assumed need for a paid archival RPC at this checkpoint.
 
 ## Work-session handoff template
 

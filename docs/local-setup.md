@@ -53,6 +53,12 @@ explicit outstanding vault receivable. These commands use only Anvil's well-know
 `npm run test --workspace @debtshift/worker` additionally runs the durable PostgreSQL-compatible
 outbox-to-worker workflow against dual Anvil whenever Anvil is installed.
 
+Run the pinned production-protocol fork with `BASE_FORK_RPC_URL=https://mainnet.base.org npm run
+check:forks` (or the equivalent environment assignment for the current shell). It reads official
+Base state at block `55,600,000`, runs all mutations only in disposable local Anvil state, and never
+broadcasts a public-chain transaction. The public endpoint may be rate limited, so retry transient
+provider failures without weakening the pinned block or assertions.
+
 ## NEAR contract
 
 Install Rust 1.95.0, add the `wasm32-unknown-unknown` target, and use near-sdk 5.30.1. The workspace
