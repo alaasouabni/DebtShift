@@ -1187,6 +1187,10 @@ operative source of truth.
 - Added API contract tests proving unique stable operation IDs, explicit success responses, public
   challenge creation, HttpOnly-cookie documentation without session-hash exposure, complete
   execution authorization fields, valid cookie security references, and authenticated evidence.
+- The first clean TypeScript CI run exposed an accidental generator dependency on sandbox Foundry
+  artifacts through `AppModule` construction. The generator and contract tests now use a
+  controller-only Nest metadata module with inert providers; an isolation check passed while the
+  entire `contracts/evm/out` directory was temporarily unavailable.
 - Rejected third-party generators that introduced an avoidable high-severity development
   dependency; the repository retains zero production audit findings and no new generator package.
 - `npm run check` passed across all ten packages, including OpenAPI drift detection, formatting,

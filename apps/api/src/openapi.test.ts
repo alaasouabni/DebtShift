@@ -5,15 +5,14 @@ import { NestFactory } from '@nestjs/core';
 import type { OpenAPIObject, OperationObject, PathItemObject } from '@nestjs/swagger';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { AppModule } from './app.module.js';
-import { createDebtShiftOpenApiDocument } from './openapi.js';
+import { createDebtShiftOpenApiDocument, DebtShiftOpenApiModule } from './openapi.js';
 
 describe('DebtShift OpenAPI contract', () => {
   let app: INestApplication;
   let document: OpenAPIObject;
 
   beforeAll(async () => {
-    app = await NestFactory.create(AppModule, { logger: false });
+    app = await NestFactory.create(DebtShiftOpenApiModule, { logger: false });
     app.setGlobalPrefix('v1');
     document = createDebtShiftOpenApiDocument(app);
   });

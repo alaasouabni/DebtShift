@@ -5,12 +5,14 @@ import { dirname, resolve } from 'node:path';
 
 import { NestFactory } from '@nestjs/core';
 
-import { AppModule } from '../apps/api/dist/app.module.js';
-import { createDebtShiftOpenApiDocument } from '../apps/api/dist/openapi.js';
+import {
+  createDebtShiftOpenApiDocument,
+  DebtShiftOpenApiModule,
+} from '../apps/api/dist/openapi.js';
 
 const specificationPath = resolve('docs/openapi.json');
 const generatedTypesPath = resolve('packages/sdk/src/generated/api.ts');
-const app = await NestFactory.create(AppModule, { logger: false });
+const app = await NestFactory.create(DebtShiftOpenApiModule, { logger: false });
 
 try {
   app.setGlobalPrefix('v1');
