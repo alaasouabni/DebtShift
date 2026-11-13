@@ -4,20 +4,20 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Milestone tracker
 
-| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                                                                                     |
-| ----------------------------------- | ----------- | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                                                                                             |
-| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                                                                                              |
-| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                                                                                        |
-| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                     |
-| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                 |
-| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                  |
-| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, reorg guards, and the exact happy-path settlement ledger pass; remaining recovery-ledger branches and alerting remain.                                               |
-| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                    |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                             |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains. |
-| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                    |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                  |
+| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                                                                                       |
+| ----------------------------------- | ----------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                                                                                               |
+| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                                                                                                |
+| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                                                                                          |
+| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                       |
+| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                   |
+| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                    |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, reorg guards, exact happy-path settlement ledger, and the first durable operator-alert set pass; remaining recovery-ledger branches and broader alert coverage remain. |
+| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                      |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                               |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.   |
+| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Durable deduplicated alerts now cover signed deadlines, stale migrations/recoveries, unknown custody, terminal command failures, and missing settlement ledgers; metrics, dashboards, remaining financial alerts, drills, backup, rotation, and provenance work remain.                                |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                    |
 
 ## Submission-critical mode
 
@@ -35,13 +35,14 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Current active task
 
-- **Task:** P0.7/P0.8 - deploy the verified full sandbox image and registry, collect public testnet
-  evidence for the single allowlisted route, and run the complete acceptance gate.
+- **Task:** P0.5/P0.7 - finish safe operational and recovery gates that do not require external
+  credentials, then deploy the verified full sandbox image and registry and collect public evidence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Supply hosting and NEAR credentials to the verified stack, deploy the
-  hosted sandbox and NEAR testnet registry, run the public testnet workflow, perform an authenticated
-  official 1Click dry quote when a token is available, then execute acceptance. The Linux NEAR CI,
-  pinned Base fork, live route, official schema, security audit, and clean Docker gates already pass.
+- **Next verification:** Complete the repository and clean-stack gate for each internal checkpoint.
+  When hosting and NEAR credentials are available, deploy the hosted sandbox and NEAR testnet
+  registry, run the public testnet workflow, perform an authenticated official 1Click dry quote when
+  a token is available, then execute acceptance. The Linux NEAR CI, pinned Base fork, live route,
+  official schema, security audit, and clean Docker gates already pass.
 
 ## Decision log
 
@@ -344,6 +345,34 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Durable operator-alert scanner implemented and stack-verified
+
+- Added migration `0009` and the append-preserving `operational_alerts` table with deterministic
+  identifiers, per-condition deduplication, warning/critical severity, first/last observation times,
+  structured details, and explicit open/resolved lifecycle state.
+- The worker now serializes periodic alert scans and emits structured change warnings. The first P0
+  set covers signed execution deadlines, stale active migrations, stale recovery cases, unknown
+  transport custody, terminal command failures, and a settled migration missing ledger rows.
+- Added environment-validated scan, deadline-lead, stale-migration, and stale-recovery thresholds.
+  These operational timers do not extend a signed execution deadline or advance workflow state.
+- The PostgreSQL-compatible integration test opens all six conditions, proves repeated-scan
+  deduplication, escalates a crossed deadline from warning to critical, and resolves every row after
+  the affected migrations become terminal. The schema test also asserts the new table and its
+  critical identity/deduplication constraints.
+- `npm run check` passes formatting, lint, the complete TypeScript graph, 172 implemented tests, and
+  all ten production builds. The rebuilt application image passed Solidity and workspace builds;
+  its pruned production dependency graph reports zero vulnerabilities.
+- Applied migration `0009` to the existing Compose database without deleting PostgreSQL or Redis
+  volumes. The scanner immediately exposed five real pre-existing alerts: two terminal NEAR receipt
+  commands and three stale settled migrations. This validates useful detection rather than a
+  synthetic log-only path.
+- Signed HTTP-to-chain smoke migration
+  `0x5fd920ecf70cc839fc2fbaa4ad5d4e2bad3528bd427ed460ef6e6bdf2f3f067d` reached `SETTLED` with 17
+  evidence records, 16 durable ledger rows, zero unexplained imbalance, and no alert for that fresh
+  migration.
+- No external deployment, 1Click commit, public-chain write, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
 
 ### 2026-11-13 - Unknown 1Click state and retry boundary hardened
 

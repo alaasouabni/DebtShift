@@ -175,6 +175,16 @@ custody to explicit recovery when that deadline is crossed.
 - Canonical block mismatch or retracted evidence.
 - NEAR final receipt mismatch.
 
+The worker currently persists and exercises the P0 operational subset in `operational_alerts`:
+signed-deadline approach/crossing, stale active migration, stale recovery, unknown transport
+custody, terminal command failure, and a `SETTLED` migration missing ledger rows. Alert identifiers
+and deduplication keys are deterministic, repeated scans update `last_observed_at` without duplicate
+rows, severity can escalate, and a later healthy scan resolves the alert without deleting its
+history. Thresholds are environment validated through `ALERT_SCAN_INTERVAL_MS`,
+`ALERT_DEADLINE_LEAD_MS`, `ALERT_STALE_MIGRATION_MS`, and `ALERT_STALE_RECOVERY_MS`. The worker emits
+structured warning records when a scan opens or resolves alerts. The remaining required-alert list
+above stays a release gate rather than being implied by this first subset.
+
 ## Runbooks
 
 Operations documentation must cover:

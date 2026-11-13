@@ -83,6 +83,11 @@ export const reservationStatusEnum = pgEnum('reservation_status', [
   'RELEASED',
   'EXPIRED',
 ]);
+export const operationalAlertSeverityEnum = pgEnum('operational_alert_severity', [
+  'WARNING',
+  'CRITICAL',
+]);
+export const operationalAlertStatusEnum = pgEnum('operational_alert_status', ['OPEN', 'RESOLVED']);
 
 export const wallets = pgTable(
   'wallets',
@@ -649,6 +654,33 @@ export const recoveryCases = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [unique('recovery_cases_migration_unique').on(table.migrationId)],
+);
+
+export const operationalAlerts = pgTable(
+  'operational_alerts',
+  {
+    alertId: bytes32('alert_id').primaryKey(),
+    migrationId: bytes32('migration_id')
+      .notNull()
+      .references(() => migrations.migrationId),
+    type: varchar('type', { length: 96 }).notNull(),
+    severity: operationalAlertSeverityEnum('severity').notNull(),
+    deduplicationKey: varchar('deduplication_key', { length: 256 }).notNull(),
+    status: operationalAlertStatusEnum('status').notNull().default('OPEN'),
+    message: text('message').notNull(),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    firstObservedAt: timestamp('first_observed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    lastObservedAt: timestamp('last_observed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    unique('operational_alerts_deduplication_unique').on(table.deduplicationKey),
+    index('operational_alerts_open_idx').on(table.status, table.severity, table.lastObservedAt),
+    index('operational_alerts_migration_idx').on(table.migrationId, table.createdAt),
+    check('operational_alerts_id_format', sql`${table.alertId} ~ '^0x[0-9a-f]{64}$'`),
+  ],
 );
 
 export const assetCatalogVersions = pgTable(

@@ -198,7 +198,9 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
         signed minimum-APR-reduction policy supersede the earlier passing plan.
 - [x] Add exact receipt-linked balanced ledger reconciliation as a mandatory `SETTLED` predicate,
       including recovery-reserve, destination escrow, principal, fee, residual, and signed-cost basis.
-- [ ] Add stale migration and deadline alerts.
+- [x] Add durable stale-migration, stale-recovery, signed-deadline, unknown-custody,
+      terminal-command, and missing-settlement-ledger alerts with deterministic deduplication and
+      automatic resolution.
 
 ### Exit criteria
 
@@ -313,7 +315,8 @@ workflow.
 - [ ] Run static analysis and dependency vulnerability checks.
 - [ ] Add structured logs, traces, and Prometheus metrics.
 - [ ] Add dashboards for phases, latency, failures, health, and ledger imbalance.
-- [ ] Add alerts for reservation shortfall, deadline approach, stale recovery, receipt mismatch, and accounting imbalance.
+- [ ] Complete alerts for reservation shortfall, receipt mismatch, and accounting imbalance.
+  - [x] Persist and exercise deadline-approach and stale-recovery alerts.
 - [ ] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
       exposure, and payout failure after collateral delivery.
 - [ ] Add database backup/restore and migration rollback drills.

@@ -51,7 +51,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [ ] Failed provider payout preserves proceeds and retries idempotently.
 - [ ] Failure to repay the solver after collateral delivery blocks `SETTLED` and preserves exact
       proceeds, receivable, and recovery evidence.
-- [ ] Unknown provider status stops advancement and alerts.
+- [x] Unknown provider status stops advancement and opens a durable critical alert without
+      inventing a terminal provider state.
 - [x] Simulated source receipt disappearance and destination block replacement append retractions,
       halt the next financial action, re-derive recovery state, and require manual reconciliation.
 - [ ] Worker/API/Redis interruption does not duplicate asset movement.

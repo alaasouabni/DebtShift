@@ -111,6 +111,10 @@ export const debtShiftEnvironmentSchema = z
       .min(10_000)
       .max(3_600_000)
       .default(300_000),
+    ALERT_SCAN_INTERVAL_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
+    ALERT_DEADLINE_LEAD_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(60_000),
+    ALERT_STALE_MIGRATION_MS: z.coerce.number().int().min(10_000).max(86_400_000).default(300_000),
+    ALERT_STALE_RECOVERY_MS: z.coerce.number().int().min(10_000).max(604_800_000).default(900_000),
     SIMULATOR_TERMINAL_OUTCOME: z
       .enum([
         'SUCCESS',

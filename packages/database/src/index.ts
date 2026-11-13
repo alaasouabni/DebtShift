@@ -1,6 +1,7 @@
 export * from './client.js';
 export * from './command-lifecycle.js';
 export * from './migration-repository.js';
+export * from './operational-alerts.js';
 export * from './schema.js';
 export * from './transaction.js';
 export * from './workflow.js';

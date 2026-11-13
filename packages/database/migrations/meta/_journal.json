@@ -64,6 +64,13 @@
       "when": 1794533546036,
       "tag": "0008_organic_gwen_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794537358866,
+      "tag": "0009_nappy_firelord",
+      "breakpoints": true
     }
   ]
 }

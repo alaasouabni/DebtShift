@@ -22,6 +22,10 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.WORKFLOW_COMMAND_RETRY_DELAY_MS).toBe(500);
     expect(environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS).toBe(30_000);
     expect(environment.WORKFLOW_COMMAND_STALE_AFTER_MS).toBe(300_000);
+    expect(environment.ALERT_SCAN_INTERVAL_MS).toBe(30_000);
+    expect(environment.ALERT_DEADLINE_LEAD_MS).toBe(60_000);
+    expect(environment.ALERT_STALE_MIGRATION_MS).toBe(300_000);
+    expect(environment.ALERT_STALE_RECOVERY_MS).toBe(900_000);
   });
 
   it('accepts exactly the four approved runtime modes', () => {
@@ -177,6 +181,26 @@ describe('parseDebtShiftEnvironment', () => {
       WORKFLOW_COMMAND_RETRY_DELAY_MS: 750,
       WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: 15_000,
       WORKFLOW_COMMAND_STALE_AFTER_MS: 120_000,
+    });
+  });
+
+  it('bounds operational alert scan and escalation policy', () => {
+    expect(() => parseDebtShiftEnvironment({ ALERT_SCAN_INTERVAL_MS: '999' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ ALERT_DEADLINE_LEAD_MS: '999' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ ALERT_STALE_MIGRATION_MS: '9999' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ ALERT_STALE_RECOVERY_MS: '9999' })).toThrow();
+    expect(
+      parseDebtShiftEnvironment({
+        ALERT_SCAN_INTERVAL_MS: '5000',
+        ALERT_DEADLINE_LEAD_MS: '120000',
+        ALERT_STALE_MIGRATION_MS: '600000',
+        ALERT_STALE_RECOVERY_MS: '1800000',
+      }),
+    ).toMatchObject({
+      ALERT_SCAN_INTERVAL_MS: 5_000,
+      ALERT_DEADLINE_LEAD_MS: 120_000,
+      ALERT_STALE_MIGRATION_MS: 600_000,
+      ALERT_STALE_RECOVERY_MS: 1_800_000,
     });
   });
 });

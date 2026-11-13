@@ -9,6 +9,7 @@ import {
   listActiveFinalizedEvidence,
   publishPendingOutbox,
   recoverStaleCommands,
+  scanOperationalAlerts,
   type DebtShiftDatabase,
 } from '@debtshift/database';
 import { parseDebtShiftEnvironment, type DebtShiftEnvironment } from '@debtshift/domain';
@@ -77,6 +78,7 @@ async function bootstrap(): Promise<void> {
   );
   let closing = false;
   let activePublication: Promise<void> = Promise.resolve();
+  let activeAlertScan: Promise<void> = Promise.resolve();
   const publish = (): void => {
     if (closing) return;
     activePublication = activePublication
@@ -91,13 +93,54 @@ async function bootstrap(): Promise<void> {
   };
   publish();
   const outboxTimer = setInterval(publish, 250);
+  const scanAlerts = (): void => {
+    if (closing) return;
+    activeAlertScan = activeAlertScan
+      .then(async () => {
+        const report = await scanOperationalAlerts(
+          databaseClient.db,
+          {
+            deadlineLeadMs: environment.ALERT_DEADLINE_LEAD_MS,
+            staleMigrationMs: environment.ALERT_STALE_MIGRATION_MS,
+            staleRecoveryMs: environment.ALERT_STALE_RECOVERY_MS,
+          },
+          new Date(),
+        );
+        if (report.openedCount > 0 || report.resolvedCount > 0) {
+          Logger.warn(
+            JSON.stringify({
+              event: 'operational_alert_scan',
+              openedCount: report.openedCount,
+              resolvedCount: report.resolvedCount,
+              active: report.active.map((alert) => ({
+                alertId: alert.alertId,
+                migrationId: alert.migrationId,
+                type: alert.type,
+                severity: alert.severity,
+                message: alert.message,
+              })),
+            }),
+            'OperationalAlerts',
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : 'Unknown operational alert failure';
+        Logger.error(message, undefined, 'OperationalAlerts');
+      });
+  };
+  scanAlerts();
+  const alertTimer = setInterval(scanAlerts, environment.ALERT_SCAN_INTERVAL_MS);
 
   const shutdown = async (signal: string): Promise<void> => {
     if (closing) return;
     closing = true;
     clearInterval(outboxTimer);
+    clearInterval(alertTimer);
     Logger.log(`Received ${signal}; draining the command worker.`, 'Bootstrap');
     await activePublication;
+    await activeAlertScan;
     await worker.close();
     await queue.close();
     await databaseClient.close();
