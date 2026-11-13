@@ -26,9 +26,9 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Verified pushed checkpoint: `a6fae68`, including the frozen public-testnet foundation, live
-  validator, exact manifest binding, oracle hardening, corrected Aave reserve-token resolution,
-  narrow public-address Gitleaks policy, and synchronized strategy evidence.
+- Verified pushed checkpoint: `f73b9df`, including both-chain public feed provenance, exact manifest
+  binding, deterministic executable-route generation, oracle hardening, corrected Aave
+  reserve-token resolution, and strict testnet/mainnet provider-asset boundaries.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
@@ -107,6 +107,7 @@ It must be labeled DebtShift-operated protocol-compatible infrastructure, never 
 | GitHub quality run `43446037695`      | Pass: complete quality workflow for canonical Morpho checkpoint `435c351`              |
 | GitHub quality run `43459443566`      | Pass: complete quality workflow for public-testnet route checkpoint `7b59a4f`          |
 | GitHub quality run `43460754238`      | Pass: complete quality workflow for synchronized strategy checkpoint `a6fae68`         |
+| GitHub quality run `43465347172`      | Pass: complete quality workflow for manifested route generator checkpoint `f73b9df`    |
 | `npm run check:public-testnet-route`  | Pass: dependency hash `0x2186…7f17`; both source/destination feed rounds finalized     |
 | `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |

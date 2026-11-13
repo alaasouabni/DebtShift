@@ -453,6 +453,9 @@ operative source of truth.
   checksum-verified Foundry 1.9.0, and the live dependency validator at finalized Ethereum Sepolia
   block `12127052` and Base Sepolia block `58318762`. No transaction, token movement, provider
   request, registry write, or external deployment occurred.
+- GitHub Actions quality run `43465347172` passed every TypeScript, EVM/Morpho/deployment/demo,
+  NEAR, production dependency, changed/full-history secret, production-container, and runtime-SBOM
+  gate for exact checkpoint `f73b9df5e1c915a619c94128e28e207569228647`.
 
 ### 2026-11-13 - Public-testnet route dependencies frozen and deployment chain hardened
 

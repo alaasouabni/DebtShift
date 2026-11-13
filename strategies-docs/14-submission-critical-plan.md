@@ -11,9 +11,11 @@ the deadline plan survives chat compaction, a new work session, or a contributor
 - **Verified public-testnet foundation:** `7b59a4f` on `main`; GitHub quality run `43459443566`
   passed every TypeScript, EVM, NEAR, security/container, and runtime-SBOM job for exact commit
   `7b59a4fffb94ceeec333b430be8baa35f5e3c9cf`.
-- **Current hardened dependency candidate:** official Ethereum Sepolia Aave plus independent
-  official Chainlink source planning feeds to a Base Sepolia canonical-source Morpho deployment.
-  The byte-exact dependency hash is
+- **Verified hardened public-testnet route checkpoint:** `f73b9df` on `main`; GitHub quality run
+  `43465347172` passed every job for exact commit
+  `f73b9df5e1c915a619c94128e28e207569228647`. The candidate uses official Ethereum Sepolia Aave
+  plus independent official Chainlink source planning feeds to a Base Sepolia canonical-source
+  Morpho deployment. The byte-exact dependency hash is
   `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`. A deterministic,
   source-commit-bound generator now creates the executable route only after the Morpho manifest
   exists and rejects every dependency/manifest/policy mismatch. Testnet omits unavailable 1Click
