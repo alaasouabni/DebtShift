@@ -1411,6 +1411,24 @@ operative source of truth.
   checks, all package tests (including 54 domain, 24 API, and 73 worker tests), and all ten
   production builds.
 
+### 2026-11-13 - Phase predicates and transition graph exhaustively verified
+
+- Added executable derivation cases for all 15 migration phases. Each case removes every required
+  finalized-evidence predicate one at a time and proves the incomplete prefix cannot enter that
+  phase; absence of the mandatory source snapshot remains a hard error.
+- Added one parameterized test per permitted transition, covering all 27 declared graph edges from
+  draft through completion, recovery, expiry, requote, cancellation, and failed-safe termination.
+- Exhaustively checked the complete 15-by-15 matrix and proved every one of the other 198 phase
+  pairs is rejected by both the boolean guard and throwing transition assertion.
+- The state-machine tests preserve the intentional distinction between a draft cancellation and a
+  recovery completion: the terminal evidence predicate derives the outcome, while the separately
+  enforced transition graph prevents an illegal direct jump.
+- Domain type checks and all 97 domain tests pass after the matrix expansion.
+- GitHub run `43398835750` passed TypeScript, EVM, and NEAR for the preceding cap-enforcement
+  checkpoint but its security job identified a documentation sentence as a generic-key false
+  positive. Added a line-exact allowlist for only that route-binding sentence; pinned gitleaks
+  8.30.1 then scanned all 45 commits and reported no leaks.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

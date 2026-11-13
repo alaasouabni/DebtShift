@@ -8,8 +8,8 @@ the deadline plan survives chat compaction, a new work session, or a contributor
 - **Plan revised:** 2026-11-13
 - **Time remaining:** one final development/deployment day, as confirmed by the project owner
 - **Portal cutoff:** exact date, time, and timezone still require confirmation
-- **Latest pushed checkpoint before current work:** `9bccca3` on `main`, containing finalized
-  supplementary-funding enforcement before liquidity reservation and exact funded settlement.
+- **Latest pushed checkpoint before current work:** `2269099` on `main`, containing independent
+  execute-time signed slippage enforcement and explicit route-cap mutation proofs.
 - **Primary objective:** finish normal, functional production-oriented code for one complete
   Aave-to-Morpho refinance through official NEAR Intents/1Click, prove that code with contract-backed
   sandbox, testnet, fork, and integration tests, then deploy and attempt one small mainnet refinance

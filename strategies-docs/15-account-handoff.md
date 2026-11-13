@@ -20,22 +20,22 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `9bccca3`.
+- Previous remote checkpoint before this handoff: `2269099`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. Execute-time enforcement that a persisted transport quote's minimum output cannot exceed the
-   slippage cap in the independently signed refinance intent, even when all supplied hashes and
-   signatures are otherwise valid.
-2. Authenticated dual-chain API proof that a tighter zero-slippage request is rejected before any
-   migration, liquidity reservation, or command is created, while the normal signed request still
-   succeeds.
-3. Explicit mutation coverage for signed chain, market, token, receiver, principal, and fee route
-   fields, plus an independent signed-intent slippage mutation proof.
-4. Closure of the contract-safety authorization-cap definition-of-done item.
+1. Executable entry-predicate cases for all 15 migration phases, including every forward,
+   recovery, requote, expiry, cancellation, and failed-safe outcome.
+2. Removal of every required evidence predicate one at a time to prove a phase cannot be derived
+   from an incomplete prefix.
+3. One explicit positive test for each of the 27 permitted phase-transition edges and exhaustive
+   rejection of all other pairs in the 15-by-15 transition matrix.
+4. Closure of both phase-entry and transition-coverage definition-of-done items.
+5. A line-exact gitleaks allowlist for route-binding documentation that triggered the generic-key
+   heuristic; the pinned scanner finds no leak across all 45 commits.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -44,19 +44,19 @@ RPC URLs or secrets.
 
 ## Verified evidence at handoff
 
-| Gate                                  | Result                                                                                 |
-| ------------------------------------- | -------------------------------------------------------------------------------------- |
-| Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds     |
-| Worker suite                          | Pass: 73 tests, including 21 durable workflows and 5 local execution-port cases        |
-| Domain suite                          | Pass: 54 tests, including explicit route-field and intent-cap mutation rejection       |
-| Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
-| API suite                             | Pass: 24 tests, including signed slippage-cap rejection before persistence             |
-| `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                  |
-| `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                               |
-| NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                 |
-| GitHub quality run `43397484435`      | Pass for supplementary-funding checkpoint `9bccca3`                                    |
-| `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push |
-| Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
+| Gate                                  | Result                                                                                   |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds       |
+| Worker suite                          | Pass: 73 tests, including 21 durable workflows and 5 local execution-port cases          |
+| Domain suite                          | Pass: 97 tests, including all 15 phase entries and all 225 transition pairs              |
+| Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified   |
+| API suite                             | Pass: 24 tests, including signed slippage-cap rejection before persistence               |
+| `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                    |
+| `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                                 |
+| NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                   |
+| GitHub quality run `43398835750`      | TypeScript, EVM, and NEAR passed; security prose false positive fixed in this checkpoint |
+| `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push   |
+| Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                                |
 
 The live route observation used Base block `56,649,525` and Arbitrum block `523,682,852`. The
 official 1Click schema hash observed during this session was

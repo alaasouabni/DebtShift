@@ -95,8 +95,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 ## Data and orchestration
 
 - [x] PostgreSQL contains signed terms, commands, raw observations, normalized evidence, ledger entries, and audit history.
-- [ ] Every phase has an executable entry predicate.
-- [ ] Every permitted transition has a test.
+- [x] Every phase has an executable entry predicate.
+- [x] Every permitted transition has a test.
 - [x] Every irreversible command has a deterministic idempotency key.
 - [x] Transactional outbox interruption tests pass.
 - [x] Terminal settlement has zero unexplained ledger imbalance.

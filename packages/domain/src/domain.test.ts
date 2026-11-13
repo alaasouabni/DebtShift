@@ -16,11 +16,13 @@ import {
   hashRefinanceIntent,
   hashSourcePosition,
 } from './hashing.js';
-import type { Evidence } from './migration.js';
+import { migrationPhaseSchema, type Evidence, type MigrationPhase } from './migration.js';
 import {
   assertAllowedPhaseTransition,
   deriveMigrationPhase,
+  isAllowedPhaseTransition,
   phaseEvidenceFromRecords,
+  type PhaseEvidence,
 } from './phase.js';
 import { baseUnitAmountSchema, evmAddressSchema } from './primitives.js';
 import {
@@ -224,6 +226,215 @@ function phaseEvidence(
   };
 }
 
+const authorizedPhaseEvidence = {
+  routeQuote: true,
+  intentAuthorization: true,
+  executionPlanAuthorization: true,
+  sourceLendingAuthorization: true,
+  financingFeasibility: true,
+} as const satisfies Partial<PhaseEvidence>;
+
+const reservedPhaseEvidence = {
+  ...authorizedPhaseEvidence,
+  liquidityReservation: true,
+} as const satisfies Partial<PhaseEvidence>;
+
+const sourceClosedPhaseEvidence = {
+  ...reservedPhaseEvidence,
+  sourceClose: true,
+} as const satisfies Partial<PhaseEvidence>;
+
+const routingPhaseEvidence = {
+  ...sourceClosedPhaseEvidence,
+  transportOrigin: true,
+} as const satisfies Partial<PhaseEvidence>;
+
+const destinationFundedPhaseEvidence = {
+  ...routingPhaseEvidence,
+  transportDestination: true,
+} as const satisfies Partial<PhaseEvidence>;
+
+const targetOpenPhaseEvidence = {
+  ...destinationFundedPhaseEvidence,
+  targetPosition: true,
+} as const satisfies Partial<PhaseEvidence>;
+
+const settledPhaseEvidence = {
+  ...targetOpenPhaseEvidence,
+  liquiditySettlement: true,
+  ledgerReconciliation: true,
+} as const satisfies Partial<PhaseEvidence>;
+
+const phaseEntryCases = [
+  ['DRAFT', {}, ['sourceSnapshot']],
+  ['QUOTED', { routeQuote: true }, ['routeQuote']],
+  [
+    'AUTHORIZED',
+    authorizedPhaseEvidence,
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+    ],
+  ],
+  [
+    'RESERVED',
+    reservedPhaseEvidence,
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'liquidityReservation',
+    ],
+  ],
+  [
+    'SOURCE_CLOSED',
+    sourceClosedPhaseEvidence,
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'liquidityReservation',
+      'sourceClose',
+    ],
+  ],
+  [
+    'ROUTING',
+    routingPhaseEvidence,
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'liquidityReservation',
+      'sourceClose',
+      'transportOrigin',
+    ],
+  ],
+  [
+    'DEST_FUNDED',
+    destinationFundedPhaseEvidence,
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'liquidityReservation',
+      'sourceClose',
+      'transportOrigin',
+      'transportDestination',
+    ],
+  ],
+  [
+    'TARGET_OPEN',
+    targetOpenPhaseEvidence,
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'liquidityReservation',
+      'sourceClose',
+      'transportOrigin',
+      'transportDestination',
+      'targetPosition',
+    ],
+  ],
+  [
+    'SETTLED',
+    settledPhaseEvidence,
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'liquidityReservation',
+      'sourceClose',
+      'transportOrigin',
+      'transportDestination',
+      'targetPosition',
+      'liquiditySettlement',
+      'ledgerReconciliation',
+    ],
+  ],
+  [
+    'COMPLETED',
+    { ...settledPhaseEvidence, nearReceipt: true },
+    [
+      'routeQuote',
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'liquidityReservation',
+      'sourceClose',
+      'transportOrigin',
+      'transportDestination',
+      'targetPosition',
+      'liquiditySettlement',
+      'ledgerReconciliation',
+      'nearReceipt',
+    ],
+  ],
+  ['RECOVERY', { recoveryOpened: true }, ['recoveryOpened']],
+  ['FAILED_SAFE', { recoveryOpened: true, recoveryCompleted: true }, ['recoveryCompleted']],
+  ['REQUOTE_REQUIRED', { requoteRequired: true }, ['requoteRequired']],
+  ['EXPIRED', { expired: true }, ['expired']],
+  [
+    'CANCELLED',
+    {
+      intentAuthorization: true,
+      executionPlanAuthorization: true,
+      sourceLendingAuthorization: true,
+      financingFeasibility: true,
+      cancellationRequested: true,
+    },
+    [
+      'intentAuthorization',
+      'executionPlanAuthorization',
+      'sourceLendingAuthorization',
+      'financingFeasibility',
+      'cancellationRequested',
+    ],
+  ],
+] as const satisfies readonly [
+  MigrationPhase,
+  Partial<PhaseEvidence>,
+  readonly (keyof PhaseEvidence)[],
+][];
+
+const expectedAllowedTransitions = {
+  DRAFT: ['QUOTED', 'EXPIRED', 'CANCELLED'],
+  QUOTED: ['AUTHORIZED', 'EXPIRED', 'CANCELLED'],
+  AUTHORIZED: ['RESERVED', 'EXPIRED', 'REQUOTE_REQUIRED', 'CANCELLED'],
+  RESERVED: ['SOURCE_CLOSED', 'EXPIRED', 'RECOVERY', 'REQUOTE_REQUIRED', 'CANCELLED'],
+  SOURCE_CLOSED: ['ROUTING', 'RECOVERY'],
+  ROUTING: ['DEST_FUNDED', 'RECOVERY'],
+  DEST_FUNDED: ['TARGET_OPEN', 'RECOVERY'],
+  TARGET_OPEN: ['SETTLED', 'RECOVERY'],
+  SETTLED: ['COMPLETED', 'RECOVERY'],
+  COMPLETED: [],
+  RECOVERY: ['SETTLED', 'FAILED_SAFE'],
+  FAILED_SAFE: [],
+  REQUOTE_REQUIRED: [],
+  EXPIRED: [],
+  CANCELLED: [],
+} as const satisfies Readonly<Record<MigrationPhase, readonly MigrationPhase[]>>;
+
+const allowedTransitionCases = migrationPhaseSchema.options.flatMap((from) =>
+  expectedAllowedTransitions[from].map((to) => [from, to] as const),
+);
+
 describe('financial primitives', () => {
   it('accepts canonical integer base units and rejects ambiguous amounts', () => {
     expect(baseUnitAmountSchema.parse('0')).toBe('0');
@@ -323,6 +534,43 @@ describe('canonical authorization hashing', () => {
 });
 
 describe('evidence-derived migration phases', () => {
+  it.each(phaseEntryCases)(
+    'derives %s only when every required entry predicate is present',
+    (expectedPhase, overrides, requiredPredicates) => {
+      const complete = phaseEvidence(overrides);
+      expect(deriveMigrationPhase(complete)).toBe(expectedPhase);
+
+      for (const predicate of requiredPredicates) {
+        const incomplete = { ...complete, [predicate]: false };
+        if (predicate === 'sourceSnapshot') {
+          expect(() => deriveMigrationPhase(incomplete)).toThrow(
+            'cannot exist without a finalized source position snapshot',
+          );
+        } else {
+          expect(deriveMigrationPhase(incomplete)).not.toBe(expectedPhase);
+        }
+      }
+    },
+  );
+
+  it.each(allowedTransitionCases)('permits the declared %s -> %s transition', (from, to) => {
+    expect(isAllowedPhaseTransition(from, to)).toBe(true);
+    expect(() => assertAllowedPhaseTransition(from, to)).not.toThrow();
+  });
+
+  it('rejects every transition pair outside the declared graph', () => {
+    for (const from of migrationPhaseSchema.options) {
+      const permittedTargets: readonly MigrationPhase[] = expectedAllowedTransitions[from];
+      for (const to of migrationPhaseSchema.options) {
+        if (permittedTargets.includes(to)) continue;
+        expect(isAllowedPhaseTransition(from, to), `${from} -> ${to}`).toBe(false);
+        expect(() => assertAllowedPhaseTransition(from, to), `${from} -> ${to}`).toThrow(
+          `Illegal migration transition: ${from} -> ${to}.`,
+        );
+      }
+    }
+  });
+
   it('advances only through a complete evidence prefix', () => {
     expect(deriveMigrationPhase(phaseEvidence())).toBe('DRAFT');
     expect(
