@@ -1427,7 +1427,27 @@ operative source of truth.
 - GitHub run `43398835750` passed TypeScript, EVM, and NEAR for the preceding cap-enforcement
   checkpoint but its security job identified a documentation sentence as a generic-key false
   positive. Added a line-exact allowlist for only that route-binding sentence; pinned gitleaks
-  8.30.1 then scanned all 45 commits and reported no leaks.
+  8.30.1 then scanned all 46 commits and reported no leaks.
+- GitHub Actions quality run `43400476244` passed all TypeScript, EVM, NEAR, security/container,
+  and SBOM jobs for phase-transition checkpoint `06504e3`.
+
+### 2026-11-13 - User AI credential and remote payload boundaries completed
+
+- Replaced nested optimizer-object forwarding with a strict explanation payload schema and explicit
+  field-by-field copy. The remote provider now receives only display economics, safety limits,
+  aggregate financing amounts, rejection codes/messages, and block/timestamp freshness data.
+- Removed token/contract/escrow/refund addresses, chain IDs, snapshot/block/conversion hashes,
+  migration/evidence IDs, funding records, authorization material, and operational provenance from
+  the remote body. Runtime-injected secret fields at the candidate, financing, and provenance levels
+  are dropped before hashing or serialization.
+- Strengthened the credential test to prove the key exists only in the provider authorization
+  header, never in the body or returned result. A provider failure containing the sentinel key is
+  discarded into the deterministic fallback without a log or response leak.
+- Added architectural guards: the credential-handling module and API route cannot import database,
+  Redis, logging, or telemetry sinks; production browser source cannot use persistent storage,
+  script-visible cookies, or analytics/error-reporting sinks.
+- Focused type checks and tests pass with 9 agent/security tests, 4 web tests, and 25 API tests.
+  This closes the two credential/payload definition-of-done items and mitigates R-26 and R-28.
 
 ## Work-session handoff template
 

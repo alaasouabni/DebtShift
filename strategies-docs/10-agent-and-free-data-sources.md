@@ -115,12 +115,15 @@ The initial generic adapter targets an OpenAI-compatible chat interface. Provide
 
 Remote providers receive only the allowlisted explanation payload:
 
-- Public market identifiers.
-- Rounded display metrics and deterministic result values.
-- Route acceptance or rejection reasons.
-- Data timestamps and non-sensitive warnings.
+- Candidate display identifier and deterministic eligibility result.
+- Display economics, bounded safety outputs, and aggregate financing amounts.
+- Route rejection codes and public explanation messages.
+- Market block number and evaluation/oracle timestamps.
 
-They never receive API credentials for other services, wallet signatures, private keys, session tokens, raw authorization payloads, unpublished addresses, or internal operational secrets.
+They never receive token or contract addresses, chain identifiers, block or snapshot hashes,
+migration/evidence IDs, escrow or refund receivers, API credentials for other services, wallet
+signatures, private keys, session tokens, raw authorization payloads, unpublished addresses, or
+internal operational secrets.
 
 ### Output contract
 

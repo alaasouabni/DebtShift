@@ -138,8 +138,8 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] The Route/Risk Agent exposes only the approved read and preparation tools.
 - [x] The user can optionally select local Ollama or a supported user-supplied AI API.
 - [x] Local and remote AI explanations are schema-validated and replaceable by deterministic templates.
-- [ ] User API credentials are absent from PostgreSQL, browser persistence, logs, traces, error reports, and analytics.
-- [ ] Remote provider requests contain only allowlisted structured explanation data.
+- [x] User API credentials are absent from PostgreSQL, browser persistence, logs, traces, error reports, and analytics.
+- [x] Remote provider requests contain only allowlisted structured explanation data.
 - [x] Custom endpoint validation and SSRF protections pass security tests.
 - [x] Disabling or changing the explanation model cannot change the selected route or signed values.
 - [x] Public API cache, retry, rate-limit, and circuit-breaker behavior is tested.

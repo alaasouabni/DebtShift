@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import type { PositionSnapshot } from '@debtshift/domain';
 import {
   evaluateRefinancingFeasibility,
@@ -61,7 +63,7 @@ describe('explanation-only providers', () => {
     expect(result.explanation.reviewAndSignStatement).toContain('cannot authorize execution');
   });
 
-  it('accepts a user-supplied API response without exposing the key in its payload', async () => {
+  it('sends only the exact public explanation allowlist and keeps the key header-only', async () => {
     const credential = 'user-secret-that-must-not-persist';
     let capturedBody = '';
     let capturedAuthorization = '';
@@ -75,8 +77,21 @@ describe('explanation-only providers', () => {
     });
     const service = new RouteExplanationService({ allowCustomEndpoints: true, fetcher });
     const deterministic = await service.explain(comparison);
+    const taintedComparison = structuredClone(comparison);
+    const taintedEvaluation = taintedComparison.evaluations[0];
+    if (taintedEvaluation === undefined) throw new Error('Expected a route evaluation fixture.');
+    Object.assign(taintedEvaluation, {
+      borrowerAddress: credential,
+      sessionToken: credential,
+      signature: credential,
+    });
+    Object.assign(taintedEvaluation.financing, {
+      rawAuthorization: credential,
+      internalOperationalSecret: credential,
+    });
+    Object.assign(taintedEvaluation.provenance, { unpublishedAddress: credential });
 
-    const result = await service.explain(comparison, {
+    const result = await service.explain(taintedComparison, {
       mode: 'USER_API',
       provider: 'CUSTOM',
       model: 'user-model',
@@ -90,6 +105,108 @@ describe('explanation-only providers', () => {
     expect(capturedAuthorization).toBe(`Bearer ${credential}`);
     expect(capturedBody).not.toContain(credential);
     expect(JSON.stringify(result)).not.toContain(credential);
+
+    const providerRequest = asRecord(JSON.parse(capturedBody));
+    expect(Object.keys(providerRequest)).toEqual([
+      'model',
+      'temperature',
+      'response_format',
+      'messages',
+    ]);
+    const messages = providerRequest['messages'];
+    if (!Array.isArray(messages)) throw new Error('Expected provider prompt messages.');
+    const userMessage = asRecord(messages[1]);
+    const content = userMessage['content'];
+    if (typeof content !== 'string') throw new Error('Expected a serialized explanation payload.');
+    const payload = asRecord(JSON.parse(content));
+    expect(Object.keys(payload)).toEqual(['selectedCandidateId', 'candidate']);
+    const candidate = asRecord(payload['candidate']);
+    expect(Object.keys(candidate)).toEqual([
+      'candidateId',
+      'eligible',
+      'economics',
+      'safety',
+      'financing',
+      'rejections',
+      'provenance',
+    ]);
+    expect(Object.keys(asRecord(candidate['economics']))).toEqual([
+      'sourceAprBps',
+      'targetAprAfterBps',
+      'aprReductionBps',
+      'stressTargetAprBps',
+      'allInCostUsdMicro',
+      'netBenefitUsdMicro',
+      'stressNetBenefitUsdMicro',
+      'breakEvenSeconds',
+    ]);
+    expect(Object.keys(asRecord(candidate['safety']))).toEqual([
+      'kind',
+      'postLtvBps',
+      'stressLtvBps',
+      'maximumLtvBps',
+      'stressMaximumLtvBps',
+    ]);
+    const financing = asRecord(candidate['financing']);
+    expect(Object.keys(financing)).toEqual([
+      'settlementAsset',
+      'solverPrincipalUnits',
+      'solverFeeUnits',
+      'totalRequiredRepaymentAndFinancedCostUnits',
+      'confirmedExternalFundingUnits',
+      'maximumSafeBorrowingCapacityUnits',
+      'requiredDestinationBorrowUnits',
+      'fundingShortfallUnits',
+    ]);
+    expect(Object.keys(asRecord(financing['settlementAsset']))).toEqual(['decimals', 'symbol']);
+    expect(Object.keys(asRecord(candidate['provenance']))).toEqual([
+      'marketBlockNumber',
+      'oracleUpdatedAt',
+      'evaluatedAt',
+    ]);
+    expect(JSON.stringify(payload)).not.toMatch(
+      /(?:apiKey|address|authorization|credential|escrow|evidenceId|marketBlockHash|migrationId|refundReceiver|session|signature|sourceSnapshotId)/i,
+    );
+  });
+
+  it('discards credential-bearing provider failures without logging or returning the secret', async () => {
+    const credential = 'request-only-provider-credential';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const service = new RouteExplanationService({
+        allowCustomEndpoints: true,
+        fetcher: vi.fn(async () => {
+          throw new Error(`Provider failure containing ${credential}`);
+        }),
+      });
+      const result = await service.explain(comparison, {
+        mode: 'USER_API',
+        provider: 'CUSTOM',
+        model: 'user-model',
+        apiKey: credential,
+        baseUrl: 'https://93.184.216.34/v1/',
+      });
+
+      expect(result.fallbackUsed).toBe(true);
+      expect(JSON.stringify(result)).not.toContain(credential);
+      expect(
+        JSON.stringify([...log.mock.calls, ...error.mock.calls, ...warn.mock.calls]),
+      ).not.toContain(credential);
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('keeps the credential-handling module free of persistence and telemetry sinks', () => {
+    const implementation = readFileSync(new URL('./explanations.ts', import.meta.url), 'utf8');
+
+    expect(implementation).not.toMatch(
+      /(?:@debtshift\/database|postgres|redis|\bLogger\b|console\.|captureException|sendBeacon|Sentry)/,
+    );
   });
 
   it('falls back without changing the deterministic decision hash on malformed model output', async () => {
@@ -396,4 +513,11 @@ function aiExplanation() {
     dataFreshnessWarning: 'Critical state must be read again before execution.',
     reviewAndSignStatement: 'Review all exact terms before signing.',
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Expected an object record.');
+  }
+  return value as Record<string, unknown>;
 }

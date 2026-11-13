@@ -1,3 +1,7 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -33,4 +37,25 @@ describe('migration browser recovery', () => {
       12,
     );
   });
+
+  it('keeps browser secrets out of persistence, cookies, and analytics sinks', () => {
+    const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
+    const productionSource = readProductionSources(sourceRoot).join('\n');
+
+    expect(productionSource).not.toMatch(
+      /\b(?:localStorage|sessionStorage|indexedDB|sendBeacon|dataLayer|captureException|Sentry|posthog|mixpanel)\b/i,
+    );
+    expect(productionSource).not.toMatch(/document\.cookie/i);
+  });
 });
+
+function readProductionSources(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return readProductionSources(path);
+    if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name) || entry.name.includes('.test.')) {
+      return [];
+    }
+    return [readFileSync(path, 'utf8')];
+  });
+}
