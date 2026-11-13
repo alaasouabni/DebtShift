@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, open } from 'node:fs/promises';
+import { mkdir, open, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
-import { testnetMorphoDeploymentManifestSchema } from '../packages/domain/dist/index.js';
+import {
+  parsePublicTestnetRouteDependencies,
+  testnetMorphoDeploymentManifestSchema,
+} from '../packages/domain/dist/index.js';
 import { deployTestnetMorphoMarket } from '../packages/protocols/dist/index.js';
 import {
   createPublicClient,
@@ -10,6 +13,8 @@ import {
   defineChain,
   getAddress,
   http,
+  keccak256,
+  stringToHex,
   zeroAddress,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -18,25 +23,36 @@ assertDeploymentAuthorization();
 
 const workspaceRoot = resolve('.');
 const sourceCommit = cleanSourceCommit(workspaceRoot);
+const routePath = resolve(
+  process.env.PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH ??
+    'config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json',
+);
+const routeJson = await readFile(routePath, 'utf8');
+const route = parsePublicTestnetRouteDependencies(routeJson);
+const routeDependenciesHash = keccak256(stringToHex(routeJson));
 const rpcUrl = requiredUrl('DESTINATION_RPC_URL');
-const chainId = requiredPositiveInteger('DESTINATION_CHAIN_ID');
+const chainId = route.destination.chainId;
 const confirmations = optionalPositiveInteger('DESTINATION_FINALITY_CONFIRMATIONS', 1);
 const account = privateKeyToAccount(requiredPrivateKey('DEPLOYER_PRIVATE_KEY'));
 const owner = getAddress(process.env.MORPHO_OWNER ?? account.address);
 const seedLiquidityOwner = getAddress(process.env.DESTINATION_MORPHO_LIQUIDITY_OWNER ?? owner);
-const collateralToken = getAddress(required('DESTINATION_COLLATERAL_TOKEN_ADDRESS'));
-const loanToken = getAddress(required('DESTINATION_DEBT_TOKEN_ADDRESS'));
-const collateralFeed = getAddress(required('DESTINATION_COLLATERAL_CHAINLINK_FEED_ADDRESS'));
-const loanFeed = getAddress(required('DESTINATION_DEBT_CHAINLINK_FEED_ADDRESS'));
-const sequencerUptimeFeed = getAddress(
-  process.env.DESTINATION_SEQUENCER_UPTIME_FEED_ADDRESS?.trim() || zeroAddress,
-);
-const maxPriceAgeSeconds = requiredPositiveBigInt('DESTINATION_ORACLE_MAX_AGE_SECONDS');
+const collateralToken = getAddress(route.destination.collateralAsset.address);
+const loanToken = getAddress(route.destination.loanAsset.address);
+const collateralFeed = getAddress(route.destination.collateralFeed.address);
+const loanFeed = getAddress(route.destination.loanFeed.address);
+const sequencerUptimeFeed = getAddress(route.destination.sequencerUptimeFeed ?? zeroAddress);
+const collateralMaxPriceAgeSeconds = BigInt(route.destination.collateralFeed.maximumAgeSeconds);
+const loanMaxPriceAgeSeconds = BigInt(route.destination.loanFeed.maximumAgeSeconds);
 const sequencerGracePeriodSeconds = isZeroAddress(sequencerUptimeFeed)
   ? 0n
-  : requiredPositiveBigInt('DESTINATION_SEQUENCER_GRACE_PERIOD_SECONDS');
-const lltv = requiredPositiveBigInt('DESTINATION_MORPHO_LLTV');
+  : BigInt(route.destination.sequencerGracePeriodSeconds);
+const lltv = BigInt(route.destination.lltv);
 const seedLiquidityAssets = requiredPositiveBigInt('DESTINATION_MORPHO_SEED_LIQUIDITY_UNITS');
+if (seedLiquidityAssets < BigInt(route.destination.minimumSeedLiquidityUnits)) {
+  throw new Error(
+    `DESTINATION_MORPHO_SEED_LIQUIDITY_UNITS must be at least the reviewed route minimum ${route.destination.minimumSeedLiquidityUnits}.`,
+  );
+}
 const minimumNativeBalanceWei = optionalPositiveBigInt('MINIMUM_DEPLOYER_NATIVE_BALANCE_WEI', 1n);
 const outputPath = resolve(
   process.env.MORPHO_DEPLOYMENT_MANIFEST_PATH ??
@@ -75,6 +91,8 @@ try {
   manifest = testnetMorphoDeploymentManifestSchema.parse(
     await deployTestnetMorphoMarket({
       sourceCommit,
+      routeId: route.routeId,
+      routeDependenciesHash,
       publicClient,
       wallet,
       chainId,
@@ -85,7 +103,8 @@ try {
       collateralFeed,
       loanFeed,
       ...(isZeroAddress(sequencerUptimeFeed) ? {} : { sequencerUptimeFeed }),
-      maxPriceAgeSeconds,
+      collateralMaxPriceAgeSeconds,
+      loanMaxPriceAgeSeconds,
       sequencerGracePeriodSeconds,
       lltv,
       seedLiquidityOwner,
@@ -102,6 +121,8 @@ console.log(
     manifestPath: outputPath,
     chainId,
     upstreamCommit: manifest.upstream.commit,
+    routeId: manifest.routeId,
+    routeDependenciesHash: manifest.routeDependenciesHash,
     morpho: manifest.contracts.morpho.address,
     marketId: manifest.market.id,
     seededLiquidityUnits: manifest.market.seedLiquidityAssets,

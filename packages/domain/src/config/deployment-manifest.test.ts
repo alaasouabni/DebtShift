@@ -12,6 +12,7 @@ describe('DebtShift EVM deployment manifest', () => {
     expect(parsed.workflowWriteSwitchEnabled).toBe(false);
     expect(parsed.source.contracts.sourceAdapter.runtimeCodeHash).toMatch(/^0x[0-9a-f]{64}$/);
     expect(parsed.destination.protocol.kind).toBe('MORPHO_BLUE');
+    expect(parsed.routeDependenciesHash).toBeNull();
   });
 
   it('rejects enabled writes, same-chain deployments, and incomplete records', () => {
@@ -34,6 +35,23 @@ describe('DebtShift EVM deployment manifest', () => {
         JSON.stringify({ ...validManifest(), sourceCommit: 'working-tree' }),
       ),
     ).toThrow();
+    expect(() =>
+      parseDebtShiftEvmDeploymentManifest(
+        JSON.stringify({
+          ...validManifest(),
+          environment: 'testnet',
+          routeDependenciesHash: null,
+        }),
+      ),
+    ).toThrow('Testnet deployments require an exact route dependency hash');
+    expect(() =>
+      parseDebtShiftEvmDeploymentManifest(
+        JSON.stringify({
+          ...validManifest(),
+          routeDependenciesHash: `0x${'2'.repeat(64)}`,
+        }),
+      ),
+    ).toThrow('mainnet deployments must not use the testnet dependency bundle');
   });
 });
 
@@ -103,6 +121,7 @@ function validManifest() {
     environment: 'mainnet',
     routeId: 'base-aave-v3-weth-usdc-to-arbitrum-morpho-blue-weth-usdc-v1',
     routeConfigurationHash: `0x${'1'.repeat(64)}`,
+    routeDependenciesHash: null,
     createdAt: '2026-11-12T21:00:00.000Z',
     sourceCommit: '1'.repeat(40),
     owner: '0x1000000000000000000000000000000000000001',

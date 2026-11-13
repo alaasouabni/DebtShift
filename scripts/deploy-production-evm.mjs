@@ -4,12 +4,15 @@ import { dirname, resolve } from 'node:path';
 
 import {
   debtShiftEvmDeploymentManifestSchema,
+  parsePublicTestnetRouteDependencies,
   parseLiveMarketConfiguration,
+  parseTestnetMorphoDeploymentManifest,
 } from '../packages/domain/dist/index.js';
 import {
   deployProductionDebtShift,
   MORPHO_BLUE_READ_ABI,
   readAaveReserveTokenAddresses,
+  verifyTestnetMorphoDeployment,
 } from '../packages/protocols/dist/index.js';
 import {
   createPublicClient,
@@ -43,8 +46,9 @@ const outputPath = resolve(
 );
 const routeJson = await readFile(routePath, 'utf8');
 const route = parseLiveMarketConfiguration(routeJson);
-const routeId =
-  process.env.DEBTSHIFT_ROUTE_ID ?? 'base-aave-v3-weth-usdc-to-arbitrum-morpho-blue-weth-usdc-v1';
+const testnetDependency = await loadTestnetDependency(environment);
+const routeId = selectedRouteId(environment, testnetDependency);
+const routeDependenciesHash = testnetDependency?.routeDependenciesHash ?? null;
 const account = privateKeyToAccount(requiredPrivateKey('DEPLOYER_PRIVATE_KEY'));
 const owner = getAddress(process.env.DEPLOYMENT_OWNER ?? account.address);
 const executor = getAddress(required('EXECUTOR_ADDRESS'));
@@ -79,26 +83,45 @@ const destinationWallet = createWalletClient({
   transport: http(destinationRpcUrl),
 });
 
-const [actualSourceChainId, actualDestinationChainId, reserveTokens, rawMarketParams] =
-  await Promise.all([
-    sourcePublic.getChainId(),
-    destinationPublic.getChainId(),
-    readAaveReserveTokenAddresses(
-      sourcePublic,
-      route.source.dataProvider,
-      route.source.collateralAsset.address,
-    ),
-    destinationPublic.readContract({
-      address: route.destination.morpho,
-      abi: MORPHO_BLUE_READ_ABI,
-      functionName: 'idToMarketParams',
-      args: [route.destination.marketId],
-    }),
-  ]);
+const [
+  actualSourceChainId,
+  actualDestinationChainId,
+  collateralReserveTokens,
+  debtReserveTokens,
+  rawMarketParams,
+] = await Promise.all([
+  sourcePublic.getChainId(),
+  destinationPublic.getChainId(),
+  readAaveReserveTokenAddresses(
+    sourcePublic,
+    route.source.dataProvider,
+    route.source.collateralAsset.address,
+  ),
+  readAaveReserveTokenAddresses(
+    sourcePublic,
+    route.source.dataProvider,
+    route.source.debtAsset.address,
+  ),
+  destinationPublic.readContract({
+    address: route.destination.morpho,
+    abi: MORPHO_BLUE_READ_ABI,
+    functionName: 'idToMarketParams',
+    args: [route.destination.marketId],
+  }),
+]);
 if (actualSourceChainId !== sourceChainId || actualDestinationChainId !== destinationChainId) {
   throw new Error(
     `Deployment RPC chain mismatch: expected ${sourceChainId}/${destinationChainId}, received ${actualSourceChainId}/${actualDestinationChainId}.`,
   );
+}
+if (testnetDependency !== null) {
+  assertTestnetDependencyBindings(testnetDependency, route, sourceChainId, destinationChainId);
+  await verifyTestnetMorphoDeployment({
+    manifest: testnetDependency.morphoManifest,
+    publicClient: destinationPublic,
+    expectedRouteId: routeId,
+    expectedRouteDependenciesHash: testnetDependency.routeDependenciesHash,
+  });
 }
 const marketParams = {
   loanToken: getAddress(rawMarketParams[0]),
@@ -117,6 +140,7 @@ try {
       environment,
       routeId,
       routeConfigurationHash: keccak256(stringToHex(JSON.stringify(route))),
+      routeDependenciesHash,
       sourceCommit,
       owner,
       executor,
@@ -127,8 +151,8 @@ try {
         confirmations: sourceConfirmations,
         pool: route.source.pool,
         dataProvider: route.source.dataProvider,
-        aToken: reserveTokens.aToken,
-        variableDebtToken: reserveTokens.variableDebtToken,
+        aToken: collateralReserveTokens.aToken,
+        variableDebtToken: debtReserveTokens.variableDebtToken,
         collateralToken: route.source.collateralAsset.address,
         debtToken: route.source.debtAsset.address,
       },
@@ -156,8 +180,138 @@ console.log(
     destinationChainId,
     sourceAdapter: manifest.source.contracts.sourceAdapter.address,
     destinationAdapter: manifest.destination.contracts.destinationAdapter.address,
+    routeDependenciesHash: manifest.routeDependenciesHash,
   }),
 );
+
+async function loadTestnetDependency(environment) {
+  if (environment !== 'testnet') return null;
+  const morphoManifestPath = resolve(required('TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH'));
+  const routeDependenciesPath = resolve(
+    process.env.PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH ??
+      'config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json',
+  );
+  const [morphoManifestJson, routeDependenciesJson] = await Promise.all([
+    readFile(morphoManifestPath, 'utf8'),
+    readFile(routeDependenciesPath, 'utf8'),
+  ]);
+  const morphoManifest = parseTestnetMorphoDeploymentManifest(morphoManifestJson);
+  const routeDependencies = parsePublicTestnetRouteDependencies(routeDependenciesJson);
+  const routeDependenciesHash = keccak256(stringToHex(routeDependenciesJson));
+  if (
+    morphoManifest.routeId !== routeDependencies.routeId ||
+    morphoManifest.routeDependenciesHash.toLowerCase() !== routeDependenciesHash.toLowerCase()
+  ) {
+    throw new Error('Testnet Morpho manifest does not bind the selected route dependencies.');
+  }
+  return {
+    morphoManifest,
+    routeDependencies,
+    routeDependenciesHash,
+    morphoManifestPath,
+    routeDependenciesPath,
+  };
+}
+
+function selectedRouteId(environment, testnetDependency) {
+  const requested = process.env.DEBTSHIFT_ROUTE_ID?.trim();
+  if (environment === 'testnet') {
+    if (requested !== undefined && requested !== testnetDependency.morphoManifest.routeId) {
+      throw new Error('DEBTSHIFT_ROUTE_ID does not match the reviewed testnet dependency route.');
+    }
+    return testnetDependency.morphoManifest.routeId;
+  }
+  return requested ?? 'base-aave-v3-weth-usdc-to-arbitrum-morpho-blue-weth-usdc-v1';
+}
+
+function assertTestnetDependencyBindings(dependency, route, sourceChainId, destinationChainId) {
+  const { morphoManifest, routeDependencies } = dependency;
+  if (
+    sourceChainId !== routeDependencies.source.chainId ||
+    destinationChainId !== routeDependencies.destination.chainId
+  ) {
+    throw new Error('Deployment chain IDs do not match the reviewed testnet dependencies.');
+  }
+  const bindings = [
+    ['Aave pool', route.source.pool, routeDependencies.source.pool],
+    ['Aave data provider', route.source.dataProvider, routeDependencies.source.dataProvider],
+    [
+      'source collateral',
+      route.source.collateralAsset.address,
+      routeDependencies.source.collateralAsset.address,
+    ],
+    ['source debt', route.source.debtAsset.address, routeDependencies.source.debtAsset.address],
+    ['Morpho singleton', route.destination.morpho, morphoManifest.contracts.morpho.address],
+    ['Morpho market', route.destination.marketId, morphoManifest.market.id],
+    ['Morpho oracle', route.destination.morphoOracle, morphoManifest.contracts.oracle.address],
+    [
+      'destination collateral',
+      route.destination.collateralAsset.address,
+      routeDependencies.destination.collateralAsset.address,
+    ],
+    [
+      'destination debt',
+      route.destination.debtAsset.address,
+      routeDependencies.destination.loanAsset.address,
+    ],
+    [
+      'manifested Morpho collateral',
+      morphoManifest.tokens.collateral.address,
+      routeDependencies.destination.collateralAsset.address,
+    ],
+    [
+      'manifested Morpho debt',
+      morphoManifest.tokens.loan.address,
+      routeDependencies.destination.loanAsset.address,
+    ],
+    [
+      'manifested collateral feed',
+      morphoManifest.feeds.collateral.address,
+      routeDependencies.destination.collateralFeed.address,
+    ],
+    [
+      'manifested loan feed',
+      morphoManifest.feeds.loan.address,
+      routeDependencies.destination.loanFeed.address,
+    ],
+  ];
+  for (const [label, actual, expected] of bindings) {
+    if (actual.toLowerCase() !== expected.toLowerCase()) {
+      throw new Error(`${label} does not match the reviewed testnet dependency.`);
+    }
+  }
+  const reviewedFeeds = new Map([
+    [
+      routeDependencies.destination.collateralFeed.address.toLowerCase(),
+      routeDependencies.destination.collateralFeed.maximumAgeSeconds,
+    ],
+    [
+      routeDependencies.destination.loanFeed.address.toLowerCase(),
+      routeDependencies.destination.loanFeed.maximumAgeSeconds,
+    ],
+  ]);
+  if (
+    route.destination.morphoOracleFeeds.length !== reviewedFeeds.size ||
+    route.destination.morphoOracleFeeds.some(
+      ({ address, maximumAgeSeconds }) =>
+        reviewedFeeds.get(address.toLowerCase()) !== maximumAgeSeconds,
+    )
+  ) {
+    throw new Error('Morpho oracle feeds do not match the reviewed testnet dependencies.');
+  }
+  if (
+    morphoManifest.market.lltv !== routeDependencies.destination.lltv ||
+    morphoManifest.feeds.collateralMaxPriceAgeSeconds !==
+      routeDependencies.destination.collateralFeed.maximumAgeSeconds.toString() ||
+    morphoManifest.feeds.loanMaxPriceAgeSeconds !==
+      routeDependencies.destination.loanFeed.maximumAgeSeconds.toString() ||
+    morphoManifest.feeds.sequencerUptime !== routeDependencies.destination.sequencerUptimeFeed ||
+    morphoManifest.feeds.sequencerGracePeriodSeconds !==
+      routeDependencies.destination.sequencerGracePeriodSeconds.toString()
+  ) {
+    throw new Error('Morpho market policy does not match the reviewed testnet dependencies.');
+  }
+}
 
 function assertDeploymentAuthorization() {
   if (process.env.MAINNET_EXECUTION_ENABLED === 'true') {

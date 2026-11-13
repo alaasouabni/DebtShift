@@ -75,6 +75,8 @@ runDeploymentTests('canonical testnet Morpho deployment and attestation', () => 
 
     manifest = await deployTestnetMorphoMarket({
       sourceCommit: '1'.repeat(40),
+      routeId: 'ethereum-sepolia-to-base-sepolia-v1',
+      routeDependenciesHash: `0x${'ab'.repeat(32)}`,
       publicClient: local.publicClient,
       wallet,
       chainId: local.chain.id,
@@ -84,7 +86,8 @@ runDeploymentTests('canonical testnet Morpho deployment and attestation', () => 
       loanToken,
       collateralFeed,
       loanFeed,
-      maxPriceAgeSeconds: 86_400n,
+      collateralMaxPriceAgeSeconds: 3_600n,
+      loanMaxPriceAgeSeconds: 90_000n,
       sequencerGracePeriodSeconds: 0n,
       lltv: 860_000_000_000_000_000n,
       seedLiquidityOwner: owner.address,
@@ -102,6 +105,8 @@ runDeploymentTests('canonical testnet Morpho deployment and attestation', () => 
       manifest,
       publicClient: local.publicClient,
       minimumAvailableLiquidityUnits: 50_000_000n,
+      expectedRouteId: 'ethereum-sepolia-to-base-sepolia-v1',
+      expectedRouteDependenciesHash: `0x${'ab'.repeat(32)}`,
     });
 
     expect(manifest.upstream.commit).toBe('339a885801972740eb27f51da110a4675b839d42');
@@ -110,6 +115,16 @@ runDeploymentTests('canonical testnet Morpho deployment and attestation', () => 
     expect(report.availableLiquidityUnits).toBe('50000000');
     expect(BigInt(report.oraclePrice)).toBe(2_000n * 10n ** 24n);
     expect(report.workflowWriteSwitchEnabled).toBe(false);
+  });
+
+  it('fails closed when the reviewed route dependency binding differs', async () => {
+    await expect(
+      verifyTestnetMorphoDeployment({
+        manifest,
+        publicClient: local.publicClient,
+        expectedRouteDependenciesHash: `0x${'cd'.repeat(32)}`,
+      }),
+    ).rejects.toThrow('route dependency binding does not match');
   });
 
   it('fails closed when canonical deployment input provenance is changed', async () => {
@@ -159,6 +174,8 @@ runDeploymentTests('canonical testnet Morpho deployment and attestation', () => 
     await expect(
       deployTestnetMorphoMarket({
         sourceCommit: '1'.repeat(40),
+        routeId: 'ethereum-sepolia-to-base-sepolia-v1',
+        routeDependenciesHash: `0x${'ab'.repeat(32)}`,
         publicClient: local.publicClient,
         wallet,
         chainId: local.chain.id,
@@ -168,7 +185,8 @@ runDeploymentTests('canonical testnet Morpho deployment and attestation', () => 
         loanToken,
         collateralFeed,
         loanFeed,
-        maxPriceAgeSeconds: 60n,
+        collateralMaxPriceAgeSeconds: 60n,
+        loanMaxPriceAgeSeconds: 90_000n,
         sequencerGracePeriodSeconds: 0n,
         lltv: 860_000_000_000_000_000n,
         seedLiquidityOwner: owner.address,

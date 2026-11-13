@@ -34,7 +34,8 @@ contract DebtShiftChainlinkOracle {
     IChainlinkFeed public immutable COLLATERAL_FEED;
     IChainlinkFeed public immutable LOAN_FEED;
     IChainlinkFeed public immutable SEQUENCER_UPTIME_FEED;
-    uint256 public immutable MAX_PRICE_AGE;
+    uint256 public immutable COLLATERAL_MAX_PRICE_AGE;
+    uint256 public immutable LOAN_MAX_PRICE_AGE;
     uint256 public immutable SEQUENCER_GRACE_PERIOD;
     uint256 public immutable SCALE_FACTOR;
 
@@ -44,13 +45,14 @@ contract DebtShiftChainlinkOracle {
         IChainlinkFeed collateralFeed,
         IChainlinkFeed loanFeed,
         IChainlinkFeed sequencerUptimeFeed,
-        uint256 maxPriceAge,
+        uint256 collateralMaxPriceAge,
+        uint256 loanMaxPriceAge,
         uint256 sequencerGracePeriod
     ) {
         if (
             collateralToken.code.length == 0 || loanToken.code.length == 0
                 || address(collateralFeed).code.length == 0 || address(loanFeed).code.length == 0
-                || maxPriceAge == 0
+                || collateralMaxPriceAge == 0 || loanMaxPriceAge == 0
         ) revert InvalidConfiguration();
         if (
             address(sequencerUptimeFeed) == address(0) && sequencerGracePeriod != 0
@@ -71,19 +73,20 @@ contract DebtShiftChainlinkOracle {
         COLLATERAL_FEED = collateralFeed;
         LOAN_FEED = loanFeed;
         SEQUENCER_UPTIME_FEED = sequencerUptimeFeed;
-        MAX_PRICE_AGE = maxPriceAge;
+        COLLATERAL_MAX_PRICE_AGE = collateralMaxPriceAge;
+        LOAN_MAX_PRICE_AGE = loanMaxPriceAge;
         SEQUENCER_GRACE_PERIOD = sequencerGracePeriod;
         SCALE_FACTOR = 10 ** (scaleExponent - scaleReduction);
     }
 
     function price() external view returns (uint256) {
         _assertSequencerReady();
-        uint256 collateralPrice = _readFeed(COLLATERAL_FEED);
-        uint256 loanPrice = _readFeed(LOAN_FEED);
+        uint256 collateralPrice = _readFeed(COLLATERAL_FEED, COLLATERAL_MAX_PRICE_AGE);
+        uint256 loanPrice = _readFeed(LOAN_FEED, LOAN_MAX_PRICE_AGE);
         return collateralPrice * SCALE_FACTOR / loanPrice;
     }
 
-    function _readFeed(IChainlinkFeed feed) private view returns (uint256) {
+    function _readFeed(IChainlinkFeed feed, uint256 maximumAge) private view returns (uint256) {
         (
             uint80 roundId,
             int256 answer,
@@ -97,7 +100,7 @@ contract DebtShiftChainlinkOracle {
         ) revert InvalidPrice();
         // Block time is the canonical reference for Chainlink heartbeat age.
         // forge-lint: disable-next-line(block-timestamp)
-        if (updatedAt > block.timestamp || block.timestamp - updatedAt > MAX_PRICE_AGE) {
+        if (updatedAt > block.timestamp || block.timestamp - updatedAt > maximumAge) {
             revert StalePrice();
         }
         // The positivity check above makes this conversion lossless.

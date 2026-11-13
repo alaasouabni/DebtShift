@@ -33,6 +33,8 @@ runDeploymentTests('production deployment manifest and read-only verification', 
   let source: LocalAnvilChain;
   let destination: LocalAnvilChain;
   let manifest: Awaited<ReturnType<typeof deployProductionDebtShift>>;
+  let expectedCollateralAToken: Address;
+  let expectedDebtVariableDebtToken: Address;
 
   beforeAll(async () => {
     source = await startAnvil({ chainId: 31_337, port: 19_585 });
@@ -71,6 +73,24 @@ runDeploymentTests('production deployment manifest and read-only verification', 
       18,
       owner.address,
     ]);
+    const collateralVariableDebtToken = await deploy(sourceWallet, source.publicClient, testToken, [
+      'Aave variable WETH',
+      'variableDebtWETH',
+      18,
+      owner.address,
+    ]);
+    const debtAToken = await deploy(sourceWallet, source.publicClient, testToken, [
+      'Aave USD',
+      'aUSDC',
+      6,
+      owner.address,
+    ]);
+    const debtVariableDebtToken = await deploy(sourceWallet, source.publicClient, testToken, [
+      'Aave variable USD',
+      'variableDebtUSDC',
+      6,
+      owner.address,
+    ]);
     const pool = await deploy(sourceWallet, source.publicClient, mockPool, [
       sourceCollateral,
       sourceDebt,
@@ -79,8 +99,13 @@ runDeploymentTests('production deployment manifest and read-only verification', 
     const provider = await deploy(sourceWallet, source.publicClient, dataProvider, [
       sourceCollateral,
       aToken,
-      pool,
+      collateralVariableDebtToken,
+      sourceDebt,
+      debtAToken,
+      debtVariableDebtToken,
     ]);
+    expectedCollateralAToken = aToken;
+    expectedDebtVariableDebtToken = debtVariableDebtToken;
 
     const destinationDebt = await deploy(destinationWallet, destination.publicClient, testToken, [
       'Destination USD',
@@ -120,6 +145,7 @@ runDeploymentTests('production deployment manifest and read-only verification', 
       environment: 'testnet',
       routeId: 'integration-aave-to-morpho-v1',
       routeConfigurationHash: `0x${'11'.repeat(32)}`,
+      routeDependenciesHash: `0x${'22'.repeat(32)}`,
       sourceCommit: '1'.repeat(40),
       owner: owner.address,
       executor: executor.address,
@@ -131,7 +157,7 @@ runDeploymentTests('production deployment manifest and read-only verification', 
         pool,
         dataProvider: provider,
         aToken,
-        variableDebtToken: pool,
+        variableDebtToken: debtVariableDebtToken,
         collateralToken: sourceCollateral,
         debtToken: sourceDebt,
       },
@@ -164,6 +190,10 @@ runDeploymentTests('production deployment manifest and read-only verification', 
     expect(report.verifiedContractCount).toBe(7);
     expect(report.verifiedConfigurationTransactionCount).toBeGreaterThanOrEqual(10);
     expect(BigInt(report.sourceExecutorNativeBalanceWei)).toBeGreaterThan(0n);
+    expect(manifest.source.protocol.aToken).toBe(getAddress(expectedCollateralAToken));
+    expect(manifest.source.protocol.variableDebtToken).toBe(
+      getAddress(expectedDebtVariableDebtToken),
+    );
   });
 
   it('fails closed when a recorded runtime code hash is changed', async () => {

@@ -40,6 +40,8 @@ non-zero balance floor. The initial deployment requires these values:
 | `SOURCE_FINALITY_CONFIRMATIONS` / `DESTINATION_FINALITY_CONFIRMATIONS` | Deployment confirmation depths.                                          |
 | `LIVE_MARKET_CONFIG_PATH`                                              | Reviewed route file; defaults to the submission-critical route.          |
 | `DEBTSHIFT_ROUTE_ID`                                                   | Stable human-readable route version.                                     |
+| `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH`                              | Testnet only: independently verified canonical Morpho manifest.          |
+| `PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH`                               | Testnet only: byte-exact reviewed dependency bundle.                     |
 | `DEPLOYER_PRIVATE_KEY`                                                 | Secret-injected 32-byte signer key.                                      |
 | `DEPLOYMENT_OWNER`                                                     | Initial owner; must derive from the deployment key during configuration. |
 | `EXECUTOR_ADDRESS`                                                     | Preselected operational executor, never a browser-supplied value.        |
@@ -65,8 +67,11 @@ liquidity funding, borrower approval, a 1Click deposit, a refinance, or any othe
    bounds.
 4. Read both RPC chain IDs directly and confirm they equal the configured values. Confirm the signer
    and executor native balances without printing credentials.
-5. Confirm Aave returns the expected aToken and variable-debt-token identities for the collateral
-   reserve. Confirm Morpho returns the exact configured market parameters and market ID.
+5. Confirm Aave returns the expected collateral-reserve aToken and debt-reserve variable-debt-token
+   identities. Confirm Morpho returns the exact configured market parameters and market ID.
+   On testnet, rerun `npm run check:public-testnet-route` and
+   `npm run check:testnet-morpho-deployment`; the EVM deployer independently verifies the same
+   Morpho manifest and dependency-file hash before broadcasting.
 6. Select a brand-new durable `DEPLOYMENT_MANIFEST_PATH`. The deployer creates it exclusively before
    the first deployment transaction; an existing path causes a pre-broadcast failure.
 7. Keep the application stopped or in `mainnet-readonly`. Do not enable queue consumption against an
@@ -90,10 +95,12 @@ chain identities, Aave reserve identities, and Morpho market parameters. It depl
 - owner, executor/operator, escrow, vault, and lending allowlists;
 - paused/default-disabled workflow state.
 
-The final version-1 manifest contains the source commit, normalized route hash, owner/executor,
-protocol bindings, token identities, every deployment transaction/block/code hash, every
-configuration transaction/block, and `workflowWriteSwitchEnabled: false`. Record the manifest path,
-file SHA-256, source commit, command output, explorer links, and signer nonces in the release record.
+The final version-1 manifest contains the source commit, normalized executable-route hash,
+owner/executor, protocol bindings, token identities, every deployment transaction/block/code hash,
+every configuration transaction/block, and `workflowWriteSwitchEnabled: false`. Testnet manifests
+also contain the byte-exact public dependency hash already bound into the canonical Morpho manifest;
+mainnet manifests require that testnet-only field to be `null`. Record the manifest path, file
+SHA-256, source commit, command output, explorer links, and signer nonces in the release record.
 Do not commit a real external deployment manifest unless the release policy explicitly makes those
 public addresses and transaction records part of the published evidence.
 
@@ -106,7 +113,9 @@ npm run check:deployment
 ```
 
 The check requires `DEPLOYMENT_MANIFEST_PATH`, both RPC URLs, and the same
-`LIVE_MARKET_CONFIG_PATH`. Set `MINIMUM_VAULT_FREE_LIQUIDITY_UNITS` and
+`LIVE_MARKET_CONFIG_PATH`. Testnet also requires `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH` and the
+same `PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH`; readiness rejects any route ID or byte-exact hash
+drift across the three manifests. Set `MINIMUM_VAULT_FREE_LIQUIDITY_UNITS` and
 `MINIMUM_EXECUTOR_NATIVE_BALANCE_WEI` to the approved release floors; leaving either blank verifies a
 zero floor only and is not sufficient for funded execution.
 
@@ -143,7 +152,8 @@ performs EVM, transport, and NEAR startup attestations; any failure terminates s
 durable financial command can be consumed. Testnet transport startup additionally checks both RPC
 chain IDs, collateral token bytecode, non-zero executor gas on both chains, and non-zero pre-funded
 source-refund and destination-delivery collateral. Exact required amounts are rechecked immediately
-before each transfer.
+before each transfer. Testnet EVM startup also requires the Morpho dependency manifest's route ID
+and dependency hash to match the DebtShift EVM manifest before it verifies the onchain market.
 
 After startup, rerun the independent readiness check and confirm the worker health/log record reports
 no attestation error. Do not treat process health alone as deployment evidence.

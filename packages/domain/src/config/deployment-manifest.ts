@@ -93,6 +93,7 @@ export const debtShiftEvmDeploymentManifestSchema = z
     environment: z.enum(['testnet', 'mainnet']),
     routeId: canonicalTextSchema,
     routeConfigurationHash: bytes32Schema,
+    routeDependenciesHash: bytes32Schema.nullable(),
     createdAt: z.iso.datetime(),
     sourceCommit: sourceCommitSchema,
     owner: evmAddressSchema,
@@ -103,6 +104,17 @@ export const debtShiftEvmDeploymentManifestSchema = z
   })
   .strict()
   .superRefine((manifest, context) => {
+    if (
+      (manifest.environment === 'testnet' && manifest.routeDependenciesHash === null) ||
+      (manifest.environment === 'mainnet' && manifest.routeDependenciesHash !== null)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Testnet deployments require an exact route dependency hash; mainnet deployments must not use the testnet dependency bundle.',
+        path: ['routeDependenciesHash'],
+      });
+    }
     if (manifest.source.chainId === manifest.destination.chainId) {
       context.addIssue({
         code: 'custom',

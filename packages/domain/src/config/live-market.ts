@@ -21,7 +21,7 @@ export const liveTokenConfigurationSchema = z
 export const chainlinkFeedConfigurationSchema = z
   .object({
     address: evmAddressSchema,
-    maximumAgeSeconds: z.number().int().min(30).max(86_400),
+    maximumAgeSeconds: z.number().int().min(30).max(604_800),
   })
   .strict();
 

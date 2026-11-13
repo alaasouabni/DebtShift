@@ -25,6 +25,7 @@ export interface ProductionDebtShiftDeploymentInput {
   readonly environment: 'testnet' | 'mainnet';
   readonly routeId: string;
   readonly routeConfigurationHash: Hex;
+  readonly routeDependenciesHash: Hex | null;
   readonly sourceCommit: string;
   readonly owner: Address;
   readonly executor: Address;
@@ -110,6 +111,7 @@ export async function deployProductionDebtShift(
     environment: input.environment,
     routeId: input.routeId,
     routeConfigurationHash: input.routeConfigurationHash,
+    routeDependenciesHash: input.routeDependenciesHash,
     createdAt: input.createdAt ?? new Date().toISOString(),
     sourceCommit: input.sourceCommit,
     owner: getAddress(input.owner),
@@ -227,15 +229,26 @@ export async function verifyProductionDebtShiftDeployment({
     manifest.destination.debtToken,
   ]);
 
-  const reserveTokens = await readAaveReserveTokenAddresses(
-    sourcePublicClient,
-    manifest.source.protocol.dataProvider,
-    manifest.source.collateralToken,
-  );
-  assertSameAddress('Aave aToken', reserveTokens.aToken, manifest.source.protocol.aToken);
+  const [collateralReserveTokens, debtReserveTokens] = await Promise.all([
+    readAaveReserveTokenAddresses(
+      sourcePublicClient,
+      manifest.source.protocol.dataProvider,
+      manifest.source.collateralToken,
+    ),
+    readAaveReserveTokenAddresses(
+      sourcePublicClient,
+      manifest.source.protocol.dataProvider,
+      manifest.source.debtToken,
+    ),
+  ]);
   assertSameAddress(
-    'Aave variable-debt token',
-    reserveTokens.variableDebtToken,
+    'Aave collateral aToken',
+    collateralReserveTokens.aToken,
+    manifest.source.protocol.aToken,
+  );
+  assertSameAddress(
+    'Aave debt variable-debt token',
+    debtReserveTokens.variableDebtToken,
     manifest.source.protocol.variableDebtToken,
   );
   const rawMarketParams = await destinationPublicClient.readContract({
@@ -911,6 +924,14 @@ async function writeTracked(
 function assertDeploymentInput(input: ProductionDebtShiftDeploymentInput): void {
   if (!/^[0-9a-f]{40}$/.test(input.sourceCommit)) {
     throw new Error('Production deployment requires a full lowercase Git source commit.');
+  }
+  if (
+    (input.environment === 'testnet' && input.routeDependenciesHash === null) ||
+    (input.environment === 'mainnet' && input.routeDependenciesHash !== null)
+  ) {
+    throw new Error(
+      'Production testnet deployment requires an exact route dependency hash and mainnet forbids it.',
+    );
   }
   if (input.source.chainId === input.destination.chainId) {
     throw new Error('Production source and destination deployment chains must differ.');

@@ -48,23 +48,46 @@ The build also contains `DebtShiftChainlinkOracle`, a testnet-only two-feed orac
 - derives its scale from both token and feed decimals and rejects unsupported scale configurations;
 - rejects non-positive, incomplete, future-dated, or stale Chainlink rounds;
 - optionally rejects an L2 sequencer outage and the configured recovery grace period;
-- exposes immutable feed, maximum-age, and sequencer settings for startup attestation.
+- exposes immutable per-feed maximum ages and sequencer settings for startup attestation. Separate
+  limits prevent a slow quote-feed heartbeat from weakening the collateral-feed freshness bound.
 
 Production mainnet does not deploy or select this oracle. It uses the oracle already bound to the
 allowlisted established Morpho market.
 
-## Recommended testnet topology
+## Frozen dependency candidate
 
-Use the official Aave V3 Sepolia deployment as the source and a different public EVM testnet for
-the DebtShift-operated Morpho destination so the workflow still crosses chain identities. Base
-Sepolia is the current candidate because it has canonical WETH, Circle test USDC, and Chainlink
-feeds, but it is not frozen here: addresses, feed availability, faucet behavior, and current
-deployment support are time-sensitive and must be revalidated from official primary sources before
-any transaction.
+The checked-in, write-disabled dependency candidate is
+`config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json`.
+It is a deployment input, not an executable route and not proof that any contract has been deployed.
+`npm run check:public-testnet-route` revalidates its primary-source provenance and finalized onchain
+state without a key or write transaction.
 
-Do not copy an address from an old blog, chat, or remembered value. Record the official source URL,
-chain ID, observed block, code hash, token decimals, feed decimals, latest round, heartbeat, and
-sequencer feed in the deployment evidence packet.
+| Role                        | Network / reviewed value                                                                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source                      | Official Aave V3 on Ethereum Sepolia, chain `11155111`                                                                                                    |
+| Aave address-book pin       | Commit `b8c801a413c4b934afaf7976d2ddc5fbada6dce6`, module SHA-256 `a9f66b5f399a2152c143516ea5d93ca2376f0f98e6dd9737913fa1e32414fe75`                      |
+| Source pool / data provider | `0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951` / `0x3e9708d80f7B3e43118013075F7e95CE3AB31F31`                                                               |
+| Source WETH collateral      | `0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c`; aToken `0x5b071b590a59395fE4025A0Ccc1FcC931AAc1830`                                                         |
+| Source USDC debt            | Aave test USDC `0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8`; variable debt `0x36B5dE936eF1710E1d22EabE5231b28581a92ECc`                                   |
+| Destination                 | Base Sepolia, chain `84532`; DebtShift-operated canonical-source Morpho                                                                                   |
+| Destination WETH            | Base WETH9 predeploy `0x4200000000000000000000000000000000000006`                                                                                         |
+| Destination USDC            | Circle test USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`                                                                                             |
+| Collateral feed             | Chainlink ETH/USD `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1`; published heartbeat `1200s`; enforced maximum age `3600s`                                 |
+| Loan feed                   | Chainlink USDC/USD `0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165`; published heartbeat `86400s`; enforced maximum age `90000s`                              |
+| Sequencer policy            | `null`, grace `0`: Chainlink's current sequencer-feed directory does not list Base Sepolia. Revalidation fails if that changes and requires a new review. |
+| Market parameters           | LLTV `800000000000000000` (`80%`); minimum seed liquidity `10000000` USDC base units (`10` test USDC)                                                     |
+
+The source Aave USDC and destination Circle USDC are different testnet contracts. The route labels
+them as chain-specific, no-value test representations of the same economic debt unit; it never
+claims a native token bridge or identical issuer at both ends. The unavailable 1Click boundary
+remains explicitly simulated, while its source escrow and destination delivery must be real
+public-chain token transactions.
+
+Primary sources are pinned or re-read from Aave's official address-book API, Base contract docs,
+Circle's USDC address page, and Chainlink's official feed and sequencer directories. Do not replace
+an address from a blog, chat, explorer search, or remembered value. Every deployment window must
+rerun the validator and preserve its blocks, hashes, code hashes, metadata, rounds, and response
+hashes.
 
 ## Irreversible-action boundary
 
@@ -80,39 +103,39 @@ requires all of these independent gates:
 - an RPC whose observed chain ID matches the configured destination chain;
 - deployed code for both tokens, both price feeds, and the optional sequencer feed;
 - enough deployer native gas and enough real testnet loan tokens for the exact seed amount.
+- a byte-exact route dependency file whose Keccak-256 hash is written into the deployment manifest.
 
 Never set the approval variable in a shared committed environment file. Inject it only into the
 reviewed deployment process and remove it afterward.
 
 ## Required inputs
 
-| Variable                                        | Meaning                                                                   |
-| ----------------------------------------------- | ------------------------------------------------------------------------- |
-| `DEBTSHIFT_DEPLOYMENT_ENVIRONMENT`              | Exactly `testnet`.                                                        |
-| `DEBTSHIFT_TESTNET_MORPHO_DEPLOYMENT_APPROVED`  | Exactly `true` for the reviewed deployment window only.                   |
-| `MAINNET_EXECUTION_ENABLED`                     | Omit or set `false`; the command rejects `true`.                          |
-| `DESTINATION_RPC_URL` / `DESTINATION_CHAIN_ID`  | Reviewed public-testnet endpoint and exact chain ID.                      |
-| `DESTINATION_FINALITY_CONFIRMATIONS`            | Positive receipt confirmation count; defaults to `1`.                     |
-| `DEPLOYER_PRIVATE_KEY`                          | Secret-injected funded testnet deployment key.                            |
-| `MORPHO_OWNER`                                  | Final Morpho owner; defaults to the deployer.                             |
-| `DESTINATION_MORPHO_LIQUIDITY_OWNER`            | Owner of seed supply shares; defaults to `MORPHO_OWNER`.                  |
-| `DESTINATION_COLLATERAL_TOKEN_ADDRESS`          | Real destination public-testnet collateral token.                         |
-| `DESTINATION_DEBT_TOKEN_ADDRESS`                | Real destination public-testnet loan token to seed.                       |
-| `DESTINATION_COLLATERAL_CHAINLINK_FEED_ADDRESS` | Collateral/USD or otherwise compatible base feed.                         |
-| `DESTINATION_DEBT_CHAINLINK_FEED_ADDRESS`       | Loan/USD or otherwise compatible quote feed.                              |
-| `DESTINATION_SEQUENCER_UPTIME_FEED_ADDRESS`     | Required for an L2 destination; omit only for an L1.                      |
-| `DESTINATION_ORACLE_MAX_AGE_SECONDS`            | Positive maximum age accepted by the onchain oracle.                      |
-| `DESTINATION_SEQUENCER_GRACE_PERIOD_SECONDS`    | Positive L2 recovery grace period; omit for an L1.                        |
-| `DESTINATION_MORPHO_LLTV`                       | Reviewed WAD-scaled LLTV strictly between zero and `1e18`.                |
-| `DESTINATION_MORPHO_SEED_LIQUIDITY_UNITS`       | Exact positive loan-token base units permanently supplied for validation. |
-| `MINIMUM_DEPLOYER_NATIVE_BALANCE_WEI`           | Optional preflight native gas floor; defaults to `1`.                     |
-| `MORPHO_DEPLOYMENT_MANIFEST_PATH`               | New durable output path; defaults under `deployment/manifests`.           |
+| Variable                                       | Meaning                                                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `DEBTSHIFT_DEPLOYMENT_ENVIRONMENT`             | Exactly `testnet`.                                                                           |
+| `DEBTSHIFT_TESTNET_MORPHO_DEPLOYMENT_APPROVED` | Exactly `true` for the reviewed deployment window only.                                      |
+| `MAINNET_EXECUTION_ENABLED`                    | Omit or set `false`; the command rejects `true`.                                             |
+| `PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH`       | Optional reviewed dependency file; defaults to the single checked-in P0 candidate.           |
+| `DESTINATION_RPC_URL`                          | Reviewed Base Sepolia endpoint. Chain ID comes from the dependency file and is checked live. |
+| `DESTINATION_FINALITY_CONFIRMATIONS`           | Positive receipt confirmation count; defaults to `1`.                                        |
+| `DEPLOYER_PRIVATE_KEY`                         | Secret-injected funded testnet deployment key.                                               |
+| `MORPHO_OWNER`                                 | Final Morpho owner; defaults to the deployer.                                                |
+| `DESTINATION_MORPHO_LIQUIDITY_OWNER`           | Owner of seed supply shares; defaults to `MORPHO_OWNER`.                                     |
+| `DESTINATION_MORPHO_SEED_LIQUIDITY_UNITS`      | Exact loan-token base units supplied; must meet the dependency file's reviewed minimum.      |
+| `MINIMUM_DEPLOYER_NATIVE_BALANCE_WEI`          | Optional preflight native gas floor; defaults to `1`.                                        |
+| `MORPHO_DEPLOYMENT_MANIFEST_PATH`              | New durable output path; defaults under `deployment/manifests`.                              |
+
+Tokens, feeds, independent freshness limits, null sequencer policy, chain ID, LLTV, and minimum
+seed amount come only from the reviewed dependency file. The deployer hashes that exact file and
+binds its route ID and hash into the manifest; operator environment variables cannot silently
+substitute those security parameters.
 
 The manifest never contains the RPC URL or private key.
 
 ## Preflight checklist
 
-1. Verify the candidate destination chain and every address from current official documentation.
+1. Run `MAINNET_EXECUTION_ENABLED=false npm run check:public-testnet-route` and preserve the complete
+   JSON observation. Any failure requires review; do not override it with environment variables.
 2. Read bytecode, token symbols/decimals, feed decimals, latest round values, round timestamps, and
    the L2 sequencer status directly from the configured RPC.
 3. Confirm both tokens have standard exact-transfer ERC-20 behavior suitable for Morpho; do not use
@@ -132,6 +155,7 @@ The manifest never contains the RPC URL or private key.
 ```text
 npm run check:morpho-testnet
 npm run check:evm-deployment
+npm run check:public-testnet-route
 npm run check
 ```
 
@@ -154,7 +178,8 @@ The guarded deployer performs this exact sequence:
 
 1. deploy canonical `Morpho` with the deployer as temporary owner;
 2. deploy canonical `AdaptiveCurveIrm` bound immutably to that Morpho singleton;
-3. deploy `DebtShiftChainlinkOracle` bound to the exact tokens, feeds, age, and sequencer policy;
+3. deploy `DebtShiftChainlinkOracle` bound to the exact tokens, feeds, independent ages, and
+   sequencer policy;
 4. enable the IRM and LLTV;
 5. create the exact derived market ID;
 6. clear any pre-existing deployer allowance;
@@ -163,7 +188,8 @@ The guarded deployer performs this exact sequence:
 9. revoke the token allowance to zero;
 10. transfer Morpho ownership if the final owner differs from the deployer;
 11. read back market totals, supply shares, Morpho token balance, code hashes, and all receipts;
-12. write the immutable version-1 manifest with `workflowWriteSwitchEnabled=false`.
+12. write the immutable version-1 manifest with the exact route dependency hash and
+    `workflowWriteSwitchEnabled=false`.
 
 If any transaction fails after an earlier broadcast, do not overwrite the reserved manifest or
 blindly rerun. Preserve the empty/partial output path, collect every transaction hash from the
@@ -174,13 +200,14 @@ a new path and explicit review.
 
 The generated manifest binds:
 
-- the DebtShift source commit and exact upstream commit/source-manifest hash;
+- the DebtShift source commit, route ID, byte-exact route dependency hash, and exact upstream
+  commit/source-manifest hash;
 - compiler, EVM, IR, optimizer, and metadata settings;
 - chain, deployer, final owner, and minimum deployment block;
 - canonical creation-code hashes, full deployment-input hashes, contract addresses, receipts,
   canonical blocks, and runtime-code hashes for Morpho, IRM, and oracle;
 - token/feed addresses, decimals, and runtime-code hashes;
-- oracle age and sequencer policy;
+- independent collateral/loan oracle ages and the sequencer policy;
 - exact market parameters and derived market ID;
 - seed-liquidity owner, assets, shares, initial total supply, and available liquidity;
 - every configuration/supply/allowance/ownership transaction with sender, target, calldata hash,
@@ -195,10 +222,12 @@ The read-only command requires no private key:
 npm run check:testnet-morpho-deployment
 ```
 
-Set `MORPHO_DEPLOYMENT_MANIFEST_PATH`, `DESTINATION_RPC_URL`, and optionally a positive
+Set `MORPHO_DEPLOYMENT_MANIFEST_PATH`, `DESTINATION_RPC_URL`, optionally
+`PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH`, and optionally a positive
 `MINIMUM_MORPHO_AVAILABLE_LIQUIDITY_UNITS`. The checker independently verifies:
 
 - local pinned-source provenance and creation bytecode;
+- the exact dependency-file route ID and Keccak-256 hash;
 - the chain ID and every canonical deployment/configuration receipt;
 - exact creation calldata, transaction sender/target/calldata hashes, and runtime code hashes;
 - token/feed code and decimals;
@@ -208,9 +237,10 @@ Set `MORPHO_DEPLOYMENT_MANIFEST_PATH`, `DESTINATION_RPC_URL`, and optionally a p
 - zero remaining deployer token allowance;
 - preserved seed supply shares and the configured current available-liquidity floor.
 
-After deployment, create and commit the exact public-testnet route configuration using only the
-manifested addresses and current official Aave source data. Then deploy the seven DebtShift EVM
-contracts with `20-evm-deployment.md`. The production worker in `testnet` mode requires both:
+After deployment, derive and commit the executable public-testnet route configuration using only
+the dependency candidate, manifested Morpho addresses, and current official Aave source data. Then
+deploy the seven DebtShift EVM contracts with `20-evm-deployment.md`. The production worker in
+`testnet` mode requires both:
 
 - `EVM_DEPLOYMENT_MANIFEST_PATH`; and
 - `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH`.
@@ -219,6 +249,12 @@ Before consuming the first queue item it cross-checks both manifests against eac
 destination chain, deployment ordering, Morpho/market/token/oracle/IRM/LLTV/feed/sequencer bindings,
 onchain provenance, current oracle validity, seed position, allowance revocation, and nonzero
 available liquidity.
+
+The DebtShift EVM deployer also re-reads this dependency file and Morpho manifest before any
+broadcast. It verifies their route ID, byte-exact dependency hash, chain IDs, assets, feeds,
+freshness policy, LLTV, and live market, then writes the same dependency hash into its own manifest.
+The independent readiness check and worker startup reject any disagreement between all three
+bindings before workflow consumption.
 
 ## Evidence label for judges and operators
 

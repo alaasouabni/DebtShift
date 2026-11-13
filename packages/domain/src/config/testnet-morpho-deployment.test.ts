@@ -97,6 +97,8 @@ function validManifest() {
     environment: 'testnet',
     createdAt: '2026-11-13T14:00:00.000Z',
     sourceCommit: '2'.repeat(40),
+    routeId: 'ethereum-sepolia-to-base-sepolia-v1',
+    routeDependenciesHash: `0x${'2'.repeat(64)}`,
     workflowWriteSwitchEnabled: false,
     upstream: {
       repository: 'https://github.com/morpho-org/morpho-blue',
@@ -128,7 +130,8 @@ function validManifest() {
       collateral: code('0x4000000000000000000000000000000000000001', '9'),
       loan: code('0x4000000000000000000000000000000000000002', 'a'),
       sequencerUptime: null,
-      maxPriceAgeSeconds: '3600',
+      collateralMaxPriceAgeSeconds: '3600',
+      loanMaxPriceAgeSeconds: '90000',
       sequencerGracePeriodSeconds: '0',
     },
     market: {

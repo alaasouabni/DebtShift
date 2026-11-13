@@ -31,6 +31,7 @@ contract DebtShiftChainlinkOracleTest {
             loanFeed,
             IChainlinkFeed(address(0)),
             1 days,
+            1 days,
             0
         );
         require(oracle.SCALE_FACTOR() == 1e24, "unexpected scale");
@@ -45,6 +46,7 @@ contract DebtShiftChainlinkOracleTest {
             loanFeed,
             IChainlinkFeed(address(0)),
             60,
+            1 days,
             0
         );
         vm.warp(1_000);
@@ -54,10 +56,34 @@ contract DebtShiftChainlinkOracleTest {
         } catch { }
     }
 
+    function testEnforcesIndependentFeedAges() external {
+        DebtShiftChainlinkOracle oracle = new DebtShiftChainlinkOracle(
+            address(collateral),
+            address(loan),
+            collateralFeed,
+            loanFeed,
+            IChainlinkFeed(address(0)),
+            60,
+            1 days,
+            0
+        );
+        vm.warp(7_200);
+        collateralFeed.setRound(2_000e8, 7_199, 7_199);
+        loanFeed.setRound(1e8, 1, 1);
+        require(oracle.price() == 2_000e24, "independent ages not applied");
+    }
+
     function testRejectsSequencerOutage() external {
         MutableFeed sequencerFeed = new MutableFeed(0, 1);
         DebtShiftChainlinkOracle oracle = new DebtShiftChainlinkOracle(
-            address(collateral), address(loan), collateralFeed, loanFeed, sequencerFeed, 1 days, 1
+            address(collateral),
+            address(loan),
+            collateralFeed,
+            loanFeed,
+            sequencerFeed,
+            1 days,
+            1 days,
+            1
         );
         try oracle.price() returns (uint256) {
             revert("sequencer outage accepted");

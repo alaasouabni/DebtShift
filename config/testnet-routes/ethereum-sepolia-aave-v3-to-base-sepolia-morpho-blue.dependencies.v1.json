@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "routeId": "ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue-weth-usdc-v1",
+  "environment": "testnet",
+  "status": "candidate-dependencies",
+  "workflowWriteSwitchEnabled": false,
+  "source": {
+    "chainId": 11155111,
+    "network": "Ethereum Sepolia",
+    "addressBook": {
+      "manifestUrl": "https://aave-dao.github.io/aave-address-book/api/v1/manifest.json",
+      "moduleName": "AaveV3Sepolia",
+      "commit": "b8c801a413c4b934afaf7976d2ddc5fbada6dce6",
+      "aggregateSha256": "a7dec4be002f52888d22ed4499dd954cd8c022993f886a9f1534127ee462c2f8",
+      "moduleSha256": "a9f66b5f399a2152c143516ea5d93ca2376f0f98e6dd9737913fa1e32414fe75",
+      "moduleBytes": 4799
+    },
+    "pool": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
+    "poolAddressesProvider": "0x012bAC54348C0E635dCAc9D5FB99f06F24136C9A",
+    "dataProvider": "0x3e9708d80f7B3e43118013075F7e95CE3AB31F31",
+    "oracle": "0x2da88497588bf89281816106C7259e31AF45a663",
+    "faucet": "0xC959483DBa39aa9E78757139af0e9a2EDEb3f42D",
+    "collateralAsset": {
+      "address": "0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c",
+      "decimals": 18,
+      "symbol": "WETH",
+      "aToken": "0x5b071b590a59395fE4025A0Ccc1FcC931AAc1830",
+      "variableDebtToken": "0x22a35DB253f4F6D0029025D6312A3BdAb20C2c6A",
+      "oracle": "0xDde0E8E6d3653614878Bf5009EDC317BC129fE2F"
+    },
+    "debtAsset": {
+      "address": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
+      "decimals": 6,
+      "symbol": "USDC",
+      "aToken": "0x16dA4541aD1807f4443d92D26044C1147406EB80",
+      "variableDebtToken": "0x36B5dE936eF1710E1d22EabE5231b28581a92ECc",
+      "oracle": "0x98458D6A99489F15e6eB5aFa67ACFAcf6F211051"
+    }
+  },
+  "destination": {
+    "chainId": 84532,
+    "network": "Base Sepolia",
+    "references": {
+      "baseContractsUrl": "https://docs.base.org/specifications/reference/base-contracts",
+      "circleUsdcUrl": "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+      "chainlinkDirectoryUrl": "https://docs.chain.link/data-feeds/price-feeds/addresses",
+      "chainlinkRegistryUrl": "https://reference-data-directory.vercel.app/feeds-ethereum-testnet-sepolia-base-1.json",
+      "chainlinkSequencerFeedsUrl": "https://docs.chain.link/data-feeds/l2-sequencer-feeds"
+    },
+    "collateralAsset": {
+      "address": "0x4200000000000000000000000000000000000006",
+      "decimals": 18,
+      "symbol": "WETH"
+    },
+    "loanAsset": {
+      "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "decimals": 6,
+      "symbol": "USDC"
+    },
+    "collateralFeed": {
+      "address": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+      "registryPath": "eth-usd",
+      "expectedDescription": "ETH / USD",
+      "decimals": 8,
+      "heartbeatSeconds": 1200,
+      "maximumAgeSeconds": 3600
+    },
+    "loanFeed": {
+      "address": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+      "registryPath": "usdc-usd",
+      "expectedDescription": "USDC / USD",
+      "decimals": 8,
+      "heartbeatSeconds": 86400,
+      "maximumAgeSeconds": 90000
+    },
+    "sequencerUptimeFeed": null,
+    "sequencerGracePeriodSeconds": 0,
+    "lltv": "800000000000000000",
+    "minimumSeedLiquidityUnits": "10000000"
+  },
+  "transport": {
+    "provider": "NEAR_INTENTS_1CLICK",
+    "testnetBoundary": "SIMULATED_UNAVAILABLE_PROVIDER_BOUNDARY",
+    "sourceAndDestinationTransfers": "REAL_PUBLIC_CHAIN_TRANSACTIONS",
+    "collateralMapping": {
+      "sourceSymbol": "WETH",
+      "destinationSymbol": "WETH"
+    },
+    "debtMapping": {
+      "sourceSymbol": "USDC",
+      "destinationSymbol": "USDC"
+    }
+  }
+}

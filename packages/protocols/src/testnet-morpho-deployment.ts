@@ -103,6 +103,8 @@ interface ExpectedConfigurationTransaction {
 
 export interface TestnetMorphoDeploymentInput {
   readonly sourceCommit: string;
+  readonly routeId: string;
+  readonly routeDependenciesHash: Hex;
   readonly publicClient: PublicClient;
   readonly wallet: DeploymentWallet;
   readonly chainId: number;
@@ -113,7 +115,8 @@ export interface TestnetMorphoDeploymentInput {
   readonly collateralFeed: Address;
   readonly loanFeed: Address;
   readonly sequencerUptimeFeed?: Address;
-  readonly maxPriceAgeSeconds: bigint;
+  readonly collateralMaxPriceAgeSeconds: bigint;
+  readonly loanMaxPriceAgeSeconds: bigint;
   readonly sequencerGracePeriodSeconds: bigint;
   readonly lltv: bigint;
   readonly seedLiquidityOwner: Address;
@@ -125,6 +128,8 @@ export interface TestnetMorphoVerificationInput {
   readonly manifest: TestnetMorphoDeploymentManifest;
   readonly publicClient: PublicClient;
   readonly minimumAvailableLiquidityUnits?: bigint;
+  readonly expectedRouteId?: string;
+  readonly expectedRouteDependenciesHash?: Hex;
 }
 
 export interface TestnetMorphoVerificationReport {
@@ -178,7 +183,8 @@ export async function deployTestnetMorphoMarket(
       input.collateralFeed,
       input.loanFeed,
       sequencerUptimeFeed,
-      input.maxPriceAgeSeconds,
+      input.collateralMaxPriceAgeSeconds,
+      input.loanMaxPriceAgeSeconds,
       input.sequencerGracePeriodSeconds,
     ],
   );
@@ -353,6 +359,8 @@ export async function deployTestnetMorphoMarket(
     environment: 'testnet',
     createdAt: input.createdAt ?? new Date().toISOString(),
     sourceCommit: input.sourceCommit,
+    routeId: input.routeId,
+    routeDependenciesHash: input.routeDependenciesHash,
     workflowWriteSwitchEnabled: false,
     upstream,
     chainId: input.chainId,
@@ -363,7 +371,8 @@ export async function deployTestnetMorphoMarket(
     tokens: tokenRecords,
     feeds: {
       ...feedRecords,
-      maxPriceAgeSeconds: input.maxPriceAgeSeconds.toString(),
+      collateralMaxPriceAgeSeconds: input.collateralMaxPriceAgeSeconds.toString(),
+      loanMaxPriceAgeSeconds: input.loanMaxPriceAgeSeconds.toString(),
       sequencerGracePeriodSeconds: input.sequencerGracePeriodSeconds.toString(),
     },
     market: {
@@ -388,9 +397,18 @@ export async function verifyTestnetMorphoDeployment({
   manifest,
   publicClient,
   minimumAvailableLiquidityUnits = 1n,
+  expectedRouteId,
+  expectedRouteDependenciesHash,
 }: TestnetMorphoVerificationInput): Promise<TestnetMorphoVerificationReport> {
   if (minimumAvailableLiquidityUnits < 1n) {
     throw new Error('Testnet Morpho readiness requires a positive liquidity floor.');
+  }
+  if (
+    (expectedRouteId !== undefined && manifest.routeId !== expectedRouteId) ||
+    (expectedRouteDependenciesHash !== undefined &&
+      manifest.routeDependenciesHash.toLowerCase() !== expectedRouteDependenciesHash.toLowerCase())
+  ) {
+    throw new Error('Testnet Morpho route dependency binding does not match.');
   }
   const [chainId, blockNumber, artifacts, upstream] = await Promise.all([
     publicClient.getChainId(),
@@ -444,7 +462,8 @@ export async function verifyTestnetMorphoDeployment({
         manifest.feeds.collateral.address,
         manifest.feeds.loan.address,
         sequencerUptimeFeed,
-        BigInt(manifest.feeds.maxPriceAgeSeconds),
+        BigInt(manifest.feeds.collateralMaxPriceAgeSeconds),
+        BigInt(manifest.feeds.loanMaxPriceAgeSeconds),
         BigInt(manifest.feeds.sequencerGracePeriodSeconds),
       ],
       manifest.deployer,
@@ -547,38 +566,47 @@ export async function verifyTestnetMorphoDeployment({
   ) {
     throw new Error('Testnet Morpho IRM or oracle immutable binding drifted.');
   }
-  const [maxPriceAge, gracePeriod, oraclePrice, allowance, collateralDecimals, loanDecimals] =
-    await Promise.all([
-      readBigInt(
-        publicClient,
-        artifacts.oracle.abi,
-        manifest.contracts.oracle.address,
-        'MAX_PRICE_AGE',
-        [],
-      ),
-      readBigInt(
-        publicClient,
-        artifacts.oracle.abi,
-        manifest.contracts.oracle.address,
-        'SEQUENCER_GRACE_PERIOD',
-        [],
-      ),
-      readBigInt(
-        publicClient,
-        artifacts.oracle.abi,
-        manifest.contracts.oracle.address,
-        'price',
-        [],
-      ),
-      readBigInt(publicClient, ERC20_ABI, manifest.tokens.loan.address, 'allowance', [
-        manifest.deployer,
-        manifest.contracts.morpho.address,
-      ]),
-      readBigInt(publicClient, ERC20_ABI, manifest.tokens.collateral.address, 'decimals', []),
-      readBigInt(publicClient, ERC20_ABI, manifest.tokens.loan.address, 'decimals', []),
-    ]);
+  const [
+    collateralMaxPriceAge,
+    loanMaxPriceAge,
+    gracePeriod,
+    oraclePrice,
+    allowance,
+    collateralDecimals,
+    loanDecimals,
+  ] = await Promise.all([
+    readBigInt(
+      publicClient,
+      artifacts.oracle.abi,
+      manifest.contracts.oracle.address,
+      'COLLATERAL_MAX_PRICE_AGE',
+      [],
+    ),
+    readBigInt(
+      publicClient,
+      artifacts.oracle.abi,
+      manifest.contracts.oracle.address,
+      'LOAN_MAX_PRICE_AGE',
+      [],
+    ),
+    readBigInt(
+      publicClient,
+      artifacts.oracle.abi,
+      manifest.contracts.oracle.address,
+      'SEQUENCER_GRACE_PERIOD',
+      [],
+    ),
+    readBigInt(publicClient, artifacts.oracle.abi, manifest.contracts.oracle.address, 'price', []),
+    readBigInt(publicClient, ERC20_ABI, manifest.tokens.loan.address, 'allowance', [
+      manifest.deployer,
+      manifest.contracts.morpho.address,
+    ]),
+    readBigInt(publicClient, ERC20_ABI, manifest.tokens.collateral.address, 'decimals', []),
+    readBigInt(publicClient, ERC20_ABI, manifest.tokens.loan.address, 'decimals', []),
+  ]);
   if (
-    maxPriceAge.toString() !== manifest.feeds.maxPriceAgeSeconds ||
+    collateralMaxPriceAge.toString() !== manifest.feeds.collateralMaxPriceAgeSeconds ||
+    loanMaxPriceAge.toString() !== manifest.feeds.loanMaxPriceAgeSeconds ||
     gracePeriod.toString() !== manifest.feeds.sequencerGracePeriodSeconds ||
     oraclePrice === 0n ||
     allowance !== 0n ||
@@ -623,6 +651,12 @@ async function assertDeploymentInput(input: TestnetMorphoDeploymentInput): Promi
     throw new Error('Testnet Morpho deployment requires a full lowercase Git source commit.');
   }
   if (
+    input.routeId.trim().length === 0 ||
+    !/^0x[0-9a-fA-F]{64}$/.test(input.routeDependenciesHash)
+  ) {
+    throw new Error('Testnet Morpho deployment requires an exact route dependency binding.');
+  }
+  if (
     !Number.isInteger(input.chainId) ||
     input.chainId < 1 ||
     !Number.isInteger(input.confirmations) ||
@@ -635,7 +669,8 @@ async function assertDeploymentInput(input: TestnetMorphoDeploymentInput): Promi
     throw new Error('Testnet Morpho collateral and loan tokens must differ.');
   }
   if (
-    input.maxPriceAgeSeconds < 1n ||
+    input.collateralMaxPriceAgeSeconds < 1n ||
+    input.loanMaxPriceAgeSeconds < 1n ||
     input.lltv <= 0n ||
     input.lltv >= 10n ** 18n ||
     input.seedLiquidityAssets < 1n
@@ -700,13 +735,13 @@ async function assertOracleInputsReady(input: TestnetMorphoDeploymentInput): Pro
     'collateral',
     collateralRound,
     block.timestamp,
-    input.maxPriceAgeSeconds,
+    input.collateralMaxPriceAgeSeconds,
   );
   const loanPrice = assertCompletePriceRound(
     'loan',
     loanRound,
     block.timestamp,
-    input.maxPriceAgeSeconds,
+    input.loanMaxPriceAgeSeconds,
   );
   const exponent =
     36n + loanTokenDecimals + loanFeedDecimals - collateralTokenDecimals - collateralFeedDecimals;

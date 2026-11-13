@@ -1,15 +1,25 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import { parseTestnetMorphoDeploymentManifest } from '../packages/domain/dist/index.js';
+import {
+  parsePublicTestnetRouteDependencies,
+  parseTestnetMorphoDeploymentManifest,
+} from '../packages/domain/dist/index.js';
 import { verifyTestnetMorphoDeployment } from '../packages/protocols/dist/index.js';
-import { createPublicClient, defineChain, http } from 'viem';
+import { createPublicClient, defineChain, http, keccak256, stringToHex } from 'viem';
 
 if (process.env.MAINNET_EXECUTION_ENABLED === 'true') {
   throw new Error('Read-only testnet Morpho readiness requires MAINNET_EXECUTION_ENABLED=false.');
 }
 const manifestPath = resolve(required('MORPHO_DEPLOYMENT_MANIFEST_PATH'));
 const manifest = parseTestnetMorphoDeploymentManifest(await readFile(manifestPath, 'utf8'));
+const routePath = resolve(
+  process.env.PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH ??
+    'config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json',
+);
+const routeJson = await readFile(routePath, 'utf8');
+const route = parsePublicTestnetRouteDependencies(routeJson);
+const routeDependenciesHash = keccak256(stringToHex(routeJson));
 const rpcUrl = requiredUrl('DESTINATION_RPC_URL');
 const chain = defineChain({
   id: manifest.chainId,
@@ -24,6 +34,8 @@ const publicClient = createPublicClient({
 const report = await verifyTestnetMorphoDeployment({
   manifest,
   publicClient,
+  expectedRouteId: route.routeId,
+  expectedRouteDependenciesHash: routeDependenciesHash,
   minimumAvailableLiquidityUnits: optionalPositiveBigInt(
     'MINIMUM_MORPHO_AVAILABLE_LIQUIDITY_UNITS',
     1n,
@@ -33,6 +45,8 @@ console.log(
   JSON.stringify({
     status: 'CANONICAL_TESTNET_MORPHO_READY',
     manifestPath,
+    routePath,
+    routeDependenciesHash,
     upstreamCommit: manifest.upstream.commit,
     morpho: manifest.contracts.morpho.address,
     ...report,

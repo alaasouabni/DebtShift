@@ -11,6 +11,16 @@ describe('live market configuration', () => {
     expect(configuration.destination.debtAsset.providerAssetId).toBe('nep141:arb-usdc.omft.near');
   });
 
+  it('accepts a reviewed feed age that safely covers a daily heartbeat', () => {
+    const configuration = validConfiguration();
+    configuration.destination.morphoOracleFeeds[0]!.maximumAgeSeconds = 90_000;
+
+    expect(
+      parseLiveMarketConfiguration(JSON.stringify(configuration)).destination.morphoOracleFeeds[0]
+        ?.maximumAgeSeconds,
+    ).toBe(90_000);
+  });
+
   it('rejects malformed JSON and incomplete registries', () => {
     expect(() => parseLiveMarketConfiguration('{')).toThrow('valid JSON');
     expect(() => parseLiveMarketConfiguration('{}')).toThrow();

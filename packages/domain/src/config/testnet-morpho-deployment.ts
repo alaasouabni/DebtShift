@@ -46,6 +46,8 @@ export const testnetMorphoDeploymentManifestSchema = z
     environment: z.literal('testnet'),
     createdAt: z.iso.datetime(),
     sourceCommit: sourceCommitSchema,
+    routeId: canonicalTextSchema,
+    routeDependenciesHash: bytes32Schema,
     workflowWriteSwitchEnabled: z.literal(false),
     upstream: z
       .object({
@@ -80,7 +82,8 @@ export const testnetMorphoDeploymentManifestSchema = z
         collateral: tokenOrFeedRecordSchema,
         loan: tokenOrFeedRecordSchema,
         sequencerUptime: tokenOrFeedRecordSchema.nullable(),
-        maxPriceAgeSeconds: unsignedIntegerTextSchema,
+        collateralMaxPriceAgeSeconds: unsignedIntegerTextSchema,
+        loanMaxPriceAgeSeconds: unsignedIntegerTextSchema,
         sequencerGracePeriodSeconds: unsignedIntegerTextSchema,
       })
       .strict(),
@@ -158,12 +161,14 @@ export const testnetMorphoDeploymentManifestSchema = z
         path: ['market', 'oraclePriceAtDeployment'],
       });
     }
-    if (BigInt(manifest.feeds.maxPriceAgeSeconds) === 0n) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Morpho testnet feed maximum age must be positive.',
-        path: ['feeds', 'maxPriceAgeSeconds'],
-      });
+    for (const field of ['collateralMaxPriceAgeSeconds', 'loanMaxPriceAgeSeconds'] as const) {
+      if (BigInt(manifest.feeds[field]) === 0n) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Morpho testnet feed maximum ages must be positive.',
+          path: ['feeds', field],
+        });
+      }
     }
     const expectedArtifacts = [
       ['morpho', 'Morpho'],

@@ -2324,6 +2324,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     );
     if (
       dependencyManifest.chainId !== this.#environment.DESTINATION_CHAIN_ID ||
+      dependencyManifest.routeId !== evmManifest.routeId ||
+      evmManifest.routeDependenciesHash === null ||
+      dependencyManifest.routeDependenciesHash.toLowerCase() !==
+        evmManifest.routeDependenciesHash.toLowerCase() ||
       BigInt(dependencyManifest.deploymentBlockNumber) >
         BigInt(evmManifest.destination.deploymentBlockNumber)
     ) {
@@ -2378,13 +2382,26 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     ) {
       throw new Error('Testnet Morpho Chainlink feeds do not match the allowlisted route.');
     }
-    const maximumOracleAge = BigInt(dependencyManifest.feeds.maxPriceAgeSeconds);
-    if (
-      this.#configuration.destination.morphoOracleFeeds.some(
-        ({ maximumAgeSeconds }) => maximumOracleAge > BigInt(maximumAgeSeconds),
-      )
-    ) {
-      throw new Error('Testnet Morpho onchain oracle freshness is weaker than route policy.');
+    const manifestedFreshness = [
+      {
+        address: dependencyManifest.feeds.collateral.address,
+        maximumAgeSeconds: dependencyManifest.feeds.collateralMaxPriceAgeSeconds,
+      },
+      {
+        address: dependencyManifest.feeds.loan.address,
+        maximumAgeSeconds: dependencyManifest.feeds.loanMaxPriceAgeSeconds,
+      },
+    ];
+    for (const manifested of manifestedFreshness) {
+      const configured = this.#configuration.destination.morphoOracleFeeds.find(({ address }) =>
+        isAddressEqual(address, manifested.address),
+      );
+      if (
+        configured === undefined ||
+        BigInt(manifested.maximumAgeSeconds) > BigInt(configured.maximumAgeSeconds)
+      ) {
+        throw new Error('Testnet Morpho onchain oracle freshness is weaker than route policy.');
+      }
     }
     const configuredSequencer = this.#configuration.destination.sequencerUptimeFeed;
     const manifestedSequencer = dependencyManifest.feeds.sequencerUptime;
@@ -2401,6 +2418,8 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     await verifyTestnetMorphoDeployment({
       manifest: dependencyManifest,
       publicClient: this.#destinationPublic,
+      expectedRouteId: evmManifest.routeId,
+      expectedRouteDependenciesHash: evmManifest.routeDependenciesHash ?? undefined,
     });
   }
 
