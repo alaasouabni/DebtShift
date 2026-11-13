@@ -346,6 +346,33 @@ The journal preserves historical implementation context. Entries before ADR-022 
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
 
+### 2026-11-13 - Terminal transport and NEAR receipt alerts completed
+
+- Added terminal transport reconciliation against the provider leg, verified destination/refund
+  transaction, observed base-unit amount, and durable recovery evidence. A `SUCCESS` state without
+  matching destination balance evidence, a refund without exact recovery evidence, or a known
+  terminal custody state without recovery now opens `TRANSPORT_TERMINAL_MISMATCH`.
+- Added the distinct `DESTINATION_FUNDING_BELOW_MINIMUM` critical condition so a provider-success
+  label cannot hide delivery below the signed minimum.
+- Added durable NEAR receipt verification for every stored final receipt: agreement identity,
+  terminal status, raw receipt hash, canonical bundle re-hash, and deterministic evidence ID must
+  all agree. A `COMPLETED` migration with no active finalized NEAR receipt is also critical.
+- Expanded the PGlite drill from fourteen to seventeen simultaneous conditions and proved exact
+  deduplication, severity escalation, repaired-receipt recognition, terminal resolution, and
+  history preservation. The fixture distinguishes the provider's destination transaction from the
+  separate on-chain delivery action that anchors the evidence.
+- Preserved-state restart validation caught and corrected an initial comparison between those two
+  distinct transaction hashes. The corrected worker matched each terminal leg against
+  `normalizedPayload.observation.destinationTransactionHash`, resolved all five false alerts
+  without modifying application data, and left only the expected three terminal NEAR-finalization
+  failures plus five stale sandbox migrations open.
+- `npm run check` passes formatting, lint, type checking, all builds, and 180 tests (three
+  environment-gated fork tests skipped). The rebuilt `debtshift-app:local` manifest list is
+  `sha256:e92e51e638a228823548e5be6df53ab53523184e86a9b03991affe54afa4f309`; the image build also
+  passed the Solidity/workspace builds and reported zero production dependency vulnerabilities.
+- No external deployment, provider commit, public-chain write, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
+
 ### 2026-11-13 - Financial and custody alert coverage completed
 
 - Extended the durable scanner from six workflow-health conditions to fourteen P0 conditions. New

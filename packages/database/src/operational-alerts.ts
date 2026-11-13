@@ -54,6 +54,9 @@ const managedAlertTypes = [
   'CAPACITY_DETERIORATION',
   'SOLVER_EXPOSURE_OUTSTANDING',
   'POST_DELIVERY_PAYOUT_FAILURE',
+  'TRANSPORT_TERMINAL_MISMATCH',
+  'DESTINATION_FUNDING_BELOW_MINIMUM',
+  'NEAR_RECEIPT_MISMATCH',
 ] as const;
 
 export type OperationalAlertType = (typeof managedAlertTypes)[number];
@@ -68,17 +71,25 @@ export async function scanOperationalAlerts(
   now = new Date(),
 ): Promise<OperationalAlertScanReport> {
   assertPolicy(policy);
-  const activeMigrations = await database
-    .select({
-      migrationId: migrations.migrationId,
-      phase: migrations.phase,
-      expiresAt: migrations.expiresAt,
-      updatedAt: migrations.updatedAt,
-    })
-    .from(migrations)
-    .where(notInArray(migrations.phase, terminalPhases));
+  const [activeMigrations, completedMigrations, nearReceiptRows] = await Promise.all([
+    database
+      .select({
+        migrationId: migrations.migrationId,
+        phase: migrations.phase,
+        expiresAt: migrations.expiresAt,
+        updatedAt: migrations.updatedAt,
+      })
+      .from(migrations)
+      .where(notInArray(migrations.phase, terminalPhases)),
+    database
+      .select({ migrationId: migrations.migrationId })
+      .from(migrations)
+      .where(eq(migrations.phase, 'COMPLETED')),
+    database.select().from(evidenceTable).where(eq(evidenceTable.type, 'NEAR_RECEIPT')),
+  ]);
   const activeIds = new Set(activeMigrations.map(({ migrationId }) => migrationId));
   const conditions: OperationalAlertCondition[] = [];
+  addNearReceiptAlerts(conditions, completedMigrations, nearReceiptRows);
   const deadlineThreshold = now.getTime() + policy.deadlineLeadMs;
   const staleMigrationThreshold = now.getTime() - policy.staleMigrationMs;
 
@@ -138,12 +149,7 @@ export async function scanOperationalAlerts(
         database
           .select()
           .from(transportLegs)
-          .where(
-            and(
-              eq(transportLegs.providerState, 'UNKNOWN'),
-              inArray(transportLegs.migrationId, activeMigrationIds),
-            ),
-          ),
+          .where(inArray(transportLegs.migrationId, activeMigrationIds)),
         database
           .select()
           .from(commands)
@@ -193,6 +199,7 @@ export async function scanOperationalAlerts(
       }
     }
     for (const leg of legs) {
+      if (leg.providerState !== 'UNKNOWN') continue;
       if (!activeIds.has(leg.migrationId)) continue;
       conditions.push(
         condition(
@@ -284,6 +291,12 @@ export async function scanOperationalAlerts(
         activeFinalizedEvidence,
         failedCommands,
       );
+      addTransportReconciliationAlerts(
+        conditions,
+        migration.migrationId,
+        legs,
+        activeFinalizedEvidence,
+      );
     }
   }
 
@@ -299,6 +312,85 @@ type ReservationRow = typeof liquidityReservations.$inferSelect;
 type MigrationRow = typeof migrations.$inferSelect;
 type ActiveMigrationRow = Pick<MigrationRow, 'migrationId' | 'phase' | 'expiresAt' | 'updatedAt'>;
 type CommandRow = typeof commands.$inferSelect;
+
+function addNearReceiptAlerts(
+  conditions: OperationalAlertCondition[],
+  completedMigrations: readonly { readonly migrationId: string }[],
+  records: readonly EvidenceRow[],
+): void {
+  const supersededIds = new Set(
+    records
+      .filter(
+        ({ verificationState }) =>
+          verificationState === 'RETRACTED' || verificationState === 'REJECTED',
+      )
+      .map(({ supersedesEvidenceId }) => supersedesEvidenceId)
+      .filter((evidenceId): evidenceId is string => evidenceId !== null),
+  );
+  const activeReceipts = records.filter(
+    (record) => record.verificationState === 'FINALIZED' && !supersededIds.has(record.evidenceId),
+  );
+  const receiptMigrations = new Set(activeReceipts.map(({ migrationId }) => migrationId));
+  for (const migration of completedMigrations) {
+    if (receiptMigrations.has(migration.migrationId)) continue;
+    conditions.push(
+      condition(
+        migration.migrationId,
+        'NEAR_RECEIPT_MISMATCH',
+        'CRITICAL',
+        `Completed migration ${migration.migrationId} has no active finalized NEAR receipt.`,
+        { reason: 'COMPLETED_MIGRATION_MISSING_NEAR_RECEIPT' },
+        'MISSING',
+      ),
+    );
+  }
+  for (const receipt of activeReceipts) {
+    const payload = asRecord(receipt.normalizedPayload);
+    const agreementId = textValue(payload?.['agreementId']);
+    const receiptBundleHash = textValue(payload?.['receiptBundleHash']);
+    const terminalStatus = textValue(payload?.['terminalStatus']);
+    const bundle = payload?.['bundle'];
+    const computedBundleHash =
+      bundle === undefined ? undefined : hashCanonicalText(stableJson(bundle));
+    const expectedEvidenceId =
+      receiptBundleHash === undefined
+        ? undefined
+        : hashCanonicalText(
+            `debtshift.evidence.v1:${receipt.migrationId}:NEAR_RECEIPT:${receiptBundleHash}`,
+          );
+    const mismatchReasons: string[] = [];
+    if (agreementId !== receipt.migrationId) mismatchReasons.push('AGREEMENT_ID_MISMATCH');
+    if (terminalStatus !== 'COMPLETED') mismatchReasons.push('TERMINAL_STATUS_MISMATCH');
+    if (receiptBundleHash !== receipt.rawObservationHash) {
+      mismatchReasons.push('RAW_RECEIPT_HASH_MISMATCH');
+    }
+    if (computedBundleHash !== receiptBundleHash) {
+      mismatchReasons.push('DURABLE_BUNDLE_HASH_MISMATCH');
+    }
+    if (expectedEvidenceId !== receipt.evidenceId) {
+      mismatchReasons.push('RECEIPT_EVIDENCE_ID_MISMATCH');
+    }
+    if (mismatchReasons.length === 0) continue;
+    conditions.push(
+      condition(
+        receipt.migrationId,
+        'NEAR_RECEIPT_MISMATCH',
+        'CRITICAL',
+        `NEAR receipt ${receipt.evidenceId} conflicts with its durable evidence bundle.`,
+        {
+          evidenceId: receipt.evidenceId,
+          agreementId: agreementId ?? null,
+          receiptBundleHash: receiptBundleHash ?? null,
+          rawObservationHash: receipt.rawObservationHash,
+          computedBundleHash: computedBundleHash ?? null,
+          expectedEvidenceId: expectedEvidenceId ?? null,
+          mismatchReasons,
+        },
+        receipt.evidenceId,
+      ),
+    );
+  }
+}
 
 function addReceiptMismatchAlerts(
   conditions: OperationalAlertCondition[],
@@ -605,6 +697,139 @@ function addPostDeliveryPayoutAlerts(
   }
 }
 
+function addTransportReconciliationAlerts(
+  conditions: OperationalAlertCondition[],
+  migrationId: string,
+  legs: readonly (typeof transportLegs.$inferSelect)[],
+  records: readonly EvidenceRow[],
+): void {
+  for (const leg of legs) {
+    if (leg.migrationId !== migrationId) continue;
+    if (leg.providerState === 'SUCCESS') {
+      const observedUnits = leg.observedOutputUnits;
+      if (observedUnits !== null && BigInt(observedUnits) < BigInt(leg.minimumOutputUnits)) {
+        conditions.push(
+          condition(
+            migrationId,
+            'DESTINATION_FUNDING_BELOW_MINIMUM',
+            'CRITICAL',
+            `Verified destination funding is below the signed minimum for ${migrationId}.`,
+            {
+              legIndex: leg.legIndex,
+              providerReference: leg.providerReference,
+              minimumOutputUnits: leg.minimumOutputUnits,
+              observedOutputUnits: observedUnits,
+              destinationTransactionHash: leg.destinationTransactionHash,
+            },
+            String(leg.legIndex),
+          ),
+        );
+      }
+      const delivery = records.find((record) => {
+        if (record.type !== 'TRANSPORT_DESTINATION') return false;
+        const payload = asRecord(record.normalizedPayload);
+        const observation = asRecord(payload?.['observation']);
+        return (
+          textValue(observation?.['destinationTransactionHash']) === leg.destinationTransactionHash
+        );
+      });
+      const evidenceAmount = unsignedBigInt(delivery?.normalizedPayload, 'amountOutUnits');
+      const mismatchReasons: string[] = [];
+      if (leg.destinationTransactionHash === null) {
+        mismatchReasons.push('DESTINATION_TRANSACTION_MISSING');
+      }
+      if (observedUnits === null) mismatchReasons.push('OBSERVED_OUTPUT_MISSING');
+      if (delivery === undefined) mismatchReasons.push('DESTINATION_RECEIPT_EVIDENCE_MISSING');
+      if (
+        observedUnits !== null &&
+        (evidenceAmount === undefined || evidenceAmount !== BigInt(observedUnits))
+      ) {
+        mismatchReasons.push('DESTINATION_BALANCE_EVIDENCE_MISMATCH');
+      }
+      addTransportMismatchCondition(conditions, leg, mismatchReasons, delivery?.evidenceId);
+      continue;
+    }
+
+    if (leg.providerState === 'REFUNDED') {
+      const recovery = records.find((record) => {
+        if (record.type !== 'RECOVERY_OPENED') return false;
+        const payload = asRecord(record.normalizedPayload);
+        const observation = asRecord(payload?.['observation']);
+        return observation?.['status'] === 'REFUNDED';
+      });
+      const recoveryPayload = asRecord(recovery?.normalizedPayload);
+      const observation = asRecord(recoveryPayload?.['observation']);
+      const observedRefundUnits = unsignedBigInt(observation, 'observedAmountOutUnits');
+      const recordedRefundHash = textValue(observation?.['refundTransactionHash']);
+      const mismatchReasons: string[] = [];
+      if (leg.refundTransactionHash === null) mismatchReasons.push('REFUND_TRANSACTION_MISSING');
+      if (leg.observedOutputUnits === null) mismatchReasons.push('REFUND_AMOUNT_MISSING');
+      if (recovery === undefined) mismatchReasons.push('REFUND_RECOVERY_EVIDENCE_MISSING');
+      if (recordedRefundHash !== leg.refundTransactionHash) {
+        mismatchReasons.push('REFUND_TRANSACTION_EVIDENCE_MISMATCH');
+      }
+      if (
+        leg.observedOutputUnits !== null &&
+        (BigInt(leg.observedOutputUnits) !== BigInt(leg.inputUnits) ||
+          observedRefundUnits !== BigInt(leg.observedOutputUnits))
+      ) {
+        mismatchReasons.push('REFUND_BALANCE_EVIDENCE_MISMATCH');
+      }
+      addTransportMismatchCondition(conditions, leg, mismatchReasons, recovery?.evidenceId);
+      continue;
+    }
+
+    if (
+      leg.providerState === 'INCOMPLETE_DEPOSIT' ||
+      leg.providerState === 'FAILED_KNOWN_CUSTODY'
+    ) {
+      const recovery = records.find((record) => {
+        if (record.type !== 'RECOVERY_OPENED') return false;
+        const payload = asRecord(record.normalizedPayload);
+        return payload?.['reason'] === leg.providerState;
+      });
+      addTransportMismatchCondition(
+        conditions,
+        leg,
+        recovery === undefined ? ['TERMINAL_RECOVERY_EVIDENCE_MISSING'] : [],
+        recovery?.evidenceId,
+      );
+    }
+  }
+}
+
+function addTransportMismatchCondition(
+  conditions: OperationalAlertCondition[],
+  leg: typeof transportLegs.$inferSelect,
+  mismatchReasons: readonly string[],
+  supportingEvidenceId?: string,
+): void {
+  if (mismatchReasons.length === 0) return;
+  conditions.push(
+    condition(
+      leg.migrationId,
+      'TRANSPORT_TERMINAL_MISMATCH',
+      'CRITICAL',
+      `Terminal transport state ${leg.providerState} is not reconciled for ${leg.migrationId}.`,
+      {
+        legIndex: leg.legIndex,
+        provider: leg.provider,
+        providerState: leg.providerState,
+        providerReference: leg.providerReference,
+        inputUnits: leg.inputUnits,
+        minimumOutputUnits: leg.minimumOutputUnits,
+        observedOutputUnits: leg.observedOutputUnits,
+        originTransactionHash: leg.originTransactionHash,
+        destinationTransactionHash: leg.destinationTransactionHash,
+        refundTransactionHash: leg.refundTransactionHash,
+        supportingEvidenceId: supportingEvidenceId ?? null,
+        mismatchReasons,
+      },
+      String(leg.legIndex),
+    ),
+  );
+}
+
 function latestEvidence(records: readonly EvidenceRow[], type: string): EvidenceRow | undefined {
   return records
     .filter((record) => record.type === type)
@@ -664,6 +889,21 @@ function unsignedBigInt(value: unknown, key: string): bigint | undefined {
   const raw = record?.[key];
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return undefined;
   return BigInt(raw);
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(stableValue(value));
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  const record = asRecord(value);
+  if (record === undefined) return value;
+  return Object.fromEntries(
+    Object.entries(record)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, stableValue(item)]),
+  );
 }
 
 async function persistAlertConditions(

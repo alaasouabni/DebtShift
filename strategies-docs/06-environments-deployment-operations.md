@@ -195,7 +195,12 @@ history. Scans select only active-migration evidence and ledger rows, and supers
 evidence cannot satisfy a financial predicate. Thresholds are environment validated through
 `ALERT_SCAN_INTERVAL_MS`, `ALERT_DEADLINE_LEAD_MS`, `ALERT_STALE_MIGRATION_MS`, and
 `ALERT_STALE_RECOVERY_MS`. The worker emits structured warning records when a scan opens or resolves
-alerts. Provider/balance reconciliation and final NEAR receipt comparison remain acceptance gates.
+alerts. Terminal transport outcomes additionally reconcile provider state and recorded amounts with
+the independently verified destination or refund evidence; below-minimum destination funding is a
+separate critical condition. Final NEAR evidence is re-hashed from its canonical durable bundle,
+checked against its raw receipt hash and deterministic evidence identifier, and required for every
+`COMPLETED` migration. All required alert classes above are covered; external delivery routing and
+operator acknowledgement remain deployment acceptance gates.
 
 ## Runbooks
 

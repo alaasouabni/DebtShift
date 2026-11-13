@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { hashCanonicalText } from '@debtshift/domain';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle as createPgliteDrizzle } from 'drizzle-orm/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -16,6 +17,10 @@ const migrationFiles = readdirSync(migrationsDirectory)
 const hash = (digit: string) => `0x${digit.repeat(64)}`;
 const pairHash = (pair: string) => `0x${pair.repeat(32)}`;
 const NOW = new Date('2026-11-13T03:00:00.000Z');
+const EMPTY_BUNDLE_HASH = hashCanonicalText('{}');
+const CORRECT_NEAR_EVIDENCE_ID = hashCanonicalText(
+  `debtshift.evidence.v1:${hash('6')}:NEAR_RECEIPT:${EMPTY_BUNDLE_HASH}`,
+);
 
 describe('durable operational alert scan', () => {
   const postgres = new PGlite();
@@ -40,15 +45,17 @@ describe('durable operational alert scan', () => {
     } as const;
 
     const first = await scanOperationalAlerts(database, policy, NOW);
-    expect(first.openedCount).toBe(14);
+    expect(first.openedCount).toBe(17);
     expect(first.resolvedCount).toBe(0);
     expect(first.active.map(({ type }) => type)).toEqual([
       'ACCOUNTING_IMBALANCE',
       'CAPACITY_DETERIORATION',
       'CHAIN_RECEIPT_MISMATCH',
       'COMMAND_FAILED_TERMINAL',
+      'DESTINATION_FUNDING_BELOW_MINIMUM',
       'EXECUTION_DEADLINE_APPROACHING',
       'FEASIBILITY_EXPIRED',
+      'NEAR_RECEIPT_MISMATCH',
       'POST_DELIVERY_PAYOUT_FAILURE',
       'RESERVATION_SHORTFALL',
       'SETTLED_LEDGER_MISSING',
@@ -56,18 +63,25 @@ describe('durable operational alert scan', () => {
       'STALE_MIGRATION',
       'STALE_RECOVERY',
       'SUPPLEMENTARY_FUNDING_MISSING',
+      'TRANSPORT_TERMINAL_MISMATCH',
       'UNKNOWN_TRANSPORT_CUSTODY',
     ]);
     expect(
       first.active.find(({ type }) => type === 'EXECUTION_DEADLINE_APPROACHING'),
     ).toMatchObject({ severity: 'WARNING', details: { remainingMs: 30_000 } });
+    expect(first.active.find(({ type }) => type === 'TRANSPORT_TERMINAL_MISMATCH')).toMatchObject({
+      details: {
+        supportingEvidenceId: pairHash('bd'),
+        mismatchReasons: ['DESTINATION_BALANCE_EVIDENCE_MISMATCH'],
+      },
+    });
 
     const repeated = await scanOperationalAlerts(database, policy, NOW);
     expect(repeated).toMatchObject({ openedCount: 0, resolvedCount: 0 });
     const openRows = await postgres.query<{ count: number | string }>(
       `SELECT count(*) FROM operational_alerts WHERE status = 'OPEN'`,
     );
-    expect(Number(openRows.rows[0]?.count)).toBe(14);
+    expect(Number(openRows.rows[0]?.count)).toBe(17);
 
     const expired = await scanOperationalAlerts(
       database,
@@ -80,6 +94,11 @@ describe('durable operational alert scan', () => {
     ).toMatchObject({ severity: 'CRITICAL', details: { remainingMs: -30_000 } });
 
     await postgres.exec(`
+      UPDATE evidence
+      SET evidence_id = '${CORRECT_NEAR_EVIDENCE_ID}',
+          raw_observation_hash = '${EMPTY_BUNDLE_HASH}',
+          normalized_payload = '{"agreementId":"${hash('6')}","receiptBundleHash":"${EMPTY_BUNDLE_HASH}","terminalStatus":"COMPLETED","bundle":{}}'
+      WHERE evidence_id = '${pairHash('03')}';
       UPDATE migrations
       SET phase = CASE migration_id
         WHEN '${hash('5')}' THEN 'FAILED_SAFE'::migration_phase
@@ -89,11 +108,11 @@ describe('durable operational alert scan', () => {
       WHERE migration_id IN ('${hash('5')}', '${hash('6')}');
     `);
     const resolved = await scanOperationalAlerts(database, policy, NOW);
-    expect(resolved).toMatchObject({ openedCount: 0, resolvedCount: 14, active: [] });
+    expect(resolved).toMatchObject({ openedCount: 0, resolvedCount: 17, active: [] });
     const resolvedRows = await postgres.query<{ count: number | string }>(
       `SELECT count(*) FROM operational_alerts WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL`,
     );
-    expect(Number(resolvedRows.rows[0]?.count)).toBe(14);
+    expect(Number(resolvedRows.rows[0]?.count)).toBe(17);
   });
 });
 
@@ -135,9 +154,15 @@ function seedSql(): string {
       '2026-11-13T04:00:00.000Z');
     INSERT INTO transport_legs
       (migration_id, leg_index, provider, quote_hash, input_asset, output_asset, input_units,
-       minimum_output_units, provider_state, observation_count, created_at, updated_at)
-    VALUES ('${hash('5')}', 0, 'NEAR_INTENTS_1CLICK', '${hash('9')}', '{}', '{}', 100, 98,
-      'UNKNOWN', 3, '2026-11-13T02:00:00.000Z', '2026-11-13T02:59:00.000Z');
+       minimum_output_units, observed_output_units, provider_state, provider_reference,
+       destination_transaction_hash, observation_count, created_at, updated_at)
+    VALUES
+      ('${hash('5')}', 0, 'NEAR_INTENTS_1CLICK', '${hash('9')}', '{}', '{}', 100, 98,
+       NULL, 'UNKNOWN', 'unknown-leg', NULL, 3,
+       '2026-11-13T02:00:00.000Z', '2026-11-13T02:59:00.000Z'),
+      ('${hash('5')}', 1, 'NEAR_INTENTS_1CLICK', '${hash('9')}', '{}', '{}', 100, 98,
+       50, 'SUCCESS', 'success-leg', '${pairHash('ec')}', 4,
+       '2026-11-13T02:00:00.000Z', '2026-11-13T02:59:00.000Z');
     INSERT INTO commands
       (command_id, migration_id, type, idempotency_key, status, logical_attempt, payload,
        payload_hash, last_error, created_at, updated_at)
@@ -169,8 +194,9 @@ function seedSql(): string {
        '${pairHash('bc')}', '${pairHash('ea')}', '{}',
        '2026-11-13T02:02:00.000Z', 'FINALIZED', 'RECEIPT_AND_STATE', 'test-v1', NULL),
       ('${pairHash('bd')}', '${hash('5')}', 'TRANSPORT_DESTINATION', 1, 'TEST',
-       'eip155:31338', 31338, 12, '${pairHash('eb')}', '${pairHash('ec')}',
-       '${pairHash('bd')}', '${pairHash('ed')}', '{"amountOutUnits":"90"}',
+       'eip155:31338', 31338, 12, '${pairHash('eb')}', '${pairHash('ee')}',
+       '${pairHash('bd')}', '${pairHash('ed')}',
+       '{"amountOutUnits":"90","observation":{"destinationTransactionHash":"${pairHash('ec')}"}}',
        '2026-11-13T02:03:00.000Z', 'FINALIZED', 'RECEIPT_AND_STATE', 'test-v1', NULL),
       ('${pairHash('be')}', '${hash('5')}', 'FINANCING_REVALIDATION', 1, 'TEST',
        'eip155:31338', 31338, 13, '${pairHash('ee')}', '${pairHash('ef')}',
@@ -192,6 +218,12 @@ function seedSql(): string {
        '${pairHash('cf')}', '${pairHash('02')}',
        '{"reason":"FINALIZED_CHAIN_EVIDENCE_REORGED"}',
        '2026-11-13T02:07:00.000Z', 'RETRACTED',
-       'CANONICAL_BLOCK_AND_RECEIPT_REVALIDATION', 'test-v1', '${pairHash('ce')}');
+       'CANONICAL_BLOCK_AND_RECEIPT_REVALIDATION', 'test-v1', '${pairHash('ce')}'),
+      ('${pairHash('03')}', '${hash('6')}', 'NEAR_RECEIPT', 1,
+       'NEAR_AGREEMENT_REGISTRY', 'near:testnet', NULL, NULL, NULL, NULL,
+       '${hash('6')}', '${pairHash('04')}',
+       '{"agreementId":"${hash('6')}","receiptBundleHash":"${pairHash('05')}","terminalStatus":"FAILED_SAFE","bundle":{}}',
+       '2026-11-13T02:08:00.000Z', 'FINALIZED',
+       'NEAR_FINAL_STATE_AND_CONTRACT_RECEIPT', 'test-v1', NULL);
   `;
 }

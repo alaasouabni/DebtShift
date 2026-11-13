@@ -101,7 +101,7 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Formatting, lint, type checks, builds, and all implemented test layers pass.
 - [ ] Dependency, secret, and container scans pass within documented policy.
 - [ ] Metrics and structured logs cover all migration phases.
-- [ ] Critical alerts are exercised.
+- [x] Critical alerts are exercised.
 - [ ] Recovery and key-rotation runbooks are documented.
 - [x] Deployment manifests identify every contract artifact and configuration.
 - [x] Known limitations and deferred production requirements are documented.
