@@ -50,7 +50,35 @@ npm run smoke:local
 
 This builds and starts PostgreSQL, Redis, both private chains, migrations, the API, worker, and web
 application. Open `http://localhost:3000`; API documentation is at
-`http://localhost:3001/docs`. Stop the stack with `npm run infra:down`.
+`http://localhost:3001/docs`; Prometheus text metrics are at
+`http://localhost:3001/v1/metrics`. Stop the stack with `npm run infra:down`.
+The checked-in OpenAPI 3.1 contract is `docs/openapi.json`; deterministic operation, request, and
+response types are exported by `@debtshift/sdk`. Run `npm run openapi:generate` after changing an API
+contract, or `npm run openapi:check` to reject generated-artifact drift.
+An authorized migration is placed in the page URL as `?migration=0x...`, so reload restores its
+durable timeline, evidence, ledger, and recovery state. Live updates use the cursor-resumable
+`GET /v1/migrations/:migrationId/stream` SSE endpoint and fall back to the last PostgreSQL audit
+sequence after a disconnect.
+
+Start the same stack with the optional local observability profile using:
+
+```sh
+npm run infra:observability:up
+```
+
+This selects the local OTLP collector for the API and worker, provisions Prometheus and the
+read-only DebtShift Grafana dashboard, and starts Jaeger. Grafana is bound to
+`http://127.0.0.1:3002`, Prometheus to `http://127.0.0.1:9090`, and Jaeger to
+`http://127.0.0.1:16686`. Use `npm run infra:observability:down` to stop the profile. Tracing is a
+deployment-selected feature and remains a no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is blank.
+Only W3C trace context and reviewed low-risk attributes are emitted; request bodies, wallet
+signatures, provider payloads, credentials, and raw URLs are excluded.
+
+Connecting a wallet also proves API identity through a five-minute, one-time EIP-4361 challenge.
+The API returns an eight-hour opaque `HttpOnly`, `SameSite=Strict` session cookie and persists only
+its SHA-256 hash. This login signature is not financial authorization: refinance execution still
+requires the separate bounded intent and exact execution-plan EIP-712 signatures. All borrower and
+migration routes are scoped to the authenticated wallet; production public URLs must use HTTPS.
 
 For application hot reload instead, start only the service dependencies:
 
@@ -90,6 +118,18 @@ Each command starts and stops two private Anvil chains and uses disposable test 
 Without NEAR registry credentials the local development stack reaches financially final `SETTLED`
 and keeps receipt registration retryable; a credentialed hosted stack reaches `COMPLETED` only
 after the registry receipt is verified.
+
+Exercise the PostgreSQL recovery controls against isolated sibling databases with:
+
+```sh
+npm run ops:drill:database-restore
+npm run ops:drill:database-migration-recovery
+```
+
+The first command verifies an exact source backup/restore without mutating the source. The second
+starts from an empty disposable database, applies every checked-in migration, proves transactional
+DDL rollback, applies a forward candidate, restores the pre-change backup, and proves that the
+checked-in migrator remains idempotent. Neither command points a worker at its temporary database.
 
 ## Safety boundary
 

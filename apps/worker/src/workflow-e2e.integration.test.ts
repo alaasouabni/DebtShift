@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PGlite } from '@electric-sql/pglite';
 import {
+  advanceMigrationWithEvidence,
   createAuthorizedMigration,
   debtShiftSchema,
   getMigrationDetails,
@@ -15,6 +16,7 @@ import {
   computeMigrationId,
   computeRouteHash,
   executionPlanSchema,
+  evidenceSchema,
   getExecutionPlanTypedData,
   getRefinanceIntentTypedData,
   hashCanonicalText,
@@ -44,7 +46,11 @@ import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
-import { createWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
+import {
+  createWorkflowHandlers,
+  PostgresWorkflowContextStore,
+  type MigrationExecutionPort,
+} from './handlers.js';
 import { DualAnvilSandboxExecutionPort } from './simulator/dual-anvil-execution.js';
 import { DurableCommandProcessor, PostgresCommandPersistence } from './processor.js';
 import {
@@ -64,6 +70,9 @@ const migrationFiles = readdirSync(migrationsDirectory)
 type WorkflowScenario =
   | 'SUCCESS'
   | 'REFUNDED'
+  | 'WRONG_DESTINATION_TOKEN'
+  | 'WRONG_DESTINATION_RECEIVER'
+  | 'BELOW_MINIMUM_DELIVERY'
   | 'TIMEOUT'
   | 'CAPACITY_DETERIORATED'
   | 'PRE_SOURCE_CAPACITY_DETERIORATED'
@@ -80,6 +89,9 @@ const scenarioNonces: Readonly<
 > = {
   SUCCESS: { intent: '1', plan: 2n },
   REFUNDED: { intent: '3', plan: 4n },
+  WRONG_DESTINATION_TOKEN: { intent: '25', plan: 26n },
+  WRONG_DESTINATION_RECEIVER: { intent: '27', plan: 28n },
+  BELOW_MINIMUM_DELIVERY: { intent: '29', plan: 30n },
   TIMEOUT: { intent: '5', plan: 6n },
   CAPACITY_DETERIORATED: { intent: '7', plan: 8n },
   PRE_SOURCE_CAPACITY_DETERIORATED: { intent: '9', plan: 10n },
@@ -173,26 +185,291 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
     );
   }, 60_000);
 
+  it('restarts between commands and ignores duplicate queue delivery without duplicate asset movement', async () => {
+    await withWorkflow(
+      'SUCCESS',
+      async ({ database, deployment, source, destination, createProcessor }) => {
+        const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+        await runWithDuplicateDeliveries(database, createProcessor, migrationId, 'SETTLED');
+        const details = await getMigrationDetails(database, migrationId);
+        const irreversibleEvidence = [
+          'LIQUIDITY_RESERVATION',
+          'SOURCE_CLOSE',
+          'TRANSPORT_ORIGIN',
+          'TRANSPORT_DESTINATION',
+          'TARGET_POSITION',
+          'LIQUIDITY_SETTLEMENT',
+        ] as const;
+
+        expect(details?.migration.phase).toBe('SETTLED');
+        for (const type of irreversibleEvidence) {
+          expect(details?.evidence.filter((record) => record.type === type)).toHaveLength(1);
+        }
+        const transactionHashes = irreversibleEvidence.map(
+          (type) => details?.evidence.find((record) => record.type === type)?.transactionHash,
+        );
+        expect(transactionHashes.every((hash) => hash !== null && hash !== undefined)).toBe(true);
+        expect(new Set(transactionHashes).size).toBe(irreversibleEvidence.length);
+        expect(details?.commands.filter(({ status }) => status === 'SUCCEEDED')).toHaveLength(
+          irreversibleEvidence.length,
+        );
+
+        const [sourceArtifact, targetArtifact] = await Promise.all([
+          loadFoundryArtifact('MockSourceLending'),
+          loadFoundryArtifact('MockTargetLending'),
+        ]);
+        const [sourcePosition, targetPosition] = await Promise.all([
+          source.publicClient.readContract({
+            address: deployment.source.lending,
+            abi: sourceArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+          destination.publicClient.readContract({
+            address: deployment.destination.lending,
+            abi: targetArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+        ]);
+        expect(sourcePosition).toEqual([0n, 0n]);
+        expect(targetPosition).toEqual([9_900_000_000_000_000_000n, 10_050_000_000n]);
+      },
+    );
+  }, 60_000);
+
+  it('opens exact manual recovery when settlement exhausts its retry budget after payout', async () => {
+    await withWorkflow('SUCCESS', async ({ database, deployment, source, createProcessor }) => {
+      const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+      await runUntil(database, createProcessor, migrationId, 'TARGET_OPEN');
+      const messages: OutboxEnvelope[] = [];
+      await publishPendingOutbox(database, async (message) => {
+        messages.push(message);
+      });
+      expect(messages).toHaveLength(1);
+      const settlementMessage = messages[0];
+      if (settlementMessage === undefined) throw new Error('Settlement command was not published.');
+      const processor = createProcessor({
+        settleLiquidity: async () => {
+          throw new Error('injected source settlement outage');
+        },
+      });
+
+      await processor.process(settlementMessage, true);
+
+      const details = await getMigrationDetails(database, migrationId);
+      expect(details?.migration.phase).toBe('RECOVERY');
+      expect(details?.commands.find(({ type }) => type === 'SETTLE_LIQUIDITY')).toEqual(
+        expect.objectContaining({ status: 'FAILED_TERMINAL' }),
+      );
+      expect(details?.recoveryCases[0]).toEqual(
+        expect.objectContaining({
+          status: 'OPEN',
+          reason: 'SETTLEMENT_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_SETTLEMENT_RECONCILIATION',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'SOURCE_VAULT_RECEIVABLE',
+              totalClaimUnits: '10050000000',
+            }),
+            expect.objectContaining({
+              kind: 'TARGET_POSITION',
+              solverPayoutUnits: '10050000000',
+            }),
+          ]),
+        }),
+      );
+      expect(details?.commands.some(({ type }) => type === 'EXECUTE_RECOVERY')).toBe(false);
+      expect(details?.ledger).toHaveLength(0);
+    });
+  }, 60_000);
+
   it('derives recovery from refund evidence and terminates failed-safe with full collateral', async () => {
+    await withWorkflow(
+      'REFUNDED',
+      async ({ database, deployment, source, destination, createProcessor }) => {
+        const migrationId = await createMigration(database, deployment, source, 'REFUNDED');
+        await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE');
+        const details = await getMigrationDetails(database, migrationId);
+        const recoveryOpened = details?.evidence.find(
+          (record) => record.type === 'RECOVERY_OPENED',
+        );
+        const recoveryCompleted = details?.evidence.find(
+          (record) => record.type === 'RECOVERY_COMPLETED',
+        );
+
+        expect(details?.migration.phase).toBe('FAILED_SAFE');
+        expect(recoveryOpened?.normalizedPayload).toEqual(
+          expect.objectContaining({
+            reason: 'TRANSPORT_REFUNDED',
+            policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+            residualAssets: expect.arrayContaining([
+              expect.objectContaining({
+                kind: 'TRANSPORT_CUSTODY',
+                providerState: 'REFUNDED',
+                inputUnits: '10000000000000000000',
+                observedOutputUnits: '10000000000000000000',
+                refundTransactionHash: expect.stringMatching(/^0x[0-9a-f]{64}$/),
+                disposition: 'VERIFIED_CUSTODY_ELIGIBLE_FOR_SIGNED_RECOVERY',
+              }),
+            ]),
+          }),
+        );
+        expect(recoveryCompleted?.normalizedPayload).toEqual(
+          expect.objectContaining({
+            action: 'executeRecovery',
+            reason: 'POLICY_SELECTED_RECOVERY',
+            refundReceiver: deployment.borrower,
+            refundUnits: '10000000000000000000',
+            recoveryReserveSettlement: expect.objectContaining({
+              status: 'SETTLED_FROM_ISOLATED_RESERVE',
+            }),
+          }),
+        );
+
+        const [tokenArtifact, targetArtifact, vaultArtifact] = await Promise.all([
+          loadFoundryArtifact('TestToken'),
+          loadFoundryArtifact('MockTargetLending'),
+          loadFoundryArtifact('LiquidityVault'),
+        ]);
+        const [borrowerRefund, sourceEscrowCustody, destinationPosition, receivable] =
+          await Promise.all([
+            source.publicClient.readContract({
+              address: deployment.source.collateralToken,
+              abi: tokenArtifact.abi,
+              functionName: 'balanceOf',
+              args: [deployment.borrower],
+            }),
+            source.publicClient.readContract({
+              address: deployment.source.collateralToken,
+              abi: tokenArtifact.abi,
+              functionName: 'balanceOf',
+              args: [deployment.source.escrow],
+            }),
+            destination.publicClient.readContract({
+              address: deployment.destination.lending,
+              abi: targetArtifact.abi,
+              functionName: 'positions',
+              args: [deployment.borrower],
+            }),
+            source.publicClient.readContract({
+              address: deployment.source.vault,
+              abi: vaultArtifact.abi,
+              functionName: 'principalReceivable',
+              args: [deployment.source.debtToken],
+            }),
+          ]);
+        expect(borrowerRefund).toBe(10n * 10n ** 18n);
+        expect(sourceEscrowCustody).toBe(0n);
+        expect(destinationPosition).toEqual([0n, 0n]);
+        expect(receivable).toBe(0n);
+      },
+    );
+  }, 60_000);
+
+  it.each([
+    {
+      scenario: 'WRONG_DESTINATION_TOKEN' as const,
+      failure: 'OUTPUT_ASSET_MISMATCH',
+    },
+    {
+      scenario: 'WRONG_DESTINATION_RECEIVER' as const,
+      failure: 'DESTINATION_RECEIVER_MISMATCH',
+    },
+    {
+      scenario: 'BELOW_MINIMUM_DELIVERY' as const,
+      failure: 'OUTPUT_BELOW_MINIMUM',
+    },
+  ])(
+    'never opens the target position for $failure transport evidence',
+    async ({ scenario, failure }) => {
+      await withWorkflow(
+        scenario,
+        async ({ database, deployment, source, destination, createProcessor }) => {
+          const migrationId = await createMigration(database, deployment, source, scenario);
+          await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE');
+          const details = await getMigrationDetails(database, migrationId);
+          const recoveryOpened = details?.evidence.find(
+            (record) => record.type === 'RECOVERY_OPENED',
+          );
+
+          expect(details?.migration.phase).toBe('FAILED_SAFE');
+          expect(recoveryOpened?.normalizedPayload).toEqual(
+            expect.objectContaining({ reason: failure }),
+          );
+          expect(details?.evidence.map((record) => record.type)).not.toEqual(
+            expect.arrayContaining(['TRANSPORT_DESTINATION', 'TARGET_POSITION']),
+          );
+
+          const [tokenArtifact, targetArtifact] = await Promise.all([
+            loadFoundryArtifact('TestToken'),
+            loadFoundryArtifact('MockTargetLending'),
+          ]);
+          const [borrowerRefund, destinationEscrowBalance, destinationPosition] = await Promise.all(
+            [
+              source.publicClient.readContract({
+                address: deployment.source.collateralToken,
+                abi: tokenArtifact.abi,
+                functionName: 'balanceOf',
+                args: [deployment.borrower],
+              }),
+              destination.publicClient.readContract({
+                address: deployment.destination.collateralToken,
+                abi: tokenArtifact.abi,
+                functionName: 'balanceOf',
+                args: [deployment.destination.escrow],
+              }),
+              destination.publicClient.readContract({
+                address: deployment.destination.lending,
+                abi: targetArtifact.abi,
+                functionName: 'positions',
+                args: [deployment.borrower],
+              }),
+            ],
+          );
+          expect(borrowerRefund).toBe(10n * 10n ** 18n);
+          expect(destinationEscrowBalance).toBe(0n);
+          expect(destinationPosition).toEqual([0n, 0n]);
+        },
+      );
+    },
+    60_000,
+  );
+
+  it('durably escalates an exhausted automated recovery without claiming failed-safe completion', async () => {
     await withWorkflow('REFUNDED', async ({ database, deployment, source, createProcessor }) => {
       const migrationId = await createMigration(database, deployment, source, 'REFUNDED');
-      await runUntil(database, createProcessor, migrationId, 'FAILED_SAFE');
-      const details = await getMigrationDetails(database, migrationId);
-
-      expect(details?.migration.phase).toBe('FAILED_SAFE');
-      expect(details?.evidence.map((record) => record.type)).toEqual(
-        expect.arrayContaining(['RECOVERY_OPENED', 'RECOVERY_COMPLETED']),
-      );
-      const tokenArtifact = await import('@debtshift/protocols').then(({ loadFoundryArtifact }) =>
-        loadFoundryArtifact('TestToken'),
-      );
-      const refund = await source.publicClient.readContract({
-        address: deployment.source.collateralToken,
-        abi: tokenArtifact.abi,
-        functionName: 'balanceOf',
-        args: [deployment.borrower],
+      await runUntil(database, createProcessor, migrationId, 'RECOVERY');
+      const messages: OutboxEnvelope[] = [];
+      await publishPendingOutbox(database, async (message) => {
+        messages.push(message);
       });
-      expect(refund).toBe(10n * 10n ** 18n);
+      const recoveryMessage = messages.find(({ payload }) => payload.commandId !== undefined);
+      if (recoveryMessage === undefined) throw new Error('Recovery command was not published.');
+      const processor = createProcessor({
+        executeRecovery: async () => {
+          throw new Error('injected recovery receipt outage');
+        },
+      });
+
+      await processor.process(recoveryMessage, true);
+
+      const details = await getMigrationDetails(database, migrationId);
+      expect(details?.migration.phase).toBe('RECOVERY');
+      expect(details?.commands.find(({ type }) => type === 'EXECUTE_RECOVERY')).toEqual(
+        expect.objectContaining({ status: 'FAILED_TERMINAL' }),
+      );
+      expect(details?.evidence.some(({ type }) => type === 'RECOVERY_COMPLETED')).toBe(false);
+      expect(details?.recoveryCases[0]).toEqual(
+        expect.objectContaining({
+          status: 'OPEN',
+          reason: 'AUTOMATED_RECOVERY_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+          nextPermittedAction: 'RECONCILE_RECOVERY_EXECUTION',
+          escalationOwner: 'DEBTSHIFT_OPERATIONS',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
+        }),
+      );
     });
   }, 60_000);
 
@@ -474,6 +751,209 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
     );
   }, 60_000);
 
+  it('cancels after reservation by releasing the vault before source closure', async () => {
+    await withWorkflow('SUCCESS', async ({ database, deployment, source, createProcessor }) => {
+      const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+      await runUntil(database, createProcessor, migrationId, 'RESERVED');
+      const observedAt = new Date().toISOString();
+      const payload = {
+        reason: 'BORROWER_REQUESTED_CANCELLATION',
+        requestedBy: deployment.borrower,
+        requestedPhase: 'RESERVED',
+      };
+      const evidenceId = hashCanonicalText(
+        `debtshift.evidence.v1:${migrationId}:MIGRATION_CANCELLATION_REQUESTED:${deployment.borrower.toLowerCase()}`,
+      );
+      await expect(
+        advanceMigrationWithEvidence(
+          database,
+          evidenceSchema.parse({
+            evidenceId,
+            migrationId,
+            type: 'MIGRATION_CANCELLATION_REQUESTED',
+            schemaVersion: 1,
+            provider: 'DEBTSHIFT_API',
+            network: 'debtshift:workflow',
+            providerReference: evidenceId,
+            rawObservationHash: hashCanonicalText(JSON.stringify(payload)),
+            normalizedPayload: payload,
+            observedAt,
+            verificationState: 'FINALIZED',
+            verificationMethod: 'AUTHENTICATED_BORROWER_SESSION',
+            verifierVersion: 'debtshift-api-v1',
+          }),
+          deployment.borrower,
+        ),
+      ).resolves.toBe('RESERVED');
+
+      const requested = await getMigrationDetails(database, migrationId);
+      expect(requested?.commands).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'CLOSE_SOURCE', status: 'CANCELLED' }),
+          expect.objectContaining({ type: 'CANCEL_MIGRATION', status: 'PENDING' }),
+        ]),
+      );
+
+      await runUntil(database, createProcessor, migrationId, 'CANCELLED');
+      const details = await getMigrationDetails(database, migrationId);
+      expect(details?.migration.phase).toBe('CANCELLED');
+      expect(details?.evidence.map(({ type }) => type)).toEqual(
+        expect.arrayContaining(['MIGRATION_CANCELLATION_REQUESTED', 'MIGRATION_CANCELLED']),
+      );
+      expect(details?.evidence.some(({ type }) => type === 'SOURCE_CLOSE')).toBe(false);
+      expect(details?.commands.find(({ type }) => type === 'CLOSE_SOURCE')?.status).toBe(
+        'CANCELLED',
+      );
+      expect(details?.commands.find(({ type }) => type === 'CANCEL_MIGRATION')?.status).toBe(
+        'SUCCEEDED',
+      );
+      expect(details?.reservations[0]?.status).toBe('RELEASED');
+
+      const [sourceArtifact, vaultArtifact] = await Promise.all([
+        loadFoundryArtifact('MockSourceLending'),
+        loadFoundryArtifact('LiquidityVault'),
+      ]);
+      const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
+        source.publicClient.readContract({
+          address: deployment.source.lending,
+          abi: sourceArtifact.abi,
+          functionName: 'positions',
+          args: [deployment.borrower],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservations',
+          args: [migrationId],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservedUndrawn',
+          args: [deployment.source.debtToken],
+        }),
+      ]);
+      expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+      expect(Array.isArray(reservation) ? reservation[6] : undefined).toBe(4);
+      expect(Array.isArray(reservation) ? reservation[8] : undefined).toBe(0n);
+      expect(reservedUndrawn).toBe(0n);
+    });
+  }, 60_000);
+
+  it('releases the reservation and preserves the source position after a safe source-close revert', async () => {
+    await withWorkflow('SUCCESS', async ({ database, deployment, source, createProcessor }) => {
+      const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+      await runUntil(database, createProcessor, migrationId, 'RESERVED');
+      await setSourceAdapterPaused(deployment, source, true);
+
+      await runUntil(database, createProcessor, migrationId, 'REQUOTE_REQUIRED');
+      const details = await getMigrationDetails(database, migrationId);
+      const requote = details?.evidence.find(({ type }) => type === 'REQUOTE_REQUIRED');
+      expect(details?.migration.phase).toBe('REQUOTE_REQUIRED');
+      expect(details?.evidence.some(({ type }) => type === 'SOURCE_CLOSE')).toBe(false);
+      expect(details?.commands.find(({ type }) => type === 'CLOSE_SOURCE')?.status).toBe(
+        'SUCCEEDED',
+      );
+      expect(details?.reservations[0]?.status).toBe('RELEASED');
+      expect(requote?.normalizedPayload).toEqual(
+        expect.objectContaining({
+          action: 'releaseFailedSourceClose',
+          reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+          outcome: 'REQUOTE_REQUIRED',
+          failureStage: 'PRE_BROADCAST_SIMULATION',
+          sourcePosition: expect.objectContaining({ disposition: 'UNCHANGED' }),
+        }),
+      );
+
+      const [sourceArtifact, vaultArtifact] = await Promise.all([
+        loadFoundryArtifact('MockSourceLending'),
+        loadFoundryArtifact('LiquidityVault'),
+      ]);
+      const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
+        source.publicClient.readContract({
+          address: deployment.source.lending,
+          abi: sourceArtifact.abi,
+          functionName: 'positions',
+          args: [deployment.borrower],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservations',
+          args: [migrationId],
+        }),
+        source.publicClient.readContract({
+          address: deployment.source.vault,
+          abi: vaultArtifact.abi,
+          functionName: 'reservedUndrawn',
+          args: [deployment.source.debtToken],
+        }),
+      ]);
+      expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+      expect(Array.isArray(reservation) ? reservation[6] : undefined).toBe(4);
+      expect(Array.isArray(reservation) ? reservation[8] : undefined).toBe(0n);
+      expect(reservedUndrawn).toBe(0n);
+    });
+  }, 60_000);
+
+  it('expires before source closure and releases the active reservation without moving borrower assets', async () => {
+    await withWorkflow(
+      'SUCCESS',
+      async ({ database, deployment, source, createProcessor, expireBeforeSource }) => {
+        const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+        await runUntil(database, createProcessor, migrationId, 'RESERVED');
+        expireBeforeSource();
+
+        await runUntil(database, createProcessor, migrationId, 'EXPIRED');
+        const details = await getMigrationDetails(database, migrationId);
+        const expiration = details?.evidence.find(({ type }) => type === 'MIGRATION_EXPIRED');
+        expect(details?.migration.phase).toBe('EXPIRED');
+        expect(details?.evidence.some(({ type }) => type === 'SOURCE_CLOSE')).toBe(false);
+        expect(details?.commands.find(({ type }) => type === 'CLOSE_SOURCE')?.status).toBe(
+          'SUCCEEDED',
+        );
+        expect(details?.reservations[0]?.status).toBe('EXPIRED');
+        expect(expiration?.normalizedPayload).toEqual(
+          expect.objectContaining({
+            action: 'expireBeforeSourceClose',
+            reason: 'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+            outcome: 'EXPIRED',
+            sourcePosition: expect.objectContaining({ disposition: 'UNCHANGED' }),
+          }),
+        );
+
+        const [sourceArtifact, vaultArtifact] = await Promise.all([
+          loadFoundryArtifact('MockSourceLending'),
+          loadFoundryArtifact('LiquidityVault'),
+        ]);
+        const [sourcePosition, reservation, reservedUndrawn] = await Promise.all([
+          source.publicClient.readContract({
+            address: deployment.source.lending,
+            abi: sourceArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+          source.publicClient.readContract({
+            address: deployment.source.vault,
+            abi: vaultArtifact.abi,
+            functionName: 'reservations',
+            args: [migrationId],
+          }),
+          source.publicClient.readContract({
+            address: deployment.source.vault,
+            abi: vaultArtifact.abi,
+            functionName: 'reservedUndrawn',
+            args: [deployment.source.debtToken],
+          }),
+        ]);
+        expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+        expect(Array.isArray(reservation) ? reservation[6] : undefined).toBe(4);
+        expect(Array.isArray(reservation) ? reservation[8] : undefined).toBe(0n);
+        expect(reservedUndrawn).toBe(0n);
+      },
+    );
+  }, 60_000);
+
   for (const testCase of [
     {
       name: 'collateral price deteriorates before source close',
@@ -622,6 +1102,14 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
               }),
             ]),
           );
+          const targetArtifact = await loadFoundryArtifact('MockTargetLending');
+          const targetPosition = await destination.publicClient.readContract({
+            address: deployment.destination.lending,
+            abi: targetArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          });
+          expect(targetPosition).toEqual([0n, 0n]);
         },
       );
     }, 60_000);
@@ -633,8 +1121,11 @@ interface WorkflowFixture {
   readonly deployment: LocalDebtShiftDeployment;
   readonly source: LocalAnvilChain;
   readonly destination: LocalAnvilChain;
-  readonly createProcessor: () => DurableCommandProcessor;
+  readonly createProcessor: (
+    overrides?: Partial<MigrationExecutionPort>,
+  ) => DurableCommandProcessor;
   readonly expireTransport: () => void;
+  readonly expireBeforeSource: () => void;
 }
 
 async function withWorkflow(
@@ -645,6 +1136,7 @@ async function withWorkflow(
   const destination = await startAnvil({ chainId: 31_338, port: 19_556, anvilPath: ANVIL_PATH });
   const postgres = new PGlite();
   let transportClockOffsetMs = 0;
+  let workflowClockOffsetMs = 0;
   try {
     for (const migrationFile of migrationFiles) {
       await postgres.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
@@ -673,21 +1165,40 @@ async function withWorkflow(
       DESTINATION_ESCROW_ADDRESS: deployment.destination.escrow,
       DESTINATION_ADAPTER_ADDRESS: deployment.destination.adapter,
     });
-    const createProcessor = () => {
+    const createProcessor = (overrides: Partial<MigrationExecutionPort> = {}) => {
       const simulator = new DeterministicTransportSimulator({
         outcome: outcome === 'REFUNDED' ? 'REFUNDED' : 'SUCCESS',
         feeBps: 100,
         processingPolls: outcome === 'TIMEOUT' ? 100 : 1,
         now: () => Date.now() + transportClockOffsetMs,
+        ...(outcome === 'WRONG_DESTINATION_TOKEN'
+          ? {
+              deliveredAsset: {
+                chainId: 31_338,
+                address: deployment.destination.debtToken,
+                decimals: 6,
+                symbol: 'dUSDC',
+              },
+            }
+          : {}),
+        ...(outcome === 'WRONG_DESTINATION_RECEIVER'
+          ? { deliveredReceiver: deployment.deployer }
+          : {}),
+        ...(outcome === 'BELOW_MINIMUM_DELIVERY' ? { deliveredAmountUnits: '1' } : {}),
       });
+      const execution = withExecutionOverrides(
+        new DualAnvilSandboxExecutionPort(environment),
+        overrides,
+      );
       return new DurableCommandProcessor(
         new PostgresCommandPersistence(database),
         createWorkflowHandlers({
           store: new PostgresWorkflowContextStore(database),
-          execution: new DualAnvilSandboxExecutionPort(environment),
+          execution,
           transport: new SimulatedTransportExecutionPort(simulator),
           registry: new PendingSandboxRegistryPort(),
           evidenceProviders: sandboxEvidenceProviders,
+          now: () => Date.now() + workflowClockOffsetMs,
         }),
       );
     };
@@ -700,11 +1211,40 @@ async function withWorkflow(
       expireTransport: () => {
         transportClockOffsetMs = 360_000;
       },
+      expireBeforeSource: () => {
+        workflowClockOffsetMs = 360_000;
+      },
     });
   } finally {
     await postgres.close();
     await Promise.all([source.stop(), destination.stop()]);
   }
+}
+
+function withExecutionOverrides(
+  base: MigrationExecutionPort,
+  overrides: Partial<MigrationExecutionPort>,
+): MigrationExecutionPort {
+  return {
+    verifyCanonicalEvidence:
+      overrides.verifyCanonicalEvidence ?? ((records) => base.verifyCanonicalEvidence(records)),
+    reserve: overrides.reserve ?? ((context) => base.reserve(context)),
+    cancelBeforeSourceClose:
+      overrides.cancelBeforeSourceClose ?? ((context) => base.cancelBeforeSourceClose(context)),
+    expireBeforeSourceClose:
+      overrides.expireBeforeSourceClose ??
+      ((context, reason) => base.expireBeforeSourceClose(context, reason)),
+    closeSource: overrides.closeSource ?? ((context) => base.closeSource(context)),
+    dispatchTransport:
+      overrides.dispatchTransport ?? ((context) => base.dispatchTransport(context)),
+    deliverDestination:
+      overrides.deliverDestination ??
+      ((context, observation) => base.deliverDestination(context, observation)),
+    openTarget: overrides.openTarget ?? ((context) => base.openTarget(context)),
+    settleLiquidity: overrides.settleLiquidity ?? ((context) => base.settleLiquidity(context)),
+    executeRecovery:
+      overrides.executeRecovery ?? ((context, reason) => base.executeRecovery(context, reason)),
+  };
 }
 
 async function createMigration(
@@ -938,6 +1478,28 @@ async function consumeDestinationLiquidity(
   );
 }
 
+async function setSourceAdapterPaused(
+  deployment: LocalDebtShiftDeployment,
+  source: LocalAnvilChain,
+  paused: boolean,
+): Promise<void> {
+  const account = privateKeyToAccount(DEFAULT_ANVIL_DEPLOYER_KEY);
+  const wallet = createWalletClient({
+    account,
+    chain: source.chain,
+    transport: http(source.rpcUrl),
+  });
+  const sourceAdapter = await loadFoundryArtifact('SourceAdapter');
+  await write(
+    wallet,
+    source.publicClient,
+    sourceAdapter.abi,
+    deployment.source.adapter,
+    'setPaused',
+    [paused],
+  );
+}
+
 async function setDestinationMarketState(
   deployment: LocalDebtShiftDeployment,
   destination: LocalAnvilChain,
@@ -1046,4 +1608,47 @@ async function runUntil(
     }
   }
   throw new Error(`Workflow did not reach ${terminalPhase} within the command budget.`);
+}
+
+async function runWithDuplicateDeliveries(
+  database: DebtShiftDatabase,
+  createProcessor: () => DurableCommandProcessor,
+  migrationId: string,
+  terminalPhase: MigrationPhase,
+): Promise<void> {
+  let active: OutboxEnvelope | undefined;
+  for (let iteration = 0; iteration < 20; iteration += 1) {
+    const details = await getMigrationDetails(database, migrationId);
+    if (details?.migration.phase === terminalPhase) return;
+
+    if (active === undefined) {
+      const ready: OutboxEnvelope[] = [];
+      await publishPendingOutbox(database, async (message) => {
+        ready.push(message);
+      });
+      active = ready.shift();
+      if (active === undefined) throw new Error('Workflow has no ready durable command.');
+    }
+
+    try {
+      await createProcessor().process(active);
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== 'RetryableCommandError') throw error;
+      continue;
+    }
+    const completed = await getMigrationDetails(database, migrationId);
+    const attemptBeforeDuplicate = completed?.commands.find(
+      ({ commandId }) => commandId === active?.commandId,
+    )?.logicalAttempt;
+    if (attemptBeforeDuplicate === undefined) {
+      throw new Error('Completed durable command is missing before duplicate delivery.');
+    }
+    await createProcessor().process(active);
+    const replayed = await getMigrationDetails(database, migrationId);
+    expect(
+      replayed?.commands.find(({ commandId }) => commandId === active?.commandId)?.logicalAttempt,
+    ).toBe(attemptBeforeDuplicate);
+    active = undefined;
+  }
+  throw new Error(`Workflow did not reach ${terminalPhase} during duplicate delivery testing.`);
 }

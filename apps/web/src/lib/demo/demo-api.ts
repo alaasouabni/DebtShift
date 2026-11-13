@@ -18,6 +18,7 @@
 
 import type {
   AuditEvent,
+  CancellationResponse,
   ExecuteRequest,
   ExecuteResponse,
   ExplanationConfiguration,
@@ -28,6 +29,8 @@ import type {
   PositionSnapshot,
   PreparedMigration,
   RouteAnalysisResponse,
+  WalletChallenge,
+  WalletSession,
 } from '../api/types';
 import { anchorClock, now } from '../clock';
 import marketsRecording from './recordings/markets.json' with { type: 'json' };
@@ -116,6 +119,31 @@ export class DemoApi {
     });
   }
 
+  /*
+   * The recorded demo has no backend, so it has no session to open. It
+   * reports the recorded account as signed in and refuses to issue a
+   * challenge: nothing in the demo ever asks a wallet to sign.
+   */
+  session(): Promise<WalletSession | undefined> {
+    return Promise.resolve({
+      wallet: DEMO_ACCOUNT,
+      chainId: DEMO_CHAIN_ID,
+      expiresAt: new Date(now().getTime() + 8 * 60 * 60 * 1000).toISOString(),
+    });
+  }
+
+  authChallenge(): Promise<WalletChallenge> {
+    return Promise.reject(new Error('The recorded demo does not sign in.'));
+  }
+
+  authVerify(): Promise<WalletSession> {
+    return Promise.reject(new Error('The recorded demo does not sign in.'));
+  }
+
+  logout(): Promise<void> {
+    return Promise.resolve();
+  }
+
   position(): Promise<PositionSnapshot | undefined> {
     // Anchor the clock a few seconds after the recorded observation, so the
     // snapshot is fresh exactly as it was when it was read.
@@ -171,6 +199,16 @@ export class DemoApi {
     const details = migrationAtStep(migration, step);
     anchorClock(Date.parse(details.migration.updatedAt) + 800);
     return Promise.resolve(details);
+  }
+
+  /** A recording cannot be cancelled: it already happened. */
+  cancelMigration(): Promise<CancellationResponse> {
+    return Promise.reject(new Error('The recorded demo cannot cancel a migration.'));
+  }
+
+  /** No stream: the replay is driven by reading the recording. */
+  migrationStreamUrl(): string | undefined {
+    return undefined;
   }
 
   /** Start the migration replay again from its first recorded event. */

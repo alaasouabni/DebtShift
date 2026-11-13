@@ -119,7 +119,7 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 ### Tasks
 
-- [ ] Implement Aave and Morpho snapshot adapters with block references.
+- [x] Implement Aave and Morpho snapshot adapters with block references.
 - [x] Normalize rates without losing native units or calculation provenance.
 - [x] Calculate target rate impact after the requested borrow.
 - [x] Add gas, approval, transport, slippage, funding, and protocol costs.
@@ -170,16 +170,31 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Implement command handlers for reserve, source close, route, destination verification, target open, settlement, and final receipt.
 - [x] Add feasibility evidence and revalidation checkpoints before reservation, source close, target
       borrow, and settlement.
-- [ ] Implement provisional, confirmed, finalized, and retracted evidence states.
-- [ ] Persist financing analyses, exclusive component classifications, funding contributions,
+- [x] Implement provisional, confirmed, finalized, and retracted evidence states.
+  - [x] Provisional and confirmed observations persist without advancing financial state; finalized
+        evidence alone satisfies entry predicates, and append-only retractions supersede orphaned
+        evidence before recovery/requote handling.
+- [x] Persist financing analyses, exclusive component classifications, funding contributions,
       checkpoint feasibility evidence, and settlement obligations.
 - [x] Add chain-specific finality configuration.
 - [x] Add canonical-block and transaction-receipt rechecks before each subsequent financial side
       effect, append-only retractions, and manual incident handling for deep reorgs.
-- [ ] Add transport polling with strict unknown-status behavior.
+- [x] Add transport polling with strict unknown-status behavior.
 - [x] Add destination balance and receipt reconciliation.
-- [ ] Add retry budgets and deadline-aware scheduling.
-- [ ] Add each recovery policy and operator escalation state.
+- [x] Add retry budgets and deadline-aware scheduling.
+- [x] Enforce pre-source quote/authorization expiry as a terminal fail-safe outcome: before
+      reservation it performs no chain write; after reservation it releases the undrawn vault
+      allocation onchain, proves the source position unchanged, and never calls source closure.
+- [x] Add each recovery policy and operator escalation state.
+  - [x] Every recovery opening records a typed policy, exact residual assets, the single next
+        permitted action, action deadline, escalation owner, and either automated-pending or
+        manual-review-required state; failed-safe resolution is a separate terminal state.
+  - [x] Unknown/canonical custody, target-and-payout, settlement, and exhausted automated-recovery
+        branches stop financial automation and name the exact manual reconciliation action.
+  - [x] Crossing a recorded recovery-action deadline opens a deterministic critical operator alert.
+  - [x] Persist final queue-attempt exhaustion terminally; transport exhaustion opens manual custody
+        reconciliation, atomic target/payout exhaustion opens manual target reconciliation, and
+        post-payout settlement exhaustion opens exact manual receivable/reserve reconciliation.
 - [x] Persist recovery cases atomically with opening evidence, exact residual custody/receivable
       claims, phase changes, and failed-safe resolution.
 - [x] Add pre-source-close price and liquidity deterioration handling that releases unused capacity,
@@ -198,7 +213,9 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
         signed minimum-APR-reduction policy supersede the earlier passing plan.
 - [x] Add exact receipt-linked balanced ledger reconciliation as a mandatory `SETTLED` predicate,
       including recovery-reserve, destination escrow, principal, fee, residual, and signed-cost basis.
-- [ ] Add stale migration and deadline alerts.
+- [x] Add durable stale-migration, stale-recovery, signed-deadline, unknown-custody,
+      terminal-command, and missing-settlement-ledger alerts with deterministic deduplication and
+      automatic resolution.
 
 ### Exit criteria
 
@@ -214,18 +231,21 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 
 ### Tasks
 
-- [ ] Implement wallet challenge/session authentication.
-- [ ] Complete OpenAPI schemas and generated client types.
-- [ ] Complete positions, markets, quotes, intents, plans, execute, cancel, events, and evidence endpoints.
-- [ ] Implement SSE reconnect and cursor recovery.
-- [ ] Build source position and risk views.
-- [ ] Build route comparison and economic explanation views.
-- [ ] Display financing classifications, maximum safe capacity, confirmed external funding, required
+- [x] Implement wallet challenge/session authentication.
+- [x] Complete OpenAPI schemas and generated client types.
+- [x] Complete positions, markets, quotes, intents, plans, execute, cancel, events, and evidence
+      endpoints. Signed artifacts and migrations are borrower-scoped; cancellation is immediate
+      before reservation, contract-backed after reservation, and rejected once source closure can
+      race.
+- [x] Implement SSE reconnect and cursor recovery.
+- [x] Build source position and risk views.
+- [x] Build route comparison and economic explanation views.
+- [x] Display financing classifications, maximum safe capacity, confirmed external funding, required
       destination borrowing, exact shortfall, resolution status, and checkpoint provenance.
-- [ ] Build the exact authorization review and signing flow.
-- [ ] Build the migration timeline with provider and verified states separated.
-- [ ] Build evidence, ledger, residual asset, and recovery views.
-- [ ] Add accessible error handling and responsive layouts.
+- [x] Build the exact authorization review and signing flow.
+- [x] Build the migration timeline with provider and verified states separated.
+- [x] Build evidence, ledger, residual asset, and recovery views.
+- [x] Add accessible error handling and responsive layouts.
 
 ### Exit criteria
 
@@ -272,7 +292,7 @@ workflow.
 - [x] Validate the 1Click client against the current official OpenAPI/API reference.
 - [x] Encode the absence of public 1Click testnet as an environment rule without making simulation
       the primary workflow.
-- [ ] Fetch/version the live token catalog and map asset IDs by chain and contract address.
+- [x] Fetch/version the live token catalog and map asset IDs by chain and contract address.
 - [x] Retain `dry: true` quotes in `mainnet-readonly` and implement committed quotes only in `mainnet`.
 - [x] Implement committed quote validation, deposit-address binding, origin transaction submission,
       strict status normalization, refund handling, and raw-payload persistence.
@@ -280,7 +300,7 @@ workflow.
       confirmations, and canonical block before target open.
 - [x] Connect production source close, vault/escrow, official transport, Morpho target open, atomic
       settlement, residual return, and NEAR receipt registration.
-- [ ] Add bounded retry, timeout, rate limit, circuit breaker, and fail-closed unknown-status behavior.
+- [x] Add bounded retry, timeout, rate limit, circuit breaker, and fail-closed unknown-status behavior.
 - [x] Restrict the first deployment to one versioned route and explicit principal, collateral, fee,
       slippage, gas, receiver, deadline, and recovery-exposure limits.
 - [x] Require a separately isolated recovery reserve before source close.
@@ -309,16 +329,27 @@ workflow.
 
 ### Tasks
 
-- [ ] Complete the security test matrix and risk-register evidence.
-- [ ] Run static analysis and dependency vulnerability checks.
-- [ ] Add structured logs, traces, and Prometheus metrics.
-- [ ] Add dashboards for phases, latency, failures, health, and ledger imbalance.
-- [ ] Add alerts for reservation shortfall, deadline approach, stale recovery, receipt mismatch, and accounting imbalance.
-- [ ] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
+- [x] Complete the implementation security test matrix and reconcile risk-register evidence;
+      deployment secret rotation and final mainnet authorization remain explicit external gates.
+- [x] Run static analysis and dependency vulnerability checks.
+- [x] Add structured logs, traces, and Prometheus metrics.
+  - [x] Add phase/command/evidence/chain structured workflow logs and low-cardinality Prometheus
+        metrics backed by authoritative PostgreSQL state.
+  - [x] Add deployment-selected distributed tracing without placing credentials or signed payloads
+        in spans.
+- [x] Add dashboards for phases, latency, failures, health, and ledger imbalance.
+- [x] Complete alerts for reservation shortfall, receipt mismatch, and accounting imbalance.
+  - [x] Persist and exercise deadline-approach and stale-recovery alerts.
+- [x] Alert on feasibility expiry, missing supplementary funding, capacity deterioration, solver
       exposure, and payout failure after collateral delivery.
-- [ ] Add database backup/restore and migration rollback drills.
-- [ ] Add secret rotation and relayer-key replacement procedures.
-- [ ] Generate an SBOM and container provenance metadata.
+- [x] Add database backup/restore and migration recovery drills.
+  - [x] Add and execute an isolated full-database backup/restore verification drill.
+  - [x] Add and execute a checked-in forward-migration/restore-recovery drill without destructive
+        reverse SQL.
+- [x] Add secret rotation and relayer-key replacement procedures.
+- [x] Generate an SBOM and container provenance metadata.
+  - [x] Publish the CycloneDX runtime SBOM as a CI artifact and emit a BuildKit provenance
+        attestation for the reproducible local image.
 
 ### Exit criteria
 
@@ -332,13 +363,14 @@ workflow.
 
 ### Tasks
 
-- [ ] Add one-command environment setup.
-- [ ] Add deterministic happy-path and refund demo scripts.
-- [ ] Produce deployment manifests and contract-address records.
-- [ ] Produce an architecture guide, API guide, threat model, and operations guide.
-- [ ] Capture expected transaction hashes and evidence examples.
-- [ ] Run the complete acceptance suite from a clean checkout.
-- [ ] Record known limitations and the mainnet-readiness backlog.
+- [x] Add one-command environment setup.
+- [x] Add deterministic happy-path and refund demo scripts.
+- [x] Produce deployment manifests and contract-address records.
+- [x] Produce an architecture guide, API guide, threat model, and operations guide.
+- [x] Capture expected transaction hashes and evidence examples in
+      `17-sandbox-evidence-example.md`, with explicit private-chain and simulated-transport labels.
+- [x] Run the complete acceptance suite from a clean checkout in GitHub Actions.
+- [x] Record known limitations and the mainnet-readiness backlog.
 
 ### Exit criteria
 

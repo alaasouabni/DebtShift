@@ -82,7 +82,9 @@ Defaults:
 - Browser API configuration: `NEXT_PUBLIC_API_URL=http://localhost:3001/v1`
 
 The API allows the origin configured by `WEB_PUBLIC_URL`, which defaults to
-`http://localhost:3000`.
+`http://localhost:3000`, and permits credentials only for that exact origin. Browser requests to
+authenticated routes must use `credentials: 'include'`; `EventSource` must use
+`withCredentials: true`. Production `WEB_PUBLIC_URL` and `API_PUBLIC_URL` values must use HTTPS.
 
 ## What is ready to build now
 
@@ -100,8 +102,7 @@ The frontend owner can immediately implement or redesign:
 10. Terminal success, failed-safe, expiry, and recovery presentations.
 11. Responsive, accessible loading, empty, error, and disconnected states.
 
-The frontend must keep backend calls behind a typed client module. This is especially important
-while wallet-session authentication and controlled production-read paths are completed.
+The frontend must keep backend calls and the wallet-session boundary behind a typed client module.
 
 ## Current API contract
 
@@ -111,6 +112,10 @@ All application routes use the `/v1` prefix. JSON requests must send
 | Method | Route                               | Current purpose                                                             | UI use                             |
 | ------ | ----------------------------------- | --------------------------------------------------------------------------- | ---------------------------------- |
 | GET    | `/health`                           | API process health                                                          | Environment/status indicator       |
+| POST   | `/auth/challenge`                   | Create a five-minute, one-time EIP-4361 login message                       | Prove connected-wallet control     |
+| POST   | `/auth/verify`                      | Verify login proof and set the opaque HttpOnly session cookie               | Establish borrower API session     |
+| GET    | `/auth/session`                     | Read the current borrower session                                           | Restore/check connected session    |
+| POST   | `/auth/logout`                      | Revoke the current session and expire its cookie                            | Disconnect authenticated session   |
 | GET    | `/positions/:wallet`                | Current supported source position with provenance                           | Primary position card              |
 | GET    | `/positions/:wallet/history`        | Persisted position/snapshot history                                         | History or diagnostic view         |
 | GET    | `/markets`                          | Persisted enabled markets                                                   | Market labels and future selectors |
@@ -121,11 +126,13 @@ All application routes use the `/v1` prefix. JSON requests must send
 | GET    | `/migrations/:migrationId`          | Migration, evidence, events, commands, ledger, and reservations             | Authoritative monitoring view      |
 | GET    | `/migrations/:migrationId/events`   | Authoritative event history                                                 | Optional focused event timeline    |
 | GET    | `/migrations/:migrationId/evidence` | Normalized evidence records                                                 | Optional evidence explorer         |
+| GET    | `/migrations/:migrationId/stream`   | Cursor-resumable PostgreSQL audit-event SSE                                 | Live authoritative timeline        |
 
-There is currently no WebSocket or server-sent-event endpoint. Poll migration details while a
-migration is non-terminal. Start around 1.5-2 seconds, pause polling when the tab is hidden, use
-backoff after transient failures, and stop at `COMPLETED`, `FAILED_SAFE`, `REQUOTE_REQUIRED`, or
-`EXPIRED`.
+The challenge and verification routes are public. All position, market, analysis, quote, prepare,
+execute, migration-detail, event, evidence, and stream routes require the `debtshift_session`
+cookie; borrower and migration ownership are enforced server-side. The SSE client resumes from the
+last durable audit sequence with `?after=<sequence>` or `Last-Event-ID`. It may use detail polling as
+a transient fallback, but must never derive workflow state from connectivity alone.
 
 ### Route analysis request
 
@@ -286,10 +293,15 @@ library, but it must:
 - Prompt a network switch with context; never switch or add a network without user interaction.
 - Never request, accept, log, or persist a private key or seed phrase.
 
-Wallet challenge/session authentication is not implemented yet. Until it exists, the wallet address
-selects read data and the two execution signatures authorize the sandbox migration. The frontend
-architecture should reserve a session/auth layer rather than treating address selection as
-production authentication.
+After account access, request `/auth/challenge`, switch to the returned chain with user interaction,
+sign the exact EIP-4361 message, and send only `challengeId` plus the signature to `/auth/verify`.
+The five-minute challenge is one-time use. A successful verification creates an eight-hour opaque
+session in an `HttpOnly`, `SameSite=Strict` cookie; JavaScript must not read or persist the token.
+The API stores only its SHA-256 hash and supports revocation through `/auth/logout`. Clear UI state
+and establish a new session when the active account changes.
+
+The EIP-4361 signature proves wallet control for API access only. It explicitly does not authorize
+a refinance or transaction and does not replace either financial EIP-712 signature below.
 
 ### Signing
 
@@ -331,7 +343,8 @@ the corresponding wallet flow is verified end to end.
 ## Required borrower journey
 
 1. **Landing/disconnected:** explain DebtShift and clearly label the environment.
-2. **Connect wallet:** request account access; handle missing wallet and rejection.
+2. **Connect and authenticate wallet:** request account access, complete the one-time EIP-4361
+   proof, and handle missing wallet, network switch, signature rejection, expiry, and session loss.
 3. **Position discovery:** show balances, protocol, market, source block, and observation time.
 4. **Route analysis:** show all candidates, not only the winner. Explain ineligible routes and stale
    data.
@@ -509,11 +522,11 @@ The frontend may proceed now, but these contracts are not yet production-final:
 
 | Dependency                              | Current state                                                                  | Frontend preparation                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| Wallet challenge/session authentication | Not implemented                                                                | Keep auth/session logic behind a dedicated boundary        |
+| Wallet challenge/session authentication | Implemented with one-time EIP-4361 challenges and hashed opaque sessions       | Keep auth/session logic behind a dedicated boundary        |
 | Generated public API response DTOs      | Domain schemas exist; some controller bodies are still unknown                 | Centralize temporary response interfaces in the API client |
 | Live funded refinance                   | Implemented behind server gates; credentialed validation and deployment remain | Render backend capabilities; never infer availability      |
 | Smart-account preparation               | Verification exists; prepare currently emits EOA                               | Do not claim EIP-1271 UX completion                        |
-| Streaming migration updates             | Not implemented                                                                | Isolate polling so it can later be replaced                |
+| Streaming migration updates             | Implemented as cursor-resumable PostgreSQL-backed SSE                          | Retain polling only as a transient fallback                |
 | Explorer metadata                       | Not yet a frontend API contract                                                | Use an environment map only for known chains               |
 | Mainnet readiness/enable state          | Server-side environment and operator responsibility                            | Display read-only capability and exact preflight terms     |
 

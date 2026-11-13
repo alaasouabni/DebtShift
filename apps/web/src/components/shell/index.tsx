@@ -306,6 +306,12 @@ function SiteHeaderBar({
                   style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-muted)' }}
                 >
                   {chainLabel(wallet.chainId)}
+                  {/* Connected is not signed in: the API answers only the latter. */}
+                  {wallet.isDemo
+                    ? ''
+                    : wallet.session.status === 'active'
+                      ? ' · signed in'
+                      : ' · not signed in'}
                 </span>
               </span>
               {wallet.isDemo ? null : (
@@ -362,7 +368,16 @@ export function SiteFooter() {
   // Separate from the health check: the two answers arrive at different times.
   const [chainsLoaded, setChainsLoaded] = useState(false);
 
+  // The market list is served only to a signed-in borrower (or replayed in the
+  // demo). Before that there is nothing to ask, and nothing is claimed.
+  const canReadMarkets = wallet.isDemo || wallet.session.status === 'active';
+
   useEffect(() => {
+    if (!canReadMarkets) {
+      setChainIds([]);
+      setChainsLoaded(false);
+      return;
+    }
     let cancelled = false;
     void api.markets().then(
       (markets) => {
@@ -381,7 +396,7 @@ export function SiteFooter() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canReadMarkets]);
 
   useEffect(() => {
     let cancelled = false;

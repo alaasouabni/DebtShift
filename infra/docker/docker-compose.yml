@@ -8,6 +8,7 @@ x-sandbox-environment: &sandbox-environment
   DEBTSHIFT_MODE: sandbox
   MARKET_DATA_PROVIDER: SIMULATOR
   LIVE_MARKET_CONFIG_JSON: ''
+  EVM_DEPLOYMENT_MANIFEST_PATH: ''
   API_PORT: 3001
   API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
   WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-http://localhost:3000}
@@ -40,11 +41,22 @@ x-sandbox-environment: &sandbox-environment
   INTENTS_MODE: simulated
   INTENTS_BASE_URL: https://1click.chaindefuser.com
   INTENTS_AUTH_TOKEN: ''
+  WORKFLOW_COMMAND_MAX_ATTEMPTS: ${WORKFLOW_COMMAND_MAX_ATTEMPTS:-25}
+  WORKFLOW_COMMAND_RETRY_DELAY_MS: ${WORKFLOW_COMMAND_RETRY_DELAY_MS:-500}
+  WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: ${WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS:-30000}
+  WORKFLOW_COMMAND_STALE_AFTER_MS: ${WORKFLOW_COMMAND_STALE_AFTER_MS:-300000}
+  ALERT_SCAN_INTERVAL_MS: ${ALERT_SCAN_INTERVAL_MS:-30000}
+  ALERT_DEADLINE_LEAD_MS: ${ALERT_DEADLINE_LEAD_MS:-60000}
+  ALERT_STALE_MIGRATION_MS: ${ALERT_STALE_MIGRATION_MS:-300000}
+  ALERT_STALE_RECOVERY_MS: ${ALERT_STALE_RECOVERY_MS:-900000}
   SIMULATOR_TERMINAL_OUTCOME: ${SIMULATOR_TERMINAL_OUTCOME:-SUCCESS}
   SIMULATOR_PROCESSING_POLLS: ${SIMULATOR_PROCESSING_POLLS:-1}
   NEAR_NETWORK: ${NEAR_NETWORK:-sandbox}
   NEAR_RPC_URL: ${NEAR_RPC_URL:-https://test.rpc.fastnear.com}
+  NEAR_RPC_FALLBACK_URLS_JSON: '${NEAR_RPC_FALLBACK_URLS_JSON:-[]}'
   NEAR_REGISTRY_ACCOUNT: ${NEAR_REGISTRY_ACCOUNT:-}
+  NEAR_REGISTRY_OWNER_ACCOUNT: ${NEAR_REGISTRY_OWNER_ACCOUNT:-}
+  NEAR_REGISTRY_WASM_SHA256: ${NEAR_REGISTRY_WASM_SHA256:-}
   NEAR_SIGNER_ACCOUNT_ID: ${NEAR_SIGNER_ACCOUNT_ID:-}
   NEAR_SIGNER_PRIVATE_KEY: ${NEAR_SIGNER_PRIVATE_KEY:-}
   NEAR_STORAGE_DEPOSIT_YOCTO: ${NEAR_STORAGE_DEPOSIT_YOCTO:-1000000000000000000000000}
@@ -52,6 +64,7 @@ x-sandbox-environment: &sandbox-environment
   AGENT_MODE: DETERMINISTIC
   MAINNET_EXECUTION_ENABLED: 'false'
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
 services:
   postgres:
@@ -115,7 +128,7 @@ services:
 
   migrate:
     <<: *debtshift-app
-    command: ['npm', 'run', 'db:migrate', '--workspace', '@debtshift/database']
+    command: ['node', 'packages/database/scripts/migrate.mjs']
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-debtshift}:${POSTGRES_PASSWORD:-debtshift_local}@postgres:5432/${POSTGRES_DB:-debtshift}
     depends_on:
@@ -163,7 +176,7 @@ services:
 
   web:
     <<: *debtshift-app
-    command: ['npm', 'run', 'start', '--workspace', '@debtshift/web']
+    command: ['node', 'node_modules/next/dist/bin/next', 'start', 'apps/web', '--port', '3000']
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -186,6 +199,52 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v3.13.5
+    profiles: ['observability']
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    ports:
+      - '127.0.0.1:${PROMETHEUS_PORT:-9090}:9090'
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - debtshift_prometheus:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0
+    profiles: ['observability']
+    ports:
+      - '127.0.0.1:${JAEGER_UI_PORT:-16686}:16686'
+      - '127.0.0.1:${OTLP_HTTP_PORT:-4318}:4318'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    profiles: ['observability']
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - '127.0.0.1:${GRAFANA_PORT:-3002}:3000'
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - debtshift_grafana:/var/lib/grafana
+    depends_on:
+      - jaeger
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   debtshift_postgres:
   debtshift_redis:
+  debtshift_prometheus:
+  debtshift_grafana:

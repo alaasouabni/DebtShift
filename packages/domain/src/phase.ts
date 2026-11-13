@@ -31,6 +31,8 @@ export interface PhaseEvidence {
   readonly ledgerReconciliation: boolean;
   readonly nearReceipt: boolean;
   readonly expired: boolean;
+  readonly cancellationRequested: boolean;
+  readonly cancellationCompleted: boolean;
   readonly requoteRequired: boolean;
   readonly recoveryOpened: boolean;
   readonly recoveryCompleted: boolean;
@@ -54,6 +56,8 @@ const evidenceFieldByType: Readonly<Record<EvidenceType, keyof PhaseEvidence>> =
   LEDGER_RECONCILIATION: 'ledgerReconciliation',
   NEAR_RECEIPT: 'nearReceipt',
   MIGRATION_EXPIRED: 'expired',
+  MIGRATION_CANCELLATION_REQUESTED: 'cancellationRequested',
+  MIGRATION_CANCELLED: 'cancellationCompleted',
   REQUOTE_REQUIRED: 'requoteRequired',
   RECOVERY_OPENED: 'recoveryOpened',
   RECOVERY_COMPLETED: 'recoveryCompleted',
@@ -78,6 +82,8 @@ export function phaseEvidenceFromRecords(records: readonly Evidence[]): PhaseEvi
     ledgerReconciliation: false,
     nearReceipt: false,
     expired: false,
+    cancellationRequested: false,
+    cancellationCompleted: false,
     requoteRequired: false,
     recoveryOpened: false,
     recoveryCompleted: false,
@@ -107,6 +113,17 @@ export function deriveMigrationPhase(evidence: PhaseEvidence): MigrationPhase {
     return 'FAILED_SAFE';
   }
 
+  if (evidence.cancellationRequested && evidence.sourceClose) {
+    throw new Error('A cancellation request cannot coexist with source-close evidence.');
+  }
+
+  if (evidence.cancellationCompleted) {
+    if (!evidence.cancellationRequested) {
+      throw new Error('Cancellation cannot complete without a borrower cancellation request.');
+    }
+    return 'CANCELLED';
+  }
+
   if (evidence.recoveryOpened || (evidence.expired && evidence.sourceClose)) {
     return 'RECOVERY';
   }
@@ -127,6 +144,9 @@ export function deriveMigrationPhase(evidence: PhaseEvidence): MigrationPhase {
     evidence.executionPlanAuthorization &&
     evidence.sourceLendingAuthorization &&
     evidence.financingFeasibility;
+  if (evidence.cancellationRequested && !evidence.liquidityReservation && authorized) {
+    return 'CANCELLED';
+  }
   const settled = evidence.liquiditySettlement && evidence.ledgerReconciliation;
   const predicates: readonly [MigrationPhase, boolean][] = [
     ['QUOTED', evidence.routeQuote],
@@ -197,10 +217,10 @@ export function deriveMigrationPhase(evidence: PhaseEvidence): MigrationPhase {
 }
 
 const allowedTransitions: Readonly<Record<MigrationPhase, readonly MigrationPhase[]>> = {
-  DRAFT: ['QUOTED', 'EXPIRED'],
-  QUOTED: ['AUTHORIZED', 'EXPIRED'],
-  AUTHORIZED: ['RESERVED', 'EXPIRED', 'REQUOTE_REQUIRED'],
-  RESERVED: ['SOURCE_CLOSED', 'EXPIRED', 'RECOVERY', 'REQUOTE_REQUIRED'],
+  DRAFT: ['QUOTED', 'EXPIRED', 'CANCELLED'],
+  QUOTED: ['AUTHORIZED', 'EXPIRED', 'CANCELLED'],
+  AUTHORIZED: ['RESERVED', 'EXPIRED', 'REQUOTE_REQUIRED', 'CANCELLED'],
+  RESERVED: ['SOURCE_CLOSED', 'EXPIRED', 'RECOVERY', 'REQUOTE_REQUIRED', 'CANCELLED'],
   SOURCE_CLOSED: ['ROUTING', 'RECOVERY'],
   ROUTING: ['DEST_FUNDED', 'RECOVERY'],
   DEST_FUNDED: ['TARGET_OPEN', 'RECOVERY'],
@@ -211,6 +231,7 @@ const allowedTransitions: Readonly<Record<MigrationPhase, readonly MigrationPhas
   FAILED_SAFE: [],
   REQUOTE_REQUIRED: [],
   EXPIRED: [],
+  CANCELLED: [],
 };
 
 export function isAllowedPhaseTransition(from: MigrationPhase, to: MigrationPhase): boolean {

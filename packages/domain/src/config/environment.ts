@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { evmAddressSchema } from '../primitives.js';
+import { bytes32Schema, evmAddressSchema, nearAccountIdSchema } from '../primitives.js';
 import { parseLiveMarketConfiguration } from './live-market.js';
 
 const booleanString = z
@@ -10,6 +10,32 @@ const booleanString = z
 
 const optionalUrl = z.union([z.url(), z.literal('')]).default('');
 const optionalString = z.string().default('');
+const optionalNearAccount = z.union([nearAccountIdSchema, z.literal('')]).default('');
+const optionalBytes32 = z.union([bytes32Schema, z.literal('')]).default('');
+const httpUrl = z.url().refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
+  message: 'RPC URL must use HTTP or HTTPS.',
+});
+const urlListJson = z
+  .string()
+  .default('[]')
+  .transform((value, context): readonly string[] => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      context.addIssue({ code: 'custom', message: 'RPC fallback URLs must be a JSON array.' });
+      return z.NEVER;
+    }
+    const result = z.array(httpUrl).max(4).safeParse(parsed);
+    if (!result.success) {
+      context.addIssue({
+        code: 'custom',
+        message: 'RPC fallback URLs must contain at most four HTTP(S) URLs.',
+      });
+      return z.NEVER;
+    }
+    return result.data;
+  });
 const optionalPrivateKey = z
   .union([z.string().regex(/^0x[0-9a-fA-F]{64}$/), z.literal('')])
   .default('');
@@ -22,6 +48,7 @@ export const debtShiftEnvironmentSchema = z
       .default('sandbox'),
     MARKET_DATA_PROVIDER: z.enum(['SIMULATOR', 'LIVE_READ_ONLY', 'DISABLED']).default('SIMULATOR'),
     LIVE_MARKET_CONFIG_JSON: optionalString,
+    EVM_DEPLOYMENT_MANIFEST_PATH: optionalString,
     WEB_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     API_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
     WEB_PUBLIC_URL: z.url().default('http://localhost:3000'),
@@ -97,6 +124,24 @@ export const debtShiftEnvironmentSchema = z
     INTENTS_RATE_LIMIT_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(10),
     INTENTS_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
     INTENTS_CACHE_MAX_ENTRIES: z.coerce.number().int().min(1).max(10_000).default(100),
+    WORKFLOW_COMMAND_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(25),
+    WORKFLOW_COMMAND_RETRY_DELAY_MS: z.coerce.number().int().min(100).max(60_000).default(500),
+    WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(300_000)
+      .default(30_000),
+    WORKFLOW_COMMAND_STALE_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(3_600_000)
+      .default(300_000),
+    ALERT_SCAN_INTERVAL_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
+    ALERT_DEADLINE_LEAD_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(60_000),
+    ALERT_STALE_MIGRATION_MS: z.coerce.number().int().min(10_000).max(86_400_000).default(300_000),
+    ALERT_STALE_RECOVERY_MS: z.coerce.number().int().min(10_000).max(604_800_000).default(900_000),
     SIMULATOR_TERMINAL_OUTCOME: z
       .enum([
         'SUCCESS',
@@ -109,9 +154,12 @@ export const debtShiftEnvironmentSchema = z
       .default('SUCCESS'),
     SIMULATOR_PROCESSING_POLLS: z.coerce.number().int().min(0).max(100).default(1),
     NEAR_NETWORK: z.enum(['sandbox', 'testnet', 'mainnet']).default('sandbox'),
-    NEAR_RPC_URL: z.url().default('https://test.rpc.fastnear.com'),
-    NEAR_REGISTRY_ACCOUNT: optionalString,
-    NEAR_SIGNER_ACCOUNT_ID: optionalString,
+    NEAR_RPC_URL: httpUrl.default('https://test.rpc.fastnear.com'),
+    NEAR_RPC_FALLBACK_URLS_JSON: urlListJson,
+    NEAR_REGISTRY_ACCOUNT: optionalNearAccount,
+    NEAR_REGISTRY_OWNER_ACCOUNT: optionalNearAccount,
+    NEAR_REGISTRY_WASM_SHA256: optionalBytes32,
+    NEAR_SIGNER_ACCOUNT_ID: optionalNearAccount,
     NEAR_SIGNER_PRIVATE_KEY: optionalString,
     NEAR_STORAGE_DEPOSIT_YOCTO: z
       .string()
@@ -130,11 +178,52 @@ export const debtShiftEnvironmentSchema = z
     OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   })
   .superRefine((environment, context) => {
+    const nearRpcUrls = [environment.NEAR_RPC_URL, ...environment.NEAR_RPC_FALLBACK_URLS_JSON];
+    if (new Set(nearRpcUrls).size !== nearRpcUrls.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'NEAR RPC primary and fallback URLs must be unique.',
+        path: ['NEAR_RPC_FALLBACK_URLS_JSON'],
+      });
+    }
+    if (
+      environment.NEAR_NETWORK !== 'sandbox' &&
+      nearRpcUrls.some((value) => new URL(value).protocol !== 'https:')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Public NEAR network RPC endpoints must use HTTPS.',
+        path: ['NEAR_RPC_FALLBACK_URLS_JSON'],
+      });
+    }
+
+    if (
+      environment.NODE_ENV === 'production' &&
+      (new URL(environment.WEB_PUBLIC_URL).protocol !== 'https:' ||
+        new URL(environment.API_PUBLIC_URL).protocol !== 'https:')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Production public web and API URLs must use HTTPS for secure wallet sessions.',
+        path: ['API_PUBLIC_URL'],
+      });
+    }
+
     if (environment.INTENTS_RETRY_MAX_DELAY_MS < environment.INTENTS_RETRY_BASE_DELAY_MS) {
       context.addIssue({
         code: 'custom',
         message: '1Click maximum retry delay cannot be lower than its base retry delay.',
         path: ['INTENTS_RETRY_MAX_DELAY_MS'],
+      });
+    }
+
+    if (
+      environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS < environment.WORKFLOW_COMMAND_RETRY_DELAY_MS
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Workflow maximum retry delay cannot be lower than its base retry delay.',
+        path: ['WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS'],
       });
     }
 
@@ -245,6 +334,18 @@ export const debtShiftEnvironmentSchema = z
         path: ['EXECUTOR_PRIVATE_KEY'],
       });
     }
+    if (
+      environment.NODE_ENV === 'production' &&
+      (environment.DEBTSHIFT_MODE === 'testnet' ||
+        (environment.DEBTSHIFT_MODE === 'mainnet' && environment.MAINNET_EXECUTION_ENABLED)) &&
+      environment.EVM_DEPLOYMENT_MANIFEST_PATH.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Funded production execution requires EVM_DEPLOYMENT_MANIFEST_PATH.',
+        path: ['EVM_DEPLOYMENT_MANIFEST_PATH'],
+      });
+    }
 
     const nearWriteConfigurationRequired =
       (environment.DEBTSHIFT_MODE === 'sandbox' && environment.NODE_ENV === 'production') ||
@@ -253,26 +354,32 @@ export const debtShiftEnvironmentSchema = z
     if (
       nearWriteConfigurationRequired &&
       (environment.NEAR_REGISTRY_ACCOUNT.length === 0 ||
+        environment.NEAR_REGISTRY_OWNER_ACCOUNT.length === 0 ||
+        environment.NEAR_REGISTRY_WASM_SHA256.length === 0 ||
         environment.NEAR_SIGNER_ACCOUNT_ID.length === 0 ||
         environment.NEAR_SIGNER_PRIVATE_KEY.length === 0)
     ) {
       context.addIssue({
         code: 'custom',
         message:
-          'Hosted sandbox, funded testnet, or mainnet execution requires the NEAR registry account and verifier signer credentials.',
+          'Hosted sandbox, funded testnet, or mainnet execution requires the expected NEAR registry account, owner, WASM hash, and verifier signer credentials.',
         path: ['NEAR_REGISTRY_ACCOUNT'],
       });
     }
 
-    const partialNearSignerConfiguration = [
+    const nearRegistryConfigurationCount = [
+      environment.NEAR_REGISTRY_ACCOUNT,
+      environment.NEAR_REGISTRY_OWNER_ACCOUNT,
+      environment.NEAR_REGISTRY_WASM_SHA256,
       environment.NEAR_SIGNER_ACCOUNT_ID,
       environment.NEAR_SIGNER_PRIVATE_KEY,
     ].filter((value) => value.length !== 0).length;
-    if (partialNearSignerConfiguration === 1) {
+    if (nearRegistryConfigurationCount > 0 && nearRegistryConfigurationCount < 5) {
       context.addIssue({
         code: 'custom',
-        message: 'NEAR signer account and private key must be configured together.',
-        path: ['NEAR_SIGNER_ACCOUNT_ID'],
+        message:
+          'NEAR registry account, owner, WASM hash, signer account, and signer key must be configured together.',
+        path: ['NEAR_REGISTRY_ACCOUNT'],
       });
     }
   });

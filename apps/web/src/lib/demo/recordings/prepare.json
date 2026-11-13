@@ -57,13 +57,13 @@
       "stressMaximumLtvBps": 6500
     },
     "maxDurationSeconds": 600,
-    "expiration": "1794536258",
-    "nonce": "197386799843947626081419411278701582115"
+    "expiration": "1794580948",
+    "nonce": "158355119003143045018498504216441133946"
   },
-  "intentHash": "0x246af1a32ff1db0fc8114b36112ab63c8ba2b4fb7e37c5436cee5fb0191a42fe",
+  "intentHash": "0xcf90a0298fb9b80afee9ad48bde830260e6271b8aae490b93fb0d8cf04973464",
   "plan": {
-    "intentHash": "0x246af1a32ff1db0fc8114b36112ab63c8ba2b4fb7e37c5436cee5fb0191a42fe",
-    "migrationId": "0xb89427c2904ab80a102f0bd127ba983384557f83076559b0c88ff2063aa804b5",
+    "intentHash": "0xcf90a0298fb9b80afee9ad48bde830260e6271b8aae490b93fb0d8cf04973464",
+    "migrationId": "0x3b364f227f3e819c3cc33a8258ad6b277c38340ddf65010a00205a7a95d187b9",
     "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     "sourcePositionId": "0x126dbb1e057f980a423c60074f2a7c7075c4e57347a99abc37799cf925e527de",
     "sourceMarket": {
@@ -107,13 +107,13 @@
     "targetDebtMaxUnits": "10060000000",
     "minDestinationCollateralUnits": "9940050000000000000",
     "transportProvider": "DEBTSHIFT_SIMULATOR",
-    "transportQuoteHash": "0x29682dd96aa441925946a12f5652892d025618ed89a7db5823e4c6db81c5df47",
-    "transportDepositAddress": "simulator:29682dd96aa441925946a12f5652892d",
+    "transportQuoteHash": "0x0c0c2cfc8eab0548740bf29bffc04fa74e7832a60ef778ec8e2e5d22498f011f",
+    "transportDepositAddress": "simulator:0c0c2cfc8eab0548740bf29bffc04fa7",
     "destinationReceiver": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
     "transportRefundReceiver": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
     "refundReceiver": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     "fundingProvider": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
-    "reservationHash": "0xcab13134adbec1f613a26f269158900ade2869ed7416e4c9b84fc11047918782",
+    "reservationHash": "0xea98d1c25278e270258df623989cb5be7a8fe977fee054276390f179e7276892",
     "payoutAsset": {
       "chainId": 31338,
       "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
@@ -125,9 +125,9 @@
     "feeMaxUnits": "50000000",
     "financing": {
       "modelVersion": 1,
-      "evaluatedAt": "2026-11-13T02:07:38.597Z",
-      "validUntil": "1794535898",
-      "capacityEvidenceHash": "0x2c5a9e5af64c342bbf6e1bed7e89bc51a9269a660a8ac239d77c7454564f1efc",
+      "evaluatedAt": "2026-11-13T14:32:28.725Z",
+      "validUntil": "1794580588",
+      "capacityEvidenceHash": "0x1dac4bd952d43e4d5a49c772b6f7464f4d8b254eb1654749efa272bfe64ff8cb",
       "liquidityBufferBps": 1000,
       "stressCollateralDropBps": 1000,
       "settlementAsset": {
@@ -138,7 +138,7 @@
       },
       "sourceDebtPayoffAssetUnits": "10010000000",
       "sourceDebtPayoffUnits": "10010000000",
-      "sourceConversionQuoteHash": "0x261eb3694a58143004eca2c05d0f873ea76686d12401847e6659761068c0b271",
+      "sourceConversionQuoteHash": "0x9ed686ec8e4e1eccfac30b85078b048f8bc93874fbedc53dd0dc83779d6052ab",
       "borrowerDebtPrepaymentAssetUnits": "0",
       "borrowerDebtPrepaymentUnits": "0",
       "costs": [
@@ -224,11 +224,11 @@
       "requiredDestinationBorrowUnits": "10060000000",
       "fundingShortfallUnits": "0"
     },
-    "routeHash": "0xff014e69440f60268df2f55f01344eb25ed5ca8d2c064a3bf8bba70620d1987c",
-    "deadline": "1794535898",
-    "nonce": "216528954324196861884665543901401188071"
+    "routeHash": "0x3615bb8ff511a7c65fffc7b11b5269a9ba4efae00637e2dfb940cc09bcba11ac",
+    "deadline": "1794580588",
+    "nonce": "100084918650902787532982845728506480472"
   },
-  "planHash": "0xae862db956a18a711b14ed5f6aa1692ac5c3ff06aee460e64816fc9f39f1ff9f",
+  "planHash": "0x1a4cc04048c4dc85c83bc9475963566f1303e74e38c5b99070088a35ef3634f2",
   "sourceAuthorization": {
     "kind": "NONE"
   },
@@ -236,8 +236,8 @@
     "kind": "NONE"
   },
   "quote": {
-    "quoteId": "sim-29682dd96aa44192",
-    "quoteHash": "0x29682dd96aa441925946a12f5652892d025618ed89a7db5823e4c6db81c5df47",
+    "quoteId": "sim-0c0c2cfc8eab0548",
+    "quoteHash": "0x0c0c2cfc8eab0548740bf29bffc04fa74e7832a60ef778ec8e2e5d22498f011f",
     "provider": "DEBTSHIFT_SIMULATOR",
     "mode": "SIMULATED",
     "inputAsset": {
@@ -269,13 +269,13 @@
     ],
     "destinationReceiver": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
     "refundReceiver": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
-    "depositAddress": "simulator:29682dd96aa441925946a12f5652892d",
-    "expiresAt": "2026-11-13T02:12:38.000Z",
-    "correlationId": "sim-29682dd96aa44192",
-    "rawResponseHash": "0xf8a0c4344180c21f0e4444e3193fac32ac363775d7e39db919c5d44d22a22a30"
+    "depositAddress": "simulator:0c0c2cfc8eab0548740bf29bffc04fa7",
+    "expiresAt": "2026-11-13T14:37:28.000Z",
+    "correlationId": "sim-0c0c2cfc8eab0548",
+    "rawResponseHash": "0x56a0a9016ee416551a5cc9205a3fd1b3ae11659cba6e991df756ec42429e11c7"
   },
   "sourceSnapshot": {
-    "snapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+    "snapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
     "position": {
       "market": {
         "chainId": 31337,
@@ -305,9 +305,9 @@
     },
     "borrowAprBps": 700,
     "block": {
-      "number": "295",
-      "hash": "0x906aeab7b9e1e059a051687877356e3dd104d0e38f5d31ec0f224c46ef42d713",
-      "observedAt": "2026-11-13T02:07:38.000Z"
+      "number": "121",
+      "hash": "0x7dd5b115748b2457014bb41ba42cf0e0b41d90e1f167715ceb0e041dc81aa0c5",
+      "observedAt": "2026-11-13T14:32:27.000Z"
     }
   },
   "routeAnalysis": {
@@ -319,7 +319,7 @@
       "analyses": [
         {
           "sourcePosition": {
-            "snapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+            "snapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
             "position": {
               "market": {
                 "chainId": 31337,
@@ -349,9 +349,9 @@
             },
             "borrowAprBps": 700,
             "block": {
-              "number": "295",
-              "hash": "0x906aeab7b9e1e059a051687877356e3dd104d0e38f5d31ec0f224c46ef42d713",
-              "observedAt": "2026-11-13T02:07:38.000Z"
+              "number": "121",
+              "hash": "0x7dd5b115748b2457014bb41ba42cf0e0b41d90e1f167715ceb0e041dc81aa0c5",
+              "observedAt": "2026-11-13T14:32:27.000Z"
             }
           },
           "comparison": {
@@ -361,6 +361,7 @@
               {
                 "candidateId": "local-morpho-balanced",
                 "eligible": true,
+                "rank": 1,
                 "scoreUsdMicro": "13287671",
                 "economics": {
                   "sourceAprBps": 700,
@@ -396,7 +397,7 @@
                   },
                   "sourceDebtPayoffAssetUnits": "10010000000",
                   "sourceDebtPayoffUnits": "10010000000",
-                  "sourceConversionQuoteHash": "0x261eb3694a58143004eca2c05d0f873ea76686d12401847e6659761068c0b271",
+                  "sourceConversionQuoteHash": "0x9ed686ec8e4e1eccfac30b85078b048f8bc93874fbedc53dd0dc83779d6052ab",
                   "borrowerDebtPrepaymentUnits": "0",
                   "solverAdvancedCostUnits": "0",
                   "solverPrincipalUnits": "10010000000",
@@ -489,15 +490,14 @@
                 },
                 "rejections": [],
                 "provenance": {
-                  "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
-                  "marketSnapshotId": "0x658e7db34f0ac8d4918d9724f9f4123cee212b4c267bbc8d0fe456c9c8d0a9ff",
-                  "marketBlockNumber": "295",
-                  "marketBlockHash": "0x941b81802e902df2f872bd8c16afed6e70d4f541ea162d3749eb97f97e30e278",
-                  "oracleUpdatedAt": "2026-11-13T02:07:38.000Z",
-                  "evaluatedAt": "2026-11-13T02:07:38.597Z",
+                  "sourceSnapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
+                  "marketSnapshotId": "0x641c5c0f7b29f7c4786bf4e518fc6613a2b73fe072bdf3f32ea0b9ff387e29d8",
+                  "marketBlockNumber": "121",
+                  "marketBlockHash": "0x9cc80e3acf97645ca24498914ff7c6512b5b0da289b738d1cb740df46abfc76e",
+                  "oracleUpdatedAt": "2026-11-13T14:32:28.000Z",
+                  "evaluatedAt": "2026-11-13T14:32:28.725Z",
                   "rateProjection": "local-target-read-plus-bounded-impact-v1"
-                },
-                "rank": 1
+                }
               },
               {
                 "candidateId": "local-morpho-low-liquidity",
@@ -537,7 +537,7 @@
                   },
                   "sourceDebtPayoffAssetUnits": "10010000000",
                   "sourceDebtPayoffUnits": "10010000000",
-                  "sourceConversionQuoteHash": "0x450bc3818d852750c49559a82064c6a438a3592d01d6089fe4acc9bcee63499c",
+                  "sourceConversionQuoteHash": "0x7fd6380bb4d20f3877d3ac12be63fbcb71d42cbfd75e8dcfb7df4f774e5ac151",
                   "borrowerDebtPrepaymentUnits": "0",
                   "solverAdvancedCostUnits": "0",
                   "solverPrincipalUnits": "10010000000",
@@ -652,12 +652,12 @@
                   }
                 ],
                 "provenance": {
-                  "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
-                  "marketSnapshotId": "0x6621d43136c3094f16f136d060bd47046d022c7dfe5a2d44825b1a95554c3b11",
-                  "marketBlockNumber": "295",
-                  "marketBlockHash": "0x941b81802e902df2f872bd8c16afed6e70d4f541ea162d3749eb97f97e30e278",
-                  "oracleUpdatedAt": "2026-11-13T02:07:38.000Z",
-                  "evaluatedAt": "2026-11-13T02:07:38.597Z",
+                  "sourceSnapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
+                  "marketSnapshotId": "0xed3ad1b80e15219e7328de43a059b76f2c0ab1be657a7760d6322caf2dd84713",
+                  "marketBlockNumber": "121",
+                  "marketBlockHash": "0x9cc80e3acf97645ca24498914ff7c6512b5b0da289b738d1cb740df46abfc76e",
+                  "oracleUpdatedAt": "2026-11-13T14:32:28.000Z",
+                  "evaluatedAt": "2026-11-13T14:32:28.725Z",
                   "rateProjection": "local-constrained-market-impact-v1"
                 }
               }
@@ -668,9 +668,9 @@
     },
     "explanations": [
       {
-        "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+        "sourceSnapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
         "result": {
-          "decisionHash": "0xf6cc4cab7fc17252007ed517c94c2f3893baa1f96e830f721027e0fa2361884e",
+          "decisionHash": "0x744a39db2671ea2880895fdd678a9b893b06cdad74e02b770f23eb5f7e4e8e02",
           "provider": "DETERMINISTIC",
           "fallbackUsed": false,
           "explanation": {
@@ -682,7 +682,7 @@
             ],
             "breakEvenExplanation": "At unchanged projected rates, one-time costs break even after about 146.0 days.",
             "safetyExplanation": "Projected LTV is 50.81% and stressed LTV is 56.46%. Required destination borrowing is 10060 dUSDC, maximum safe capacity is 10060 dUSDC, and the confirmed funding shortfall is 0 dUSDC.",
-            "dataFreshnessWarning": "Market block 295 and oracle update 2026-11-13T02:07:38.000Z were evaluated at 2026-11-13T02:07:38.597Z; execution must re-read critical state.",
+            "dataFreshnessWarning": "Market block 121 and oracle update 2026-11-13T14:32:28.000Z were evaluated at 2026-11-13T14:32:28.725Z; execution must re-read critical state.",
             "reviewAndSignStatement": "Review every amount, market, receiver, fee cap, deadline, and risk limit before signing. This explanation cannot authorize execution."
           }
         }

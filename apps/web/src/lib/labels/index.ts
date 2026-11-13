@@ -16,6 +16,10 @@ import type {
   FinancingCostKind,
   LedgerCategory,
   MigrationPhase,
+  RecoveryCaseStatus,
+  RecoveryEscalationState,
+  RecoveryNextPermittedAction,
+  RecoveryPolicy,
 } from '../api/types';
 
 export type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
@@ -27,7 +31,7 @@ export interface PhaseLabel {
 }
 
 /**
- * The thirteen phases.
+ * The fifteen phases.
  *
  * Two captions carry the whole product's honesty and must not be softened:
  * `SETTLED` is not completion, and `FAILED_SAFE` does not mean the solver was
@@ -108,6 +112,12 @@ export const PHASE_LABELS: Record<MigrationPhase, PhaseLabel> = {
     caption: 'The authorized window closed before completion.',
     tone: 'neutral',
   },
+  CANCELLED: {
+    label: 'Cancelled',
+    caption:
+      'You cancelled before your source loan was touched. Any liquidity reservation was released and your source position is unchanged. Nothing entered recovery.',
+    tone: 'neutral',
+  },
 };
 
 export const COMMAND_TYPE_LABELS: Record<CommandType, string> = {
@@ -119,6 +129,7 @@ export const COMMAND_TYPE_LABELS: Record<CommandType, string> = {
   SETTLE_LIQUIDITY: 'Settle with the solver',
   FINALIZE_NEAR_RECEIPT: 'Finalize the NEAR receipt',
   EXECUTE_RECOVERY: 'Execute recovery',
+  CANCEL_MIGRATION: 'Cancel and release the reservation',
 };
 
 export interface StatusLabel {
@@ -142,7 +153,8 @@ export const COMMAND_STATUS_LABELS: Record<CommandStatus, StatusLabel> = {
     tone: 'danger',
     caption: 'This command will not be retried.',
   },
-  CANCELLED: { label: 'Cancelled', tone: 'danger' },
+  // Cancelled with its migration, at the borrower's request. Not a failure.
+  CANCELLED: { label: 'Cancelled', tone: 'neutral' },
 };
 
 export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
@@ -163,9 +175,64 @@ export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
   LEDGER_RECONCILIATION: 'Ledger reconciled',
   NEAR_RECEIPT: 'NEAR receipt finalized',
   MIGRATION_EXPIRED: 'Authorization window expired',
+  MIGRATION_CANCELLATION_REQUESTED: 'Cancellation requested by the borrower',
+  MIGRATION_CANCELLED: 'Migration cancelled before source close',
   REQUOTE_REQUIRED: 'Feasibility failed before source close — requote required',
   RECOVERY_OPENED: 'Recovery opened',
   RECOVERY_COMPLETED: 'Recovery completed',
+};
+
+/*
+ * Recovery cases.
+ *
+ * A recovery case says who is responsible for the next step and what that step
+ * is. The wording here keeps two things apart that must not blur: a recovery
+ * the workflow runs by itself along the refund path the borrower signed, and
+ * one that has stopped for a person to reconcile.
+ */
+export const RECOVERY_POLICY_LABELS: Record<RecoveryPolicy, string> = {
+  RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE:
+    'Return the known collateral; the solver keeps its claim',
+  RETURN_VERIFIED_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE:
+    'Return the verified collateral; the solver keeps its claim',
+  MANUAL_CUSTODY_RECONCILIATION: 'A person reconciles where the collateral is held',
+  MANUAL_TARGET_AND_PAYOUT_RECONCILIATION: 'A person reconciles the new position and the payout',
+  MANUAL_SETTLEMENT_RECONCILIATION: 'A person reconciles the settlement',
+  MANUAL_RECOVERY_EXECUTION_RECONCILIATION: 'A person reconciles the recovery itself',
+  HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION:
+    'Halted until a person reconciles the on-chain state',
+};
+
+export const RECOVERY_ACTION_LABELS: Record<RecoveryNextPermittedAction, string> = {
+  EXECUTE_SIGNED_RECOVERY: 'Run the recovery you signed',
+  RECONCILE_TRANSPORT_CUSTODY: 'Reconcile transport custody',
+  RECONCILE_TARGET_AND_PAYOUT: 'Reconcile the new position and payout',
+  RECONCILE_SETTLEMENT: 'Reconcile the settlement',
+  RECONCILE_RECOVERY_EXECUTION: 'Reconcile the recovery execution',
+  RECONCILE_CANONICAL_STATE: 'Reconcile the on-chain state',
+};
+
+export const RECOVERY_ESCALATION_LABELS: Record<RecoveryEscalationState, StatusLabel> = {
+  AUTOMATED_RECOVERY_PENDING: {
+    label: 'Automated recovery pending',
+    tone: 'warning',
+    caption: 'The workflow runs this itself. No action from you.',
+  },
+  MANUAL_REVIEW_REQUIRED: {
+    label: 'Manual review required',
+    tone: 'danger',
+    caption: 'Stopped for an operator. Nothing moves until they reconcile it.',
+  },
+  RESOLVED_FAILED_SAFE: {
+    label: 'Resolved, stopped safely',
+    tone: 'neutral',
+    caption: 'Closed with custody and residual claims recorded.',
+  },
+};
+
+export const RECOVERY_STATUS_LABELS: Record<RecoveryCaseStatus, StatusLabel> = {
+  OPEN: { label: 'Open', tone: 'warning' },
+  RESOLVED_FAILED_SAFE: { label: 'Resolved, stopped safely', tone: 'neutral' },
 };
 
 export const VERIFICATION_STATE_LABELS: Record<EvidenceVerificationState, StatusLabel> = {

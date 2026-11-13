@@ -5,21 +5,29 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { debtShiftSchema, getMigrationDetails, type DebtShiftDatabase } from '@debtshift/database';
 import {
+  computeMigrationId,
+  computeRouteHash,
+  executionPlanSchema,
   getExecutionPlanTypedData,
   getRefinanceIntentTypedData,
+  hashExecutionPlan,
+  hashRefinanceIntent,
   parseDebtShiftEnvironment,
 } from '@debtshift/domain';
 import {
   DEFAULT_ANVIL_BORROWER_KEY,
   DEFAULT_ANVIL_DEPLOYER_KEY,
   deployLocalDebtShift,
+  loadFoundryArtifact,
   resolveAnvilPath,
   startAnvil,
+  write,
 } from '@debtshift/protocols';
 import { ConfigService } from '@nestjs/config';
 import { drizzle as createPgliteDrizzle } from 'drizzle-orm/pglite';
+import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DatabaseService } from './database.service.js';
 import { LocalMarketToolsService } from './simulator/local-market-tools.service.js';
@@ -84,15 +92,83 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
       const protocols = new LocalProtocolService(config);
       const marketTools = new LocalMarketToolsService(protocols, config);
       const routeAnalysis = new RouteAnalysisService(marketTools, config);
+      const transport = new TransportService();
+      const transportQuote = vi.spyOn(transport, 'getQuote');
       const preparation = new PreparationService(
         databaseService,
         protocols,
         marketTools,
         routeAnalysis,
-        new TransportService(),
+        transport,
         config,
       );
-      const prepared = await preparation.prepare({ borrower: deployment.borrower });
+      await expect(
+        preparation.prepare({ borrower: deployment.borrower }, deployment.deployer),
+      ).rejects.toThrow('Wallet session does not match the requested borrower.');
+
+      const [targetArtifact, sourceArtifact, vaultArtifact] = await Promise.all([
+        loadFoundryArtifact('MockTargetLending'),
+        loadFoundryArtifact('MockSourceLending'),
+        loadFoundryArtifact('LiquidityVault'),
+      ]);
+      const destinationWallet = createWalletClient({
+        account: privateKeyToAccount(DEFAULT_ANVIL_DEPLOYER_KEY),
+        chain: destination.chain,
+        transport: http(destination.rpcUrl),
+      });
+      await write(
+        destinationWallet,
+        destination.publicClient,
+        targetArtifact.abi,
+        deployment.destination.lending,
+        'setMarketState',
+        [2_000n * 10n ** 18n, 100, 500],
+      );
+      await expect(
+        preparation.prepare({ borrower: deployment.borrower }, deployment.borrower),
+      ).rejects.toThrow('No approved executable route satisfies the deterministic policy.');
+      expect(transportQuote).not.toHaveBeenCalled();
+      const [quotes, migrationRows, reservations, commands, sourcePosition, reservedUndrawn] =
+        await Promise.all([
+          database.select().from(debtShiftSchema.providerQuotes),
+          database.select().from(debtShiftSchema.migrations),
+          database.select().from(debtShiftSchema.liquidityReservations),
+          database.select().from(debtShiftSchema.commands),
+          source.publicClient.readContract({
+            address: deployment.source.lending,
+            abi: sourceArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+          source.publicClient.readContract({
+            address: deployment.source.vault,
+            abi: vaultArtifact.abi,
+            functionName: 'reservedUndrawn',
+            args: [deployment.source.debtToken],
+          }),
+        ]);
+      expect({ quotes, migrationRows, reservations, commands }).toEqual({
+        quotes: [],
+        migrationRows: [],
+        reservations: [],
+        commands: [],
+      });
+      expect(sourcePosition).toEqual([10_000_000_000_000_000_000n, 10_000_000_000n]);
+      expect(reservedUndrawn).toBe(0n);
+      await write(
+        destinationWallet,
+        destination.publicClient,
+        targetArtifact.abi,
+        deployment.destination.lending,
+        'setMarketState',
+        [2_000n * 10n ** 18n, 7_500, 500],
+      );
+
+      const prepared = await preparation.prepare(
+        { borrower: deployment.borrower },
+        deployment.borrower,
+      );
+      expect(transportQuote).toHaveBeenCalledOnce();
       const borrower = privateKeyToAccount(DEFAULT_ANVIL_BORROWER_KEY);
       const [intentSignature, planSignature] = await Promise.all([
         borrower.signTypedData(
@@ -128,18 +204,115 @@ describe.skipIf(!ANVIL_AVAILABLE)('signed migration API flow', () => {
           MAINNET_EXECUTION_ENABLED: false,
         }),
       );
-      await expect(lockedMainnet.execute(request)).rejects.toThrow(
+      await expect(lockedMainnet.execute(request, deployment.borrower)).rejects.toThrow(
         'Mainnet execution is disabled by MAINNET_EXECUTION_ENABLED=false.',
       );
       const migrations = new MigrationsService(databaseService, protocols, marketTools, config);
-      const created = await migrations.execute(request);
+      await expect(migrations.execute(request, deployment.deployer)).rejects.toThrow(
+        'Wallet session does not match the signed borrower.',
+      );
+
+      const zeroSlippageIntent = {
+        ...prepared.intent,
+        maxSlippageBps: 0,
+      };
+      const zeroSlippageIntentHash = hashRefinanceIntent(
+        zeroSlippageIntent,
+        prepared.verifyingContract,
+      );
+      const zeroSlippagePlan = executionPlanSchema.parse({
+        ...prepared.plan,
+        intentHash: zeroSlippageIntentHash,
+        migrationId: computeMigrationId(
+          zeroSlippageIntentHash,
+          prepared.quote.quoteHash,
+          BigInt(prepared.plan.nonce),
+        ),
+        routeHash: computeRouteHash(prepared.plan),
+      });
+      const [zeroSlippageIntentSignature, zeroSlippagePlanSignature] = await Promise.all([
+        borrower.signTypedData(
+          getRefinanceIntentTypedData(zeroSlippageIntent, prepared.verifyingContract),
+        ),
+        borrower.signTypedData(
+          getExecutionPlanTypedData(zeroSlippagePlan, prepared.verifyingContract),
+        ),
+      ]);
+      const zeroSlippageRequest = {
+        ...request,
+        signedIntent: {
+          intent: zeroSlippageIntent,
+          intentHash: zeroSlippageIntentHash,
+          signature: zeroSlippageIntentSignature,
+        },
+        signedPlan: {
+          plan: zeroSlippagePlan,
+          planHash: hashExecutionPlan(zeroSlippagePlan, prepared.verifyingContract),
+          signature: zeroSlippagePlanSignature,
+        },
+      };
+      await expect(migrations.execute(zeroSlippageRequest, deployment.borrower)).rejects.toThrow(
+        'Transport quote exceeds the signed slippage cap.',
+      );
+      const [rejectedMigrations, rejectedReservations, rejectedCommands] = await Promise.all([
+        database.select().from(debtShiftSchema.migrations),
+        database.select().from(debtShiftSchema.liquidityReservations),
+        database.select().from(debtShiftSchema.commands),
+      ]);
+      expect({ rejectedMigrations, rejectedReservations, rejectedCommands }).toEqual({
+        rejectedMigrations: [],
+        rejectedReservations: [],
+        rejectedCommands: [],
+      });
+
+      const created = await migrations.execute(request, deployment.borrower);
       expect(created.created).toBe(true);
 
-      const repeated = await migrations.execute(request);
+      const repeated = await migrations.execute(request, deployment.borrower);
       expect(repeated).toEqual({ created: false, migrationId: created.migrationId });
       const details = await getMigrationDetails(database, created.migrationId);
       expect(details?.migration.phase).toBe('AUTHORIZED');
       expect(details?.commands[0]?.type).toBe('RESERVE_LIQUIDITY');
+      await expect(migrations.getIntent(prepared.intentHash, deployment.borrower)).resolves.toEqual(
+        request.signedIntent,
+      );
+      await expect(migrations.getPlan(prepared.planHash, deployment.borrower)).resolves.toEqual(
+        request.signedPlan,
+      );
+      await expect(migrations.getIntent(prepared.intentHash, deployment.deployer)).rejects.toThrow(
+        'Intent not found.',
+      );
+      await expect(migrations.getPlan(prepared.planHash, deployment.deployer)).rejects.toThrow(
+        'Execution plan not found.',
+      );
+      await postgres.exec(`
+        UPDATE commands SET status = 'RUNNING'
+        WHERE migration_id = '${created.migrationId}'
+      `);
+      await expect(migrations.cancel(created.migrationId, deployment.borrower)).rejects.toThrow(
+        'cannot race a running financial command',
+      );
+      await postgres.exec(`
+        UPDATE commands SET status = 'PENDING'
+        WHERE migration_id = '${created.migrationId}'
+      `);
+      await expect(migrations.cancel(created.migrationId, deployment.borrower)).resolves.toEqual({
+        migrationId: created.migrationId,
+        phase: 'CANCELLED',
+        cancellationRequested: true,
+      });
+      await expect(migrations.cancel(created.migrationId, deployment.borrower)).resolves.toEqual({
+        migrationId: created.migrationId,
+        phase: 'CANCELLED',
+        cancellationRequested: true,
+      });
+      const cancelled = await getMigrationDetails(database, created.migrationId);
+      expect(cancelled?.migration.phase).toBe('CANCELLED');
+      expect(cancelled?.commands[0]?.status).toBe('CANCELLED');
+      expect(cancelled?.reservations[0]?.status).toBe('RELEASED');
+      expect(cancelled?.evidence.map(({ type }) => type)).toContain(
+        'MIGRATION_CANCELLATION_REQUESTED',
+      );
       expect(prepared.execution).toMatchObject({
         mode: 'sandbox',
         transportMode: 'SIMULATED',

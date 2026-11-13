@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { request as requestHttps } from 'node:https';
 
 import { hashCanonicalText } from '@debtshift/domain';
-import type { RouteComparison, RouteEvaluation } from '@debtshift/optimizer';
+import type { RouteComparison } from '@debtshift/optimizer';
 import { z } from 'zod';
 
 import {
@@ -58,6 +58,15 @@ export interface ExplainedRoute {
   readonly fallbackUsed: boolean;
   readonly explanation: RouteExplanation;
 }
+
+export const explainedRouteSchema = z
+  .object({
+    decisionHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+    provider: z.enum(['DETERMINISTIC', 'LOCAL_AI', 'USER_API']),
+    fallbackUsed: z.boolean(),
+    explanation: explanationSchema,
+  })
+  .strict();
 
 export interface ExplanationServiceOptions {
   readonly allowCustomEndpoints?: boolean;
@@ -269,13 +278,89 @@ async function parsePinnedResponse(
   return JSON.parse(Buffer.concat(chunks, length).toString('utf8'));
 }
 
-interface ExplanationPayload {
-  readonly selectedCandidateId?: string;
-  readonly candidate: Pick<
-    RouteEvaluation,
-    'candidateId' | 'eligible' | 'economics' | 'safety' | 'financing' | 'rejections' | 'provenance'
-  >;
-}
+const signedIntegerTextSchema = z.string().regex(/^-?(0|[1-9][0-9]*)$/);
+const unsignedIntegerTextSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
+
+export const explanationPayloadSchema = z
+  .object({
+    selectedCandidateId: z.string().trim().min(1).max(256).optional(),
+    candidate: z
+      .object({
+        candidateId: z.string().trim().min(1).max(256),
+        eligible: z.boolean(),
+        economics: z
+          .object({
+            sourceAprBps: z.number().int(),
+            targetAprAfterBps: z.number().int(),
+            aprReductionBps: z.number().int(),
+            stressTargetAprBps: z.number().int(),
+            allInCostUsdMicro: unsignedIntegerTextSchema,
+            netBenefitUsdMicro: signedIntegerTextSchema,
+            stressNetBenefitUsdMicro: signedIntegerTextSchema,
+            breakEvenSeconds: unsignedIntegerTextSchema.optional(),
+          })
+          .strict(),
+        safety: z.discriminatedUnion('kind', [
+          z
+            .object({
+              kind: z.literal('MAX_LTV_BPS'),
+              postLtvBps: z.number().int(),
+              stressLtvBps: z.number().int(),
+              maximumLtvBps: z.number().int(),
+              stressMaximumLtvBps: z.number().int(),
+            })
+            .strict(),
+          z
+            .object({
+              kind: z.literal('MIN_HEALTH_FACTOR_WAD'),
+              postHealthFactorWad: unsignedIntegerTextSchema,
+              stressHealthFactorWad: unsignedIntegerTextSchema,
+              minimumWad: unsignedIntegerTextSchema,
+              stressMinimumWad: unsignedIntegerTextSchema,
+              riskLimitBps: z.number().int().optional(),
+            })
+            .strict(),
+        ]),
+        financing: z
+          .object({
+            settlementAsset: z
+              .object({
+                decimals: z.number().int().min(0).max(255),
+                symbol: z.string().trim().min(1).max(32).optional(),
+              })
+              .strict(),
+            solverPrincipalUnits: unsignedIntegerTextSchema,
+            solverFeeUnits: unsignedIntegerTextSchema,
+            totalRequiredRepaymentAndFinancedCostUnits: unsignedIntegerTextSchema,
+            confirmedExternalFundingUnits: unsignedIntegerTextSchema,
+            maximumSafeBorrowingCapacityUnits: unsignedIntegerTextSchema,
+            requiredDestinationBorrowUnits: unsignedIntegerTextSchema,
+            fundingShortfallUnits: unsignedIntegerTextSchema,
+          })
+          .strict(),
+        rejections: z
+          .array(
+            z
+              .object({
+                code: z.string().trim().min(1).max(128),
+                message: z.string().trim().min(1).max(1_000),
+              })
+              .strict(),
+          )
+          .max(64),
+        provenance: z
+          .object({
+            marketBlockNumber: unsignedIntegerTextSchema,
+            oracleUpdatedAt: z.iso.datetime({ offset: true }),
+            evaluatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type ExplanationPayload = z.infer<typeof explanationPayloadSchema>;
 
 function createExplanationPayload(comparison: RouteComparison): ExplanationPayload {
   const selected =
@@ -283,20 +368,69 @@ function createExplanationPayload(comparison: RouteComparison): ExplanationPaylo
       (evaluation) => evaluation.candidateId === comparison.selectedCandidateId,
     ) ?? comparison.evaluations[0];
   if (selected === undefined) throw new Error('A route comparison has no candidate to explain.');
-  return {
+  const safety =
+    selected.safety.kind === 'MAX_LTV_BPS'
+      ? {
+          kind: selected.safety.kind,
+          postLtvBps: selected.safety.postLtvBps,
+          stressLtvBps: selected.safety.stressLtvBps,
+          maximumLtvBps: selected.safety.maximumLtvBps,
+          stressMaximumLtvBps: selected.safety.stressMaximumLtvBps,
+        }
+      : {
+          kind: selected.safety.kind,
+          postHealthFactorWad: selected.safety.postHealthFactorWad,
+          stressHealthFactorWad: selected.safety.stressHealthFactorWad,
+          minimumWad: selected.safety.minimumWad,
+          stressMinimumWad: selected.safety.stressMinimumWad,
+          ...(selected.safety.riskLimitBps === undefined
+            ? {}
+            : { riskLimitBps: selected.safety.riskLimitBps }),
+        };
+  return explanationPayloadSchema.parse({
     ...(comparison.selectedCandidateId === undefined
       ? {}
       : { selectedCandidateId: comparison.selectedCandidateId }),
     candidate: {
       candidateId: selected.candidateId,
       eligible: selected.eligible,
-      economics: selected.economics,
-      safety: selected.safety,
-      financing: selected.financing,
-      rejections: selected.rejections,
-      provenance: selected.provenance,
+      economics: {
+        sourceAprBps: selected.economics.sourceAprBps,
+        targetAprAfterBps: selected.economics.targetAprAfterBps,
+        aprReductionBps: selected.economics.aprReductionBps,
+        stressTargetAprBps: selected.economics.stressTargetAprBps,
+        allInCostUsdMicro: selected.economics.allInCostUsdMicro,
+        netBenefitUsdMicro: selected.economics.netBenefitUsdMicro,
+        stressNetBenefitUsdMicro: selected.economics.stressNetBenefitUsdMicro,
+        ...(selected.economics.breakEvenSeconds === undefined
+          ? {}
+          : { breakEvenSeconds: selected.economics.breakEvenSeconds }),
+      },
+      safety,
+      financing: {
+        settlementAsset: {
+          decimals: selected.financing.settlementAsset.decimals,
+          ...(selected.financing.settlementAsset.symbol === undefined
+            ? {}
+            : { symbol: selected.financing.settlementAsset.symbol }),
+        },
+        solverPrincipalUnits: selected.financing.solverPrincipalUnits,
+        solverFeeUnits: selected.financing.solverFeeUnits,
+        totalRequiredRepaymentAndFinancedCostUnits:
+          selected.financing.totalRequiredRepaymentAndFinancedCostUnits,
+        confirmedExternalFundingUnits: selected.financing.confirmedExternalFundingUnits,
+        maximumSafeBorrowingCapacityUnits: selected.financing.maximumSafeBorrowingCapacityUnits,
+        requiredDestinationBorrowUnits: selected.financing.requiredDestinationBorrowUnits,
+        fundingShortfallUnits: selected.financing.fundingShortfallUnits,
+      },
+      rejections: selected.rejections.map(({ code, message }) => ({ code, message })),
+      provenance: {
+        marketBlockNumber: selected.provenance.marketBlockNumber,
+        oracleUpdatedAt: selected.provenance.oracleUpdatedAt,
+        evaluatedAt: selected.provenance.evaluatedAt,
+      },
     },
-  };
+  });
 }
 
 function deterministicExplanation(payload: ExplanationPayload): RouteExplanation {

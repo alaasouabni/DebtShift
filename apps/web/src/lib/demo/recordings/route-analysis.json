@@ -7,7 +7,7 @@
     "analyses": [
       {
         "sourcePosition": {
-          "snapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+          "snapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
           "position": {
             "market": {
               "chainId": 31337,
@@ -37,9 +37,9 @@
           },
           "borrowAprBps": 700,
           "block": {
-            "number": "295",
-            "hash": "0x906aeab7b9e1e059a051687877356e3dd104d0e38f5d31ec0f224c46ef42d713",
-            "observedAt": "2026-11-13T02:07:38.000Z"
+            "number": "121",
+            "hash": "0x7dd5b115748b2457014bb41ba42cf0e0b41d90e1f167715ceb0e041dc81aa0c5",
+            "observedAt": "2026-11-13T14:32:27.000Z"
           }
         },
         "comparison": {
@@ -49,6 +49,7 @@
             {
               "candidateId": "local-morpho-balanced",
               "eligible": true,
+              "rank": 1,
               "scoreUsdMicro": "13287671",
               "economics": {
                 "sourceAprBps": 700,
@@ -84,7 +85,7 @@
                 },
                 "sourceDebtPayoffAssetUnits": "10010000000",
                 "sourceDebtPayoffUnits": "10010000000",
-                "sourceConversionQuoteHash": "0x5be0670eaddb4da7a974631a5c7040181161a6b2ab31a956031bb15b2302baac",
+                "sourceConversionQuoteHash": "0x8cbc79190e781636335107fd60d7cc7855ac6823853e54b0eebe64751b7b52b7",
                 "borrowerDebtPrepaymentUnits": "0",
                 "solverAdvancedCostUnits": "0",
                 "solverPrincipalUnits": "10010000000",
@@ -177,15 +178,14 @@
               },
               "rejections": [],
               "provenance": {
-                "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
-                "marketSnapshotId": "0x5713495579ca987c682a6d6a8494dc4334a3f5424ddf0eda4e0610098bcbea3a",
-                "marketBlockNumber": "294",
-                "marketBlockHash": "0xed116e9b37083012d0f86f5ffc4ba4b4ea3bbea17618b7009393a8af699c8c8c",
-                "oracleUpdatedAt": "2026-11-13T02:07:37.000Z",
-                "evaluatedAt": "2026-11-13T02:07:38.500Z",
+                "sourceSnapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
+                "marketSnapshotId": "0x641c5c0f7b29f7c4786bf4e518fc6613a2b73fe072bdf3f32ea0b9ff387e29d8",
+                "marketBlockNumber": "121",
+                "marketBlockHash": "0x9cc80e3acf97645ca24498914ff7c6512b5b0da289b738d1cb740df46abfc76e",
+                "oracleUpdatedAt": "2026-11-13T14:32:28.000Z",
+                "evaluatedAt": "2026-11-13T14:32:28.139Z",
                 "rateProjection": "local-target-read-plus-bounded-impact-v1"
-              },
-              "rank": 1
+              }
             },
             {
               "candidateId": "local-morpho-low-liquidity",
@@ -225,7 +225,7 @@
                 },
                 "sourceDebtPayoffAssetUnits": "10010000000",
                 "sourceDebtPayoffUnits": "10010000000",
-                "sourceConversionQuoteHash": "0xdce5f01ed87c7d330d55c267a992abe0d924fd21bd15c363453b1e61d8afc83b",
+                "sourceConversionQuoteHash": "0x88d435760e0e16bff9de7c1101992b0c1fdd46e09212c73dbbb0643869c23efa",
                 "borrowerDebtPrepaymentUnits": "0",
                 "solverAdvancedCostUnits": "0",
                 "solverPrincipalUnits": "10010000000",
@@ -340,12 +340,12 @@
                 }
               ],
               "provenance": {
-                "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
-                "marketSnapshotId": "0xe6fd917ab36a7e17445839ecefbaf53cf1a56ea1d431feff2b34bc99660dda19",
-                "marketBlockNumber": "294",
-                "marketBlockHash": "0xed116e9b37083012d0f86f5ffc4ba4b4ea3bbea17618b7009393a8af699c8c8c",
-                "oracleUpdatedAt": "2026-11-13T02:07:37.000Z",
-                "evaluatedAt": "2026-11-13T02:07:38.500Z",
+                "sourceSnapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
+                "marketSnapshotId": "0xed3ad1b80e15219e7328de43a059b76f2c0ab1be657a7760d6322caf2dd84713",
+                "marketBlockNumber": "121",
+                "marketBlockHash": "0x9cc80e3acf97645ca24498914ff7c6512b5b0da289b738d1cb740df46abfc76e",
+                "oracleUpdatedAt": "2026-11-13T14:32:28.000Z",
+                "evaluatedAt": "2026-11-13T14:32:28.139Z",
                 "rateProjection": "local-constrained-market-impact-v1"
               }
             }
@@ -356,9 +356,9 @@
   },
   "explanations": [
     {
-      "sourceSnapshotId": "0x982361541e3d0f1c9fce67fba89cdb82c3a5b4ce6671454d7c89fa31f3b12c3e",
+      "sourceSnapshotId": "0x8162021729093f39dd1bf42bca150ab89a59ec5dca0f31fcc72c71431530dd4e",
       "result": {
-        "decisionHash": "0x51c01dd79dd5deaf6ae2f19503c8ffd52ae975fbfd820cfce5051a5b34b90706",
+        "decisionHash": "0xb57a774e8ec5cd2a7c470c8a44ab3b27f9e1a6472bda054f12a6feec2502dc3b",
         "provider": "DETERMINISTIC",
         "fallbackUsed": false,
         "explanation": {
@@ -370,7 +370,7 @@
           ],
           "breakEvenExplanation": "At unchanged projected rates, one-time costs break even after about 146.0 days.",
           "safetyExplanation": "Projected LTV is 50.81% and stressed LTV is 56.46%. Required destination borrowing is 10060 dUSDC, maximum safe capacity is 10060 dUSDC, and the confirmed funding shortfall is 0 dUSDC.",
-          "dataFreshnessWarning": "Market block 294 and oracle update 2026-11-13T02:07:37.000Z were evaluated at 2026-11-13T02:07:38.500Z; execution must re-read critical state.",
+          "dataFreshnessWarning": "Market block 121 and oracle update 2026-11-13T14:32:28.000Z were evaluated at 2026-11-13T14:32:28.139Z; execution must re-read critical state.",
           "reviewAndSignStatement": "Review every amount, market, receiver, fee cap, deadline, and risk limit before signing. This explanation cannot authorize execution."
         }
       }

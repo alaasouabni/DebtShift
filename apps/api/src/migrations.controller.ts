@@ -1,10 +1,67 @@
-import { Body, Controller, Get, Inject, Param, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Sse,
+  UseGuards,
+  type MessageEvent,
+} from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiCookieAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiHeader,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiProduces,
+  ApiQuery,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import type { Observable } from 'rxjs';
+import { getAddress } from 'viem';
 
+import { SESSION_COOKIE_NAME, type AuthenticatedWalletSession } from './authentication.service.js';
+import {
+  bytes32ContractSchema,
+  cancellationResponseSchema,
+  errorResponseSchema,
+  evmAddressContractSchema,
+  executeMigrationRequestSchema,
+  executeMigrationResponseSchema,
+  marketListResponseSchema,
+  migrationDetailsResponseSchema,
+  migrationEvidenceResponseSchema,
+  migrationEventsResponseSchema,
+  persistedPositionListResponseSchema,
+  positionSnapshotListResponseSchema,
+  preparationRequestSchema,
+  preparationResponseSchema,
+  signedIntentResponseSchema,
+  signedPlanResponseSchema,
+  toOpenApiSchema,
+} from './http-contracts.js';
 import { MigrationsService } from './migrations.service.js';
 import { PreparationService } from './preparation.service.js';
+import { assertSessionWallet, CurrentSession, SessionGuard } from './session.guard.js';
 
 @ApiTags('migrations')
+@ApiCookieAuth(SESSION_COOKIE_NAME)
+@ApiUnauthorizedResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+@UseGuards(SessionGuard)
 @Controller()
 export class MigrationsController {
   constructor(
@@ -14,49 +71,205 @@ export class MigrationsController {
 
   @Get('positions/:wallet')
   @ApiOperation({ summary: 'List persisted lending positions for a wallet' })
-  async listPositions(@Param('wallet') wallet: string) {
-    return [await this.preparation.getPosition(wallet)];
+  @ApiParam({ name: 'wallet', schema: toOpenApiSchema(evmAddressContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(positionSnapshotListResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  async listPositions(
+    @Param('wallet') wallet: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    const walletAddress = parseWalletAddress(wallet);
+    assertSessionWallet(session, walletAddress);
+    return [await this.preparation.getPosition(walletAddress)];
   }
 
   @Get('positions/:wallet/history')
   @ApiOperation({ summary: 'List persisted source position history for a wallet' })
-  listPersistedPositions(@Param('wallet') wallet: string) {
-    return this.migrations.listPositions(wallet);
+  @ApiParam({ name: 'wallet', schema: toOpenApiSchema(evmAddressContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(persistedPositionListResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  listPersistedPositions(
+    @Param('wallet') wallet: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    const walletAddress = parseWalletAddress(wallet);
+    assertSessionWallet(session, walletAddress);
+    return this.migrations.listPositions(walletAddress);
   }
 
   @Get('markets')
   @ApiOperation({ summary: 'List enabled destination and source markets' })
+  @ApiOkResponse({ schema: toOpenApiSchema(marketListResponseSchema) })
   listMarkets() {
     return this.migrations.listMarkets();
   }
 
   @Post('migrations/execute')
   @ApiOperation({ summary: 'Validate authorizations and durably start a migration' })
-  execute(@Body() body: unknown) {
-    return this.migrations.execute(body);
+  @ApiBody({ schema: toOpenApiSchema(executeMigrationRequestSchema) })
+  @ApiCreatedResponse({ schema: toOpenApiSchema(executeMigrationResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  execute(@Body() body: unknown, @CurrentSession() session: AuthenticatedWalletSession) {
+    return this.migrations.execute(body, session.walletAddress);
   }
 
   @Post('migrations/prepare')
   @ApiOperation({ summary: 'Prepare an exact local route for borrower EIP-712 review' })
-  prepare(@Body() body: unknown) {
-    return this.preparation.prepare(body);
+  @ApiBody({ schema: toOpenApiSchema(preparationRequestSchema) })
+  @ApiCreatedResponse({ schema: toOpenApiSchema(preparationResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiForbiddenResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  prepare(@Body() body: unknown, @CurrentSession() session: AuthenticatedWalletSession) {
+    return this.preparation.prepare(body, session.walletAddress);
+  }
+
+  @Get('intents/:intentHash')
+  @ApiOperation({ summary: 'Read one persisted signed refinance intent' })
+  @ApiParam({ name: 'intentHash', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(signedIntentResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  getIntent(
+    @Param('intentHash') intentHash: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.getIntent(
+      parseBytes32(intentHash, 'Intent hash'),
+      session.walletAddress,
+    );
+  }
+
+  @Get('plans/:planHash')
+  @ApiOperation({ summary: 'Read one persisted signed execution plan' })
+  @ApiParam({ name: 'planHash', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(signedPlanResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  getPlan(
+    @Param('planHash') planHash: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.getPlan(parseBytes32(planHash, 'Plan hash'), session.walletAddress);
+  }
+
+  @Post('migrations/:migrationId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel safely before source closure' })
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(cancellationResponseSchema) })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiConflictResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  cancel(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.cancel(parseBytes32(migrationId, 'Migration ID'), session.walletAddress);
   }
 
   @Get('migrations/:migrationId')
   @ApiOperation({ summary: 'Read migration state, evidence, events, commands, and ledger' })
-  getMigration(@Param('migrationId') migrationId: string) {
-    return this.migrations.getMigration(migrationId);
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(migrationDetailsResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  getMigration(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return this.migrations.getMigration(migrationId, session.walletAddress);
   }
 
   @Get('migrations/:migrationId/events')
   @ApiOperation({ summary: 'Read authoritative migration event history' })
-  async getEvents(@Param('migrationId') migrationId: string) {
-    return (await this.migrations.getMigration(migrationId)).events;
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(migrationEventsResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  async getEvents(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return (await this.migrations.getMigration(migrationId, session.walletAddress)).events;
+  }
+
+  @Sse('migrations/:migrationId/stream')
+  @ApiOperation({ summary: 'Stream cursor-resumable authoritative migration events' })
+  @ApiProduces('text/event-stream')
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiQuery({
+    name: 'after',
+    required: false,
+    schema: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' },
+  })
+  @ApiHeader({
+    name: 'Last-Event-ID',
+    required: false,
+    schema: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' },
+  })
+  @ApiOkResponse({
+    content: { 'text/event-stream': { schema: { type: 'string' } } },
+  })
+  @ApiBadRequestResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  streamEvents(
+    @Param('migrationId') migrationId: string,
+    @Query('after') after: string | undefined,
+    @Headers('last-event-id') lastEventId: string | undefined,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ): Promise<Observable<MessageEvent>> {
+    return this.migrations.streamMigrationEvents(
+      migrationId,
+      parseMigrationEventCursor(after, lastEventId),
+      session.walletAddress,
+    );
   }
 
   @Get('migrations/:migrationId/evidence')
   @ApiOperation({ summary: 'Read normalized migration evidence' })
-  async getEvidence(@Param('migrationId') migrationId: string) {
-    return (await this.migrations.getMigration(migrationId)).evidence;
+  @ApiParam({ name: 'migrationId', schema: toOpenApiSchema(bytes32ContractSchema) })
+  @ApiOkResponse({ schema: toOpenApiSchema(migrationEvidenceResponseSchema) })
+  @ApiNotFoundResponse({ schema: toOpenApiSchema(errorResponseSchema) })
+  async getEvidence(
+    @Param('migrationId') migrationId: string,
+    @CurrentSession() session: AuthenticatedWalletSession,
+  ) {
+    return (await this.migrations.getMigration(migrationId, session.walletAddress)).evidence;
   }
+}
+
+function parseWalletAddress(wallet: string) {
+  try {
+    return getAddress(wallet);
+  } catch {
+    throw new BadRequestException('Wallet route parameter must be a valid EVM address.');
+  }
+}
+
+function parseBytes32(value: string, label: string): string {
+  const parsed = bytes32ContractSchema.safeParse(value);
+  if (!parsed.success) throw new BadRequestException(`${label} must be a bytes32 value.`);
+  return parsed.data.toLowerCase();
+}
+
+export function parseMigrationEventCursor(
+  queryCursor: string | undefined,
+  lastEventId: string | undefined,
+): number {
+  const values = [queryCursor, lastEventId].filter(
+    (value): value is string => value !== undefined && value.length > 0,
+  );
+  if (values.length === 0) return 0;
+  const parsed = values.map((value) => {
+    if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+      throw new BadRequestException('Migration event cursor must be a non-negative integer.');
+    }
+    const cursor = Number(value);
+    if (!Number.isSafeInteger(cursor) || cursor > 2_147_483_647) {
+      throw new BadRequestException('Migration event cursor is outside the supported range.');
+    }
+    return cursor;
+  });
+  return Math.max(...parsed);
 }

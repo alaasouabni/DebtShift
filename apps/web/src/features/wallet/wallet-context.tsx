@@ -12,9 +12,22 @@
  * change. The authorization flow watches it and throws away any prepared
  * payload and signature when it moves, so a signature can never be submitted
  * against an account the user has since left.
+ *
+ * And it owns the borrower session. Connecting a wallet only tells the app an
+ * address; the API answers nothing about that address until its owner signs a
+ * one-time login message. That signature proves control of the wallet for API
+ * access and authorizes nothing else. The session itself is an HttpOnly
+ * cookie: this module learns whether one exists, never what it is.
  */
 
-import { getTypesForEIP712Domain, serializeTypedData, type TypedDataDomain } from 'viem';
+import {
+  getTypesForEIP712Domain,
+  isAddressEqual,
+  serializeTypedData,
+  stringToHex,
+  type Address,
+  type TypedDataDomain,
+} from 'viem';
 import {
   createContext,
   useCallback,
@@ -26,6 +39,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { ApiError, api, onSessionLost } from '../../lib/api/client';
 import { chainName } from '../../lib/chains';
 import { DEMO_ACCOUNT, DEMO_CHAIN_ID, isDemoActive, startDemo, stopDemo } from '../../lib/demo';
 
@@ -34,6 +48,35 @@ export const DEMO_SIGNATURE = `0x${'de'.repeat(65)}`;
 
 export type WalletStatus =
   'initialising' | 'unavailable' | 'disconnected' | 'connecting' | 'connected' | 'rejected';
+
+/**
+ * Where the borrower session stands.
+ *
+ *   unknown      not asked yet (no wallet connected, or still starting up)
+ *   checking     asking the API whether this browser already has a session
+ *   none         no session for the connected account: a sign-in is needed
+ *   signing      a sign-in is in progress in the wallet
+ *   active       the API recognises the connected account
+ *   unreachable  the API could not be asked; nothing is known either way
+ */
+export type SessionStatus = 'unknown' | 'checking' | 'none' | 'signing' | 'active' | 'unreachable';
+
+export interface SessionState {
+  readonly status: SessionStatus;
+  /** When the active session ends, as the API reported it. */
+  readonly expiresAt?: string | undefined;
+  /** Why there is no session, when there is something to say. */
+  readonly notice?: string | undefined;
+}
+
+function sameAccount(left: string | undefined, right: string | undefined): boolean {
+  if (left === undefined || right === undefined) return false;
+  try {
+    return isAddressEqual(left as Address, right as Address);
+  } catch {
+    return false;
+  }
+}
 
 interface Eip1193Provider {
   request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
@@ -50,6 +93,16 @@ export interface WalletState {
   readonly error?: string | undefined;
   connect(): Promise<void>;
   disconnect(): void;
+  /** The borrower session for the connected account. */
+  readonly session: SessionState;
+  /**
+   * Prove control of the connected wallet to the API: fetch a one-time
+   * message, have the wallet sign it exactly as issued, and exchange the
+   * signature for a session. Only ever called from a user action.
+   */
+  signIn(): Promise<void>;
+  /** Ask the API again whether a session exists. */
+  recheckSession(): void;
   /** Ask the wallet to move to `chainId`. Only ever called from a user action. */
   requestChain(chainId: number): Promise<void>;
   /** Sign EIP-712 typed data. Returns the signature; throws on rejection. */
@@ -113,6 +166,14 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
   const [error, setError] = useState<string | undefined>(undefined);
   const providerRef = useRef<Eip1193Provider | undefined>(undefined);
   const [isDemo, setIsDemo] = useState(false);
+  const [session, setSession] = useState<SessionState>({ status: 'unknown' });
+  const [sessionTick, setSessionTick] = useState(0);
+  // True while a sign-in is in flight. Signing in can switch the wallet's
+  // network, which moves `accountEpoch`; the session check below must not
+  // overwrite the sign-in's own outcome when that happens.
+  const signingRef = useRef(false);
+  const sessionRef = useRef<SessionState>(session);
+  sessionRef.current = session;
 
   useEffect(() => {
     const provider = readProvider();
@@ -190,6 +251,173 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
     };
   }, []);
 
+  /*
+   * Whether this browser already has a session for the connected account.
+   *
+   * Asked whenever the account can have changed. A session for another
+   * account is not a session for this one: the screens behind it would be
+   * refused, so it counts as none.
+   */
+  useEffect(() => {
+    if (isDemo) {
+      setSession({ status: 'active' });
+      return;
+    }
+    if (status !== 'connected' || account === undefined) {
+      setSession({ status: 'unknown' });
+      return;
+    }
+    if (signingRef.current) return;
+
+    let cancelled = false;
+    setSession((previous) =>
+      // A re-check of an account that is already signed in keeps the screens
+      // mounted; only a first check shows the waiting state.
+      previous.status === 'active' ? previous : { status: 'checking' },
+    );
+    void (async () => {
+      try {
+        const current = await api.session();
+        if (cancelled || signingRef.current) return;
+        if (current !== undefined && sameAccount(current.wallet, account)) {
+          setSession({ status: 'active', expiresAt: current.expiresAt });
+        } else {
+          setSession({ status: 'none' });
+        }
+      } catch (caught) {
+        if (cancelled || signingRef.current) return;
+        setSession({
+          status: 'unreachable',
+          notice:
+            caught instanceof ApiError
+              ? caught.message
+              : 'The API could not be asked whether you are signed in.',
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemo, status, account, accountEpoch, sessionTick]);
+
+  // A borrower route refused the session: it expired, was revoked, or belongs
+  // to another account. Ask for a new proof rather than leaving every screen
+  // to fail on its own.
+  useEffect(
+    () =>
+      onSessionLost((reason) => {
+        if (signingRef.current) return;
+        if (sessionRef.current.status !== 'active') return;
+        setSession({
+          status: 'none',
+          notice:
+            reason === 'mismatch'
+              ? 'Your session belongs to a different account. Sign in with this one.'
+              : 'Your session ended. Sign in again to continue.',
+        });
+      }),
+    [],
+  );
+
+  const recheckSession = useCallback(() => setSessionTick((value) => value + 1), []);
+
+  const signIn = useCallback(async () => {
+    if (isDemoActive()) return;
+    const provider = providerRef.current;
+    if (provider === undefined || account === undefined) {
+      setSession({ status: 'none', notice: 'Connect a wallet first.' });
+      return;
+    }
+    if (signingRef.current) return;
+    signingRef.current = true;
+    setSession({ status: 'signing' });
+    try {
+      const challenge = await api.authChallenge(account);
+
+      // The message must be the one issued for this account. Anything else is
+      // not signed.
+      if (
+        !sameAccount(challenge.wallet, account) ||
+        typeof challenge.message !== 'string' ||
+        !challenge.message.toLowerCase().includes(account.toLowerCase())
+      ) {
+        setSession({
+          status: 'none',
+          notice: 'The API issued a login message for a different account. Nothing was signed.',
+        });
+        return;
+      }
+
+      // The login message names the chain the session is bound to, so the
+      // wallet is asked to be on it first. This runs inside the user's click.
+      const walletChain = Number.parseInt(
+        (await provider.request({ method: 'eth_chainId' })) as string,
+        16,
+      );
+      if (walletChain !== challenge.chainId) {
+        try {
+          await provider.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: `0x${challenge.chainId.toString(16)}` }],
+          });
+        } catch (caught) {
+          setSession({
+            status: 'none',
+            notice: isUserRejection(caught)
+              ? 'You declined the network switch. Nothing was signed.'
+              : `Signing in needs your wallet on ${chainName(challenge.chainId)} (chain ${String(challenge.chainId)}). Add or select it in your wallet, then try again.`,
+          });
+          return;
+        }
+      }
+
+      let signature: string;
+      try {
+        signature = (await provider.request({
+          method: 'personal_sign',
+          params: [stringToHex(challenge.message), account],
+        })) as string;
+      } catch (caught) {
+        setSession({
+          status: 'none',
+          notice: isUserRejection(caught)
+            ? 'You declined the sign-in request. Nothing was signed.'
+            : describe(caught, 'The wallet could not sign the login message.'),
+        });
+        return;
+      }
+      if (typeof signature !== 'string' || !/^0x(?:[0-9a-fA-F]{2})+$/.test(signature)) {
+        setSession({
+          status: 'none',
+          notice: 'The wallet returned a signature this app cannot use.',
+        });
+        return;
+      }
+
+      const opened = await api.authVerify(challenge.challengeId, signature);
+      if (!sameAccount(opened.wallet, account)) {
+        setSession({
+          status: 'none',
+          notice: 'The API opened a session for a different account. Sign in again.',
+        });
+        return;
+      }
+      setSession({ status: 'active', expiresAt: opened.expiresAt });
+    } catch (caught) {
+      const unreachable =
+        caught instanceof ApiError && (caught.code === 'NETWORK' || caught.code === 'TIMEOUT');
+      setSession({
+        status: unreachable ? 'unreachable' : 'none',
+        notice:
+          caught instanceof ApiError
+            ? caught.message
+            : describe(caught, 'Signing in did not complete.'),
+      });
+    } finally {
+      signingRef.current = false;
+    }
+  }, [account]);
+
   const connect = useCallback(async () => {
     const provider = providerRef.current;
     if (provider === undefined) {
@@ -247,7 +475,13 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       return;
     }
     // An injected wallet cannot be force-disconnected from a page; this drops
-    // the app's own session, which is what the user is asking for.
+    // the app's own session, which is what the user is asking for. The API
+    // session is revoked too, so the cookie left in this browser is worthless.
+    if (sessionRef.current.status === 'active') {
+      void api.logout().catch(() => {
+        // Not reachable: the cookie still expires on its own.
+      });
+    }
     setAccount(undefined);
     setStatus('disconnected');
     setError(undefined);
@@ -391,6 +625,9 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       error,
       connect,
       disconnect,
+      session,
+      signIn,
+      recheckSession,
       requestChain,
       signTypedData,
       sendTransaction,
@@ -407,6 +644,9 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       error,
       connect,
       disconnect,
+      session,
+      signIn,
+      recheckSession,
       requestChain,
       signTypedData,
       sendTransaction,
@@ -431,6 +671,11 @@ export function useWallet(): WalletState {
 /** True when the wallet is usable for reads. */
 export function isConnected(state: WalletState): state is WalletState & { account: string } {
   return state.status === 'connected' && typeof state.account === 'string';
+}
+
+/** True when the API recognises the connected account. */
+export function hasSession(state: WalletState): boolean {
+  return isConnected(state) && state.session.status === 'active';
 }
 
 /** The user-visible label for a chain id, from the known-chain map. */

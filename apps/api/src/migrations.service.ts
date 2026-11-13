@@ -1,67 +1,61 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import {
+  advanceMigrationWithEvidence,
   createAuthorizedMigration,
+  getMigrationBorrower,
   getProviderQuote,
   getMigrationDetails,
+  getSignedExecutionPlan,
+  getSignedIntent,
   listEnabledMarkets,
+  listMigrationEventsAfter,
   listWalletPositions,
 } from '@debtshift/database';
 import {
   assertFundedExecutionEnabled,
   assertExecutionPlanIntegrity,
   computeMigrationId,
-  executionPlanSchema,
+  evidenceSchema,
+  hashCanonicalText,
   hashExecutionPlan,
   hashRefinanceIntent,
   hashSourcePosition,
-  positionSnapshotSchema,
-  providerQuoteSchema,
-  refinanceIntentSchema,
-  signatureSchema,
-  submittedSourceLendingAuthorizationSchema,
-  signedTargetLendingAuthorizationSchema,
   verifySignedExecutionPlan,
   verifySignedRefinanceIntent,
 } from '@debtshift/domain';
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import type {
+  executionPlanSchema,
+  positionSnapshotSchema,
+  providerQuoteSchema,
+  SignedExecutionPlan,
+  SignedRefinanceIntent,
+} from '@debtshift/domain';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  type MessageEvent,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { compareRoutes } from '@debtshift/optimizer';
+import { captureTraceContext } from '@debtshift/observability';
+import { concatMap, from, mergeMap, timer, type Observable } from 'rxjs';
 import { createPublicClient, http, isAddressEqual, type Address, type Hex } from 'viem';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 import { DatabaseService } from './database.service.js';
+import { executeMigrationRequestSchema } from './http-contracts.js';
 import {
   MARKET_INTELLIGENCE_PORT,
   PROTOCOL_DATA_PORT,
   type MarketIntelligencePort,
   type ProtocolDataPort,
 } from './market-data/ports.js';
-
-const signedIntentRequestSchema = z
-  .object({
-    intent: refinanceIntentSchema,
-    intentHash: z.string(),
-    signature: signatureSchema,
-  })
-  .strict();
-const signedPlanRequestSchema = z
-  .object({
-    plan: executionPlanSchema,
-    planHash: z.string(),
-    signature: signatureSchema,
-  })
-  .strict();
-const executeMigrationRequestSchema = z
-  .object({
-    signedIntent: signedIntentRequestSchema,
-    signedPlan: signedPlanRequestSchema,
-    quote: providerQuoteSchema,
-    sourceSnapshot: positionSnapshotSchema,
-    sourceAuthorization: submittedSourceLendingAuthorizationSchema,
-    targetAuthorization: signedTargetLendingAuthorizationSchema,
-  })
-  .strict();
 
 @Injectable()
 export class MigrationsService {
@@ -93,18 +87,15 @@ export class MigrationsService {
     this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
   }
 
-  async execute(input: unknown) {
+  async execute(input: unknown, authenticatedWallet: Address) {
     try {
       const parsed = executeMigrationRequestSchema.parse(input);
+      if (!isAddressEqual(parsed.signedIntent.intent.borrower, authenticatedWallet)) {
+        throw new ForbiddenException('Wallet session does not match the signed borrower.');
+      }
       assertFundedExecutionEnabled(this.#executionEnvironment);
-      const signedIntent = {
-        ...parsed.signedIntent,
-        intentHash: parsed.signedIntent.intentHash as Hex,
-      };
-      const signedPlan = {
-        ...parsed.signedPlan,
-        planHash: parsed.signedPlan.planHash as Hex,
-      };
+      const signedIntent = parsed.signedIntent;
+      const signedPlan = parsed.signedPlan;
       assertExecutionPlanIntegrity(signedPlan.plan);
       this.assertBindings(signedIntent, signedPlan, parsed.quote, parsed.sourceSnapshot);
       const preparedQuote = await getProviderQuote(this.database.db, parsed.quote.quoteHash);
@@ -160,25 +151,162 @@ export class MigrationsService {
         signedPlan.plan,
       );
 
-      return await createAuthorizedMigration(this.database.db, {
-        signedIntent,
-        signedPlan,
-        quote: parsed.quote,
-        sourceSnapshot: parsed.sourceSnapshot,
-        sourceLendingAuthorization,
-        targetLendingAuthorization,
-      });
+      const result = await createAuthorizedMigration(
+        this.database.db,
+        {
+          signedIntent,
+          signedPlan,
+          quote: parsed.quote,
+          sourceSnapshot: parsed.sourceSnapshot,
+          sourceLendingAuthorization,
+          targetLendingAuthorization,
+        },
+        captureTraceContext(),
+      );
+      Logger.log(
+        JSON.stringify({
+          event: result.created ? 'workflow_migration_authorized' : 'workflow_migration_reconciled',
+          migrationId: result.migrationId,
+          phase: 'AUTHORIZED',
+          ...(result.initialCommandId === undefined
+            ? {}
+            : { commandId: result.initialCommandId, commandType: 'RESERVE_LIQUIDITY' }),
+          mode: this.#executionEnvironment.DEBTSHIFT_MODE,
+        }),
+        'Workflow',
+      );
+      return result;
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) throw error;
       const message = error instanceof Error ? error.message : 'Invalid migration request.';
       throw new BadRequestException(message);
     }
   }
 
-  async getMigration(migrationId: string) {
+  async getMigration(migrationId: string, authenticatedWallet: Address) {
+    const borrower = await getMigrationBorrower(this.database.db, migrationId);
+    if (borrower === undefined || !isAddressEqual(borrower as Address, authenticatedWallet)) {
+      throw new NotFoundException('Migration not found.');
+    }
     const result = await getMigrationDetails(this.database.db, migrationId);
     if (result === undefined) throw new NotFoundException('Migration not found.');
     return result;
+  }
+
+  async getIntent(intentHash: string, authenticatedWallet: Address) {
+    const stored = await getSignedIntent(this.database.db, intentHash);
+    if (
+      stored === undefined ||
+      !isAddressEqual(stored.walletAddress as Address, authenticatedWallet)
+    ) {
+      throw new NotFoundException('Intent not found.');
+    }
+    return stored.signedIntent;
+  }
+
+  async getPlan(planHash: string, authenticatedWallet: Address) {
+    const stored = await getSignedExecutionPlan(this.database.db, planHash);
+    if (
+      stored === undefined ||
+      !isAddressEqual(stored.walletAddress as Address, authenticatedWallet)
+    ) {
+      throw new NotFoundException('Execution plan not found.');
+    }
+    return stored.signedPlan;
+  }
+
+  async cancel(migrationId: string, authenticatedWallet: Address) {
+    const details = await this.getMigration(migrationId, authenticatedWallet);
+    if (details.migration.phase === 'CANCELLED') {
+      return { migrationId, phase: 'CANCELLED' as const, cancellationRequested: true };
+    }
+    if (details.migration.phase !== 'AUTHORIZED' && details.migration.phase !== 'RESERVED') {
+      throw new ConflictException(
+        `Migration cancellation is not permitted from phase ${details.migration.phase}.`,
+      );
+    }
+    const observedAt = new Date().toISOString();
+    const payload = {
+      reason: 'BORROWER_REQUESTED_CANCELLATION',
+      requestedBy: authenticatedWallet,
+      requestedPhase: details.migration.phase,
+    };
+    const evidenceId = hashCanonicalText(
+      `debtshift.evidence.v1:${migrationId}:MIGRATION_CANCELLATION_REQUESTED:${authenticatedWallet.toLowerCase()}`,
+    );
+    const record = evidenceSchema.parse({
+      evidenceId,
+      migrationId,
+      type: 'MIGRATION_CANCELLATION_REQUESTED',
+      schemaVersion: 1,
+      provider: 'DEBTSHIFT_API',
+      network: 'debtshift:workflow',
+      providerReference: evidenceId,
+      rawObservationHash: hashCanonicalText(JSON.stringify(payload)),
+      normalizedPayload: payload,
+      observedAt,
+      verificationState: 'FINALIZED',
+      verificationMethod: 'AUTHENTICATED_BORROWER_SESSION',
+      verifierVersion: 'debtshift-api-v1',
+    });
+    try {
+      const phase = await advanceMigrationWithEvidence(
+        this.database.db,
+        record,
+        authenticatedWallet,
+        captureTraceContext(),
+      );
+      return { migrationId, phase, cancellationRequested: true as const };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Migration cancellation failed.';
+      throw new ConflictException(message);
+    }
+  }
+
+  async streamMigrationEvents(
+    migrationId: string,
+    initialAfterSequence: number,
+    authenticatedWallet: Address,
+  ): Promise<Observable<MessageEvent>> {
+    await this.getMigration(migrationId, authenticatedWallet);
+    let cursor = initialAfterSequence;
+    let emptyPolls = 0;
+
+    return timer(0, 1_000).pipe(
+      concatMap(async () => {
+        const events = await listMigrationEventsAfter(this.database.db, migrationId, cursor);
+        if (events.length > 0) {
+          cursor = events.at(-1)?.sequence ?? cursor;
+          emptyPolls = 0;
+          return events.map((event): MessageEvent => ({
+            type: 'migration',
+            id: event.sequence.toString(),
+            retry: 1_500,
+            data: {
+              migrationId,
+              sequence: event.sequence,
+              type: event.type,
+              phase: event.phase,
+              observedAt: event.observedAt,
+              payloadHash: event.payloadHash,
+            },
+          }));
+        }
+
+        const shouldEmitKeepalive = emptyPolls === 0 || emptyPolls >= 14;
+        emptyPolls = shouldEmitKeepalive ? 1 : emptyPolls + 1;
+        return shouldEmitKeepalive
+          ? [
+              {
+                type: 'keepalive',
+                retry: 1_500,
+                data: { migrationId, cursor, observedAt: new Date().toISOString() },
+              } satisfies MessageEvent,
+            ]
+          : [];
+      }),
+      mergeMap((events) => from(events)),
+    );
   }
 
   listPositions(walletAddress: string) {
@@ -252,8 +380,8 @@ export class MigrationsService {
   }
 
   private assertBindings(
-    signedIntent: z.infer<typeof signedIntentRequestSchema> & { intentHash: Hex },
-    signedPlan: z.infer<typeof signedPlanRequestSchema> & { planHash: Hex },
+    signedIntent: SignedRefinanceIntent,
+    signedPlan: SignedExecutionPlan,
     quote: z.infer<typeof providerQuoteSchema>,
     snapshot: z.infer<typeof positionSnapshotSchema>,
   ): void {
@@ -382,6 +510,12 @@ export class MigrationsService {
     }
     if (!sameToken(quote.outputAsset, signedPlan.plan.destinationCollateralAsset)) {
       throw new Error('Transport output token does not match destination collateral.');
+    }
+    const minimumOutputAllowedByIntent =
+      (BigInt(quote.expectedAmountOutUnits) * BigInt(10_000 - signedIntent.intent.maxSlippageBps)) /
+      10_000n;
+    if (BigInt(quote.minAmountOutUnits) < minimumOutputAllowedByIntent) {
+      throw new Error('Transport quote exceeds the signed slippage cap.');
     }
     if (BigInt(quote.minAmountOutUnits) < BigInt(signedPlan.plan.minDestinationCollateralUnits)) {
       throw new Error('Transport minimum output is below the signed destination minimum.');

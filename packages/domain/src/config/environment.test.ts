@@ -11,6 +11,8 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.TRANSPORT_PROVIDER).toBe('DEBTSHIFT_SIMULATOR');
     expect(environment.INTENTS_MODE).toBe('simulated');
     expect(environment.NEAR_NETWORK).toBe('sandbox');
+    expect(environment.NEAR_RPC_FALLBACK_URLS_JSON).toEqual([]);
+    expect(environment.EVM_DEPLOYMENT_MANIFEST_PATH).toBe('');
     expect(environment.AGENT_MODE).toBe('DETERMINISTIC');
     expect(environment.MAINNET_EXECUTION_ENABLED).toBe(false);
     expect(environment.SOURCE_FINALITY_CONFIRMATIONS).toBe(1);
@@ -18,6 +20,14 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.SOURCE_DEPLOYMENT_BLOCK_NUMBER).toBe(0);
     expect(environment.DESTINATION_DEPLOYMENT_BLOCK_NUMBER).toBe(0);
     expect(environment.DESTINATION_FINALITY_CONFIRMATIONS).toBe(1);
+    expect(environment.WORKFLOW_COMMAND_MAX_ATTEMPTS).toBe(25);
+    expect(environment.WORKFLOW_COMMAND_RETRY_DELAY_MS).toBe(500);
+    expect(environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS).toBe(30_000);
+    expect(environment.WORKFLOW_COMMAND_STALE_AFTER_MS).toBe(300_000);
+    expect(environment.ALERT_SCAN_INTERVAL_MS).toBe(30_000);
+    expect(environment.ALERT_DEADLINE_LEAD_MS).toBe(60_000);
+    expect(environment.ALERT_STALE_MIGRATION_MS).toBe(300_000);
+    expect(environment.ALERT_STALE_RECOVERY_MS).toBe(900_000);
   });
 
   it('accepts exactly the four approved runtime modes', () => {
@@ -53,17 +63,31 @@ describe('parseDebtShiftEnvironment', () => {
 
   it('requires a real NEAR registry configuration for a hosted production sandbox', () => {
     expect(() => parseDebtShiftEnvironment({ NODE_ENV: 'production' })).toThrow(
-      'Hosted sandbox, funded testnet, or mainnet execution requires the NEAR registry',
+      'Hosted sandbox, funded testnet, or mainnet execution requires the expected NEAR registry',
     );
     expect(() =>
       parseDebtShiftEnvironment({
         NODE_ENV: 'production',
+        WEB_PUBLIC_URL: 'https://debtshift.example',
+        API_PUBLIC_URL: 'https://api.debtshift.example',
         NEAR_NETWORK: 'testnet',
         NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
+        NEAR_REGISTRY_OWNER_ACCOUNT: 'owner.testnet',
+        NEAR_REGISTRY_WASM_SHA256: `0x${'1'.repeat(64)}`,
         NEAR_SIGNER_ACCOUNT_ID: 'verifier.testnet',
         NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test-private-key',
       }),
     ).not.toThrow();
+  });
+
+  it('requires HTTPS public origins in production so wallet cookies are secure', () => {
+    expect(() =>
+      parseDebtShiftEnvironment({
+        NODE_ENV: 'production',
+        WEB_PUBLIC_URL: 'https://debtshift.example',
+        API_PUBLIC_URL: 'http://api.debtshift.example',
+      }),
+    ).toThrow('Production public web and API URLs must use HTTPS');
   });
 
   it('requires public onchain reads and the NEAR testnet registry in testnet mode', () => {
@@ -73,6 +97,42 @@ describe('parseDebtShiftEnvironment', () => {
         NEAR_NETWORK: 'testnet',
       }),
     ).toThrow('Testnet mode requires onchain market reads and the NEAR testnet registry.');
+  });
+
+  it('requires an EVM deployment manifest before funded production execution', () => {
+    expect(() =>
+      parseDebtShiftEnvironment({ NODE_ENV: 'production', DEBTSHIFT_MODE: 'testnet' }),
+    ).toThrow('Funded production execution requires EVM_DEPLOYMENT_MANIFEST_PATH');
+  });
+
+  it('accepts a bounded, unique list of HTTPS NEAR RPC fallbacks', () => {
+    expect(
+      parseDebtShiftEnvironment({
+        NEAR_NETWORK: 'testnet',
+        NEAR_RPC_URL: 'https://test.rpc.fastnear.com',
+        NEAR_RPC_FALLBACK_URLS_JSON: JSON.stringify([
+          'https://near-testnet.drpc.org',
+          'https://testnet-rpc.intea.rs',
+        ]),
+      }).NEAR_RPC_FALLBACK_URLS_JSON,
+    ).toEqual(['https://near-testnet.drpc.org', 'https://testnet-rpc.intea.rs']);
+  });
+
+  it('rejects malformed, duplicate, or insecure public NEAR RPC fallbacks', () => {
+    expect(() => parseDebtShiftEnvironment({ NEAR_RPC_FALLBACK_URLS_JSON: 'not-json' })).toThrow(
+      'RPC fallback URLs must be a JSON array',
+    );
+    expect(() =>
+      parseDebtShiftEnvironment({
+        NEAR_RPC_FALLBACK_URLS_JSON: JSON.stringify(['https://test.rpc.fastnear.com']),
+      }),
+    ).toThrow('NEAR RPC primary and fallback URLs must be unique');
+    expect(() =>
+      parseDebtShiftEnvironment({
+        NEAR_NETWORK: 'testnet',
+        NEAR_RPC_FALLBACK_URLS_JSON: JSON.stringify(['http://near-testnet.internal']),
+      }),
+    ).toThrow('Public NEAR network RPC endpoints must use HTTPS');
   });
 
   it('prevents sandbox market data from loading in mainnet read-only mode', () => {
@@ -117,6 +177,8 @@ describe('parseDebtShiftEnvironment', () => {
       INTENTS_AUTH_TOKEN: 'test-token',
       NEAR_NETWORK: 'mainnet',
       NEAR_REGISTRY_ACCOUNT: 'registry.near',
+      NEAR_REGISTRY_OWNER_ACCOUNT: 'owner.near',
+      NEAR_REGISTRY_WASM_SHA256: `0x${'1'.repeat(64)}`,
       NEAR_SIGNER_ACCOUNT_ID: 'verifier.near',
       NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test-private-key',
     } as const;
@@ -149,6 +211,51 @@ describe('parseDebtShiftEnvironment', () => {
         INTENTS_RETRY_MAX_DELAY_MS: '999',
       }),
     ).toThrow('maximum retry delay cannot be lower');
+  });
+
+  it('bounds durable workflow retry and stale-lease policy', () => {
+    expect(() => parseDebtShiftEnvironment({ WORKFLOW_COMMAND_MAX_ATTEMPTS: '0' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ WORKFLOW_COMMAND_RETRY_DELAY_MS: '99' })).toThrow();
+    expect(() =>
+      parseDebtShiftEnvironment({
+        WORKFLOW_COMMAND_RETRY_DELAY_MS: '1000',
+        WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: '999',
+      }),
+    ).toThrow('Workflow maximum retry delay cannot be lower');
+    expect(() => parseDebtShiftEnvironment({ WORKFLOW_COMMAND_STALE_AFTER_MS: '9999' })).toThrow();
+    expect(
+      parseDebtShiftEnvironment({
+        WORKFLOW_COMMAND_MAX_ATTEMPTS: '12',
+        WORKFLOW_COMMAND_RETRY_DELAY_MS: '750',
+        WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: '15000',
+        WORKFLOW_COMMAND_STALE_AFTER_MS: '120000',
+      }),
+    ).toMatchObject({
+      WORKFLOW_COMMAND_MAX_ATTEMPTS: 12,
+      WORKFLOW_COMMAND_RETRY_DELAY_MS: 750,
+      WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS: 15_000,
+      WORKFLOW_COMMAND_STALE_AFTER_MS: 120_000,
+    });
+  });
+
+  it('bounds operational alert scan and escalation policy', () => {
+    expect(() => parseDebtShiftEnvironment({ ALERT_SCAN_INTERVAL_MS: '999' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ ALERT_DEADLINE_LEAD_MS: '999' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ ALERT_STALE_MIGRATION_MS: '9999' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ ALERT_STALE_RECOVERY_MS: '9999' })).toThrow();
+    expect(
+      parseDebtShiftEnvironment({
+        ALERT_SCAN_INTERVAL_MS: '5000',
+        ALERT_DEADLINE_LEAD_MS: '120000',
+        ALERT_STALE_MIGRATION_MS: '600000',
+        ALERT_STALE_RECOVERY_MS: '1800000',
+      }),
+    ).toMatchObject({
+      ALERT_SCAN_INTERVAL_MS: 5_000,
+      ALERT_DEADLINE_LEAD_MS: 120_000,
+      ALERT_STALE_MIGRATION_MS: 600_000,
+      ALERT_STALE_RECOVERY_MS: 1_800_000,
+    });
   });
 });
 

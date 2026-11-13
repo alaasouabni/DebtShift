@@ -16,6 +16,8 @@ import {
   createWorkflowHandlers,
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
+  PreSourceCloseFailureError,
+  RetryableReceiptRegistryError,
   type FinalizedChainAction,
   type MigrationExecutionPort,
   type WorkflowContextStore,
@@ -58,6 +60,143 @@ class MemoryContextStore implements WorkflowContextStore {
 }
 
 describe('simulated workflow handlers', () => {
+  it('retries an unavailable receipt registry but preserves deterministic conflicts', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const retryableRegistry = {
+      finalize: vi.fn(async () => {
+        throw new RetryableReceiptRegistryError('provider response contained a secret');
+      }),
+    };
+    const retryableHandlers = createWorkflowHandlers({
+      store,
+      execution: fakeExecution(),
+      transport: new SimulatedTransportExecutionPort(simulator),
+      registry: retryableRegistry,
+      evidenceProviders: sandboxEvidenceProviders,
+    });
+
+    await expect(
+      getHandler(retryableHandlers, 'FINALIZE_NEAR_RECEIPT').execute(
+        command('FINALIZE_NEAR_RECEIPT'),
+      ),
+    ).rejects.toMatchObject({
+      name: 'RetryableCommandError',
+      message: expect.not.stringContaining('secret'),
+    });
+
+    const conflictingHandlers = createWorkflowHandlers({
+      store,
+      execution: fakeExecution(),
+      transport: new SimulatedTransportExecutionPort(simulator),
+      registry: {
+        finalize: vi.fn(async () => {
+          throw new Error('immutable agreement conflict');
+        }),
+      },
+      evidenceProviders: sandboxEvidenceProviders,
+    });
+    await expect(
+      getHandler(conflictingHandlers, 'FINALIZE_NEAR_RECEIPT').execute(
+        command('FINALIZE_NEAR_RECEIPT'),
+      ),
+    ).rejects.toThrow('immutable agreement conflict');
+  });
+
+  it('expires before reservation without executing a chain action', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, false));
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(
+      store,
+      execution,
+      simulator,
+      () => 2_000_000_000_000,
+    );
+
+    const records = await getHandler(handlers, 'RESERVE_LIQUIDITY').execute(
+      command('RESERVE_LIQUIDITY'),
+    );
+
+    expect(execution.reserve).not.toHaveBeenCalled();
+    expect(records).toEqual([
+      expect.objectContaining({
+        type: 'MIGRATION_EXPIRED',
+        normalizedPayload: expect.objectContaining({
+          reason: 'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+          sourcePosition: { disposition: 'NOT_TOUCHED_BY_DEBTSHIFT' },
+          reservation: { disposition: 'NOT_COMMITTED' },
+        }),
+      }),
+    ]);
+    expect(records[0]).not.toHaveProperty('chainId');
+  });
+
+  it('releases an active reservation instead of closing the source after expiry', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, false));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      closeSource: vi.fn(async () => action()),
+      expireBeforeSourceClose: vi.fn(async () => ({
+        ...action(),
+        payload: {
+          action: 'expireBeforeSourceClose',
+          reason: 'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+          outcome: 'EXPIRED',
+          sourcePosition: { disposition: 'UNCHANGED' },
+        },
+      })),
+    };
+    const handlers = createSandboxWorkflowHandlers(
+      store,
+      execution,
+      simulator,
+      () => 2_000_000_000_000,
+    );
+
+    const records = await getHandler(handlers, 'CLOSE_SOURCE').execute(command('CLOSE_SOURCE'));
+
+    expect(execution.closeSource).not.toHaveBeenCalled();
+    expect(execution.expireBeforeSourceClose).toHaveBeenCalledWith(
+      store.context,
+      'SIGNED_EXECUTION_DEADLINE_EXCEEDED',
+    );
+    expect(records).toEqual([
+      expect.objectContaining({
+        type: 'MIGRATION_EXPIRED',
+        transactionHash: ACTION_TRANSACTION,
+        normalizedPayload: expect.objectContaining({
+          action: 'expireBeforeSourceClose',
+          outcome: 'EXPIRED',
+          sourcePosition: { disposition: 'UNCHANGED' },
+        }),
+      }),
+    ]);
+  });
+
+  it('emits finalized cancellation evidence only after the reservation release action', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'CANCEL_MIGRATION').execute(
+      command('CANCEL_MIGRATION'),
+    );
+
+    expect(execution.cancelBeforeSourceClose).toHaveBeenCalledOnce();
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'MIGRATION_CANCELLED',
+          verificationState: 'FINALIZED',
+          transactionHash: ACTION_TRANSACTION,
+        }),
+      ]),
+    );
+  });
+
   it('persists transport submission state before emitting origin evidence', async () => {
     const simulator = new DeterministicTransportSimulator({ processingPolls: 0 });
     const context = await buildContext(simulator, false);
@@ -120,7 +259,7 @@ describe('simulated workflow handlers', () => {
       outcome: 'REFUNDED',
     });
     const context = await buildContext(simulator, true);
-    const store = new MemoryContextStore(context);
+    const store = settlementStore(context);
     const execution = fakeExecution();
     const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
@@ -130,6 +269,13 @@ describe('simulated workflow handlers', () => {
 
     expect(execution.deliverDestination).not.toHaveBeenCalled();
     expect(records.map((record) => record.type)).toEqual(['RECOVERY_OPENED']);
+    expect(records[0]?.normalizedPayload).toEqual(
+      expect.objectContaining({
+        nextPermittedAction: 'EXECUTE_SIGNED_RECOVERY',
+        escalationOwner: 'DEBTSHIFT_WORKER',
+        escalationState: 'AUTOMATED_RECOVERY_PENDING',
+      }),
+    );
     expect(store.updates[0]).toEqual(
       expect.objectContaining({
         providerState: 'REFUNDED',
@@ -144,7 +290,7 @@ describe('simulated workflow handlers', () => {
       now: () => 2_000_000_000_000,
     });
     const context = await buildContext(simulator, true, '1900000000');
-    const store = new MemoryContextStore(context);
+    const store = settlementStore(context);
     const execution = fakeExecution();
     const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
 
@@ -154,6 +300,97 @@ describe('simulated workflow handlers', () => {
 
     expect(execution.deliverDestination).not.toHaveBeenCalled();
     expect(records.map((record) => record.type)).toEqual(['MIGRATION_EXPIRED', 'RECOVERY_OPENED']);
+  });
+
+  it('persists unknown provider state and retries without advancing before the deadline', async () => {
+    const simulator = new DeterministicTransportSimulator({
+      processingPolls: 0,
+      outcome: 'UNKNOWN',
+    });
+    const context = await buildContext(simulator, true);
+    const store = new MemoryContextStore(context);
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    await expect(
+      getHandler(handlers, 'VERIFY_DESTINATION').execute(command('VERIFY_DESTINATION')),
+    ).rejects.toThrow('Transport custody is ambiguous: UNKNOWN');
+
+    expect(execution.deliverDestination).not.toHaveBeenCalled();
+    expect(store.updates[0]).toEqual(expect.objectContaining({ providerState: 'UNKNOWN' }));
+  });
+
+  it('opens exact manual custody recovery when transport dispatch exhausts retries', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      dispatchTransport: vi.fn(async () => {
+        throw new Error('origin RPC unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const dispatchHandler = getHandler(handlers, 'DISPATCH_TRANSPORT');
+
+    await expect(dispatchHandler.execute(command('DISPATCH_TRANSPORT'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (dispatchHandler.onRetryExhausted === undefined) {
+      throw new Error('Dispatch handler is missing retry-exhaustion recovery.');
+    }
+    const records = await dispatchHandler.onRetryExhausted(
+      command('DISPATCH_TRANSPORT'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records[0]?.normalizedPayload).toEqual(
+      expect.objectContaining({
+        reason: 'TRANSPORT_DISPATCH_RETRY_BUDGET_EXHAUSTED',
+        policy: 'MANUAL_CUSTODY_RECONCILIATION',
+        requiresManualReview: true,
+        nextPermittedAction: 'RECONCILE_TRANSPORT_CUSTODY',
+        escalationOwner: 'DEBTSHIFT_OPERATIONS',
+        escalationState: 'MANUAL_REVIEW_REQUIRED',
+        residualAssets: expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'TRANSPORT_COLLATERAL',
+            amountUnits: '9900000000000000000',
+          }),
+          expect.objectContaining({
+            kind: 'SOLVER_RECEIVABLE',
+            totalClaimUnits: '10050000000',
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('moves unknown provider custody into recovery after the signed deadline', async () => {
+    const simulator = new DeterministicTransportSimulator({
+      processingPolls: 0,
+      outcome: 'UNKNOWN',
+      now: () => 2_000_000_000_000,
+    });
+    const context = await buildContext(simulator, true, '1900000000');
+    const store = settlementStore(context);
+    const execution = fakeExecution();
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'VERIFY_DESTINATION').execute(
+      command('VERIFY_DESTINATION'),
+    );
+
+    expect(execution.deliverDestination).not.toHaveBeenCalled();
+    expect(store.updates[0]).toEqual(expect.objectContaining({ providerState: 'UNKNOWN' }));
+    expect(records.map((record) => record.type)).toEqual(['MIGRATION_EXPIRED', 'RECOVERY_OPENED']);
+    expect(records[1]?.normalizedPayload).toEqual(
+      expect.objectContaining({
+        reason: 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED',
+        policy: 'MANUAL_CUSTODY_RECONCILIATION',
+        nextPermittedAction: 'RECONCILE_TRANSPORT_CUSTODY',
+        escalationState: 'MANUAL_REVIEW_REQUIRED',
+      }),
+    );
   });
 
   it('emits both settlement and reconciliation evidence from one finalized action', async () => {
@@ -184,6 +421,147 @@ describe('simulated workflow handlers', () => {
       unexplainedImbalanceUnits: '0',
     });
     expect(ledger.entries.map((entry) => entry.componentCode)).toContain('RECOVERY_RESERVE_REFUND');
+  });
+
+  it('retries an unfinalized atomic target payout and opens exact manual recovery at exhaustion', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      openTarget: vi.fn(async () => {
+        throw new Error('destination RPC unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const targetHandler = getHandler(handlers, 'OPEN_TARGET');
+
+    await expect(targetHandler.execute(command('OPEN_TARGET'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (targetHandler.onRetryExhausted === undefined) {
+      throw new Error('Target handler is missing retry-exhaustion recovery.');
+    }
+    const records = await targetHandler.onRetryExhausted(
+      command('OPEN_TARGET'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        type: 'RECOVERY_OPENED',
+        verificationMethod: 'RETRY_BUDGET_AND_DURABLE_STATE_RECONCILIATION',
+        normalizedPayload: expect.objectContaining({
+          reason: 'TARGET_OPEN_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_TARGET_AND_PAYOUT_RECONCILIATION',
+          requiresManualReview: true,
+          nextPermittedAction: 'RECONCILE_TARGET_AND_PAYOUT',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
+          targetAndPayoutState: 'UNCONFIRMED',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'DESTINATION_COLLATERAL',
+              amountUnits: '9890100000000000000',
+            }),
+            expect.objectContaining({
+              kind: 'SOLVER_RECEIVABLE',
+              totalClaimUnits: '10050000000',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('retries source settlement and preserves exact payout and receivable state at exhaustion', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      settleLiquidity: vi.fn(async () => {
+        throw new Error('source settlement receipt unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const settlementHandler = getHandler(handlers, 'SETTLE_LIQUIDITY');
+
+    await expect(settlementHandler.execute(command('SETTLE_LIQUIDITY'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (settlementHandler.onRetryExhausted === undefined) {
+      throw new Error('Settlement handler is missing retry-exhaustion recovery.');
+    }
+    const records = await settlementHandler.onRetryExhausted(
+      command('SETTLE_LIQUIDITY'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        type: 'RECOVERY_OPENED',
+        normalizedPayload: expect.objectContaining({
+          reason: 'SETTLEMENT_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_SETTLEMENT_RECONCILIATION',
+          requiresManualReview: true,
+          nextPermittedAction: 'RECONCILE_SETTLEMENT',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
+          payoutReceiver: '0x4000000000000000000000000000000000000004',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'SOURCE_VAULT_RECEIVABLE',
+              totalClaimUnits: '10050000000',
+            }),
+            expect.objectContaining({
+              kind: 'TARGET_POSITION',
+              debtUnits: '10050000000',
+              solverPayoutUnits: '10050000000',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('escalates automated recovery to manual reconciliation when its retry budget exhausts', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      executeRecovery: vi.fn(async () => {
+        throw new Error('recovery receipt unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const recoveryHandler = getHandler(handlers, 'EXECUTE_RECOVERY');
+
+    await expect(recoveryHandler.execute(command('EXECUTE_RECOVERY'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (recoveryHandler.onRetryExhausted === undefined) {
+      throw new Error('Recovery handler is missing retry-exhaustion escalation.');
+    }
+    const records = await recoveryHandler.onRetryExhausted(
+      command('EXECUTE_RECOVERY'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        type: 'RECOVERY_OPENED',
+        normalizedPayload: expect.objectContaining({
+          reason: 'AUTOMATED_RECOVERY_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+          nextPermittedAction: 'RECONCILE_RECOVERY_EXECUTION',
+          escalationOwner: 'DEBTSHIFT_OPERATIONS',
+          escalationState: 'MANUAL_REVIEW_REQUIRED',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({ kind: 'DESTINATION_COLLATERAL' }),
+            expect.objectContaining({ kind: 'SOLVER_RECEIVABLE' }),
+          ]),
+        }),
+      }),
+    );
   });
 
   it('halts the next side effect and emits append-only retractions for orphaned evidence', async () => {
@@ -323,6 +701,42 @@ describe('simulated workflow handlers', () => {
           reservation: { status: 'RELEASED', principalReceivableUnits: '0' },
           sourcePosition: { disposition: 'UNCHANGED' },
         }),
+      }),
+    );
+  });
+
+  it('turns a safely reverted source close into released-reservation requote evidence', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const releasedAction: FinalizedChainAction = {
+      ...action(),
+      payload: {
+        action: 'releaseFailedSourceClose',
+        reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+        outcome: 'REQUOTE_REQUIRED',
+        failureStage: 'PRE_BROADCAST_SIMULATION',
+        sourcePosition: { disposition: 'UNCHANGED' },
+      },
+    };
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      closeSource: vi.fn(async () => {
+        throw new PreSourceCloseFailureError(releasedAction);
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    const records = await getHandler(handlers, 'CLOSE_SOURCE').execute(command('CLOSE_SOURCE'));
+
+    expect(records.map((record) => record.type)).toEqual([
+      'FINANCING_REVALIDATION',
+      'REQUOTE_REQUIRED',
+    ]);
+    expect(records[1]?.normalizedPayload).toEqual(
+      expect.objectContaining({
+        reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+        failureStage: 'PRE_BROADCAST_SIMULATION',
+        sourcePosition: { disposition: 'UNCHANGED' },
       }),
     );
   });
@@ -469,7 +883,9 @@ function settlementStore(context: MigrationExecutionContext): MemoryContextStore
       recoveryReserveProvider: recoveryProvider,
       recoveryReserveUnits: '10100000000',
     }),
-    finalizedEvidence('SOURCE_CLOSE', 2, {}),
+    finalizedEvidence('SOURCE_CLOSE', 2, {
+      financingRevalidation: settlementFinancingRevalidation(),
+    }),
     finalizedEvidence('TRANSPORT_ORIGIN', 3, {
       amountInUnits: context.quote.amountInUnits,
     }),
@@ -479,9 +895,28 @@ function settlementStore(context: MigrationExecutionContext): MemoryContextStore
       { amountOutUnits: '9890100000000000000' },
       31_338,
     ),
-    finalizedEvidence('TARGET_POSITION', 5, { collateralUnits: '9890100000000000000' }, 31_338),
+    finalizedEvidence(
+      'TARGET_POSITION',
+      5,
+      {
+        collateralUnits: '9890100000000000000',
+        financingRevalidation: settlementFinancingRevalidation(),
+      },
+      31_338,
+    ),
   );
   return store;
+}
+
+function settlementFinancingRevalidation(): Record<string, unknown> {
+  return {
+    observedAt: '2026-11-09T00:00:00.000Z',
+    solverPrincipalUnits: '10000000000',
+    solverFeeUnits: '50000000',
+    capitalizedCostUnits: '0',
+    requiredDestinationBorrowUnits: '10050000000',
+    confirmedExternalFundingUnits: '0',
+  };
 }
 
 function finalizedEvidence(
@@ -519,14 +954,7 @@ function settlementAction(): FinalizedChainAction {
       recoveryReserveProvider: '0x4000000000000000000000000000000000000004',
       recoveryReserveMaximumUnits: '10100000000',
       repaymentUnits: '10050000000',
-      financingRevalidation: {
-        observedAt: '2026-11-09T00:00:00.000Z',
-        solverPrincipalUnits: '10000000000',
-        solverFeeUnits: '50000000',
-        capitalizedCostUnits: '0',
-        requiredDestinationBorrowUnits: '10050000000',
-        confirmedExternalFundingUnits: '0',
-      },
+      financingRevalidation: settlementFinancingRevalidation(),
     },
   };
 }
@@ -540,6 +968,8 @@ function fakeExecution(): MigrationExecutionPort {
   return {
     verifyCanonicalEvidence: vi.fn(async () => []),
     reserve: perform,
+    cancelBeforeSourceClose: perform,
+    expireBeforeSourceClose: perform,
     closeSource: perform,
     dispatchTransport: perform,
     deliverDestination: perform,
@@ -553,6 +983,7 @@ function createSandboxWorkflowHandlers(
   store: WorkflowContextStore,
   execution: MigrationExecutionPort,
   simulator: DeterministicTransportSimulator,
+  now?: () => number,
 ): ReadonlyMap<string, CommandHandler> {
   return createWorkflowHandlers({
     store,
@@ -560,6 +991,7 @@ function createSandboxWorkflowHandlers(
     transport: new SimulatedTransportExecutionPort(simulator),
     registry: new PendingSandboxRegistryPort(),
     evidenceProviders: sandboxEvidenceProviders,
+    ...(now === undefined ? {} : { now }),
   });
 }
 

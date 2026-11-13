@@ -148,7 +148,13 @@ For each migration:
 - Bind a committed quote to the exact execution plan before source closure.
 - Submit the origin transaction identifier at most once per leg.
 - Poll status idempotently.
-- Persist unknown statuses, stop advancement, and alert.
+- Preserve the exact provider status and raw response before normalization. An undocumented status
+  becomes `UNKNOWN`, persists in provider observations and the transport leg, and cannot advance the
+  workflow.
+- Retry pending or ambiguous custody with the environment-validated BullMQ attempt/backoff budget.
+  The signed execution deadline remains authoritative: unresolved custody at that boundary appends
+  expiration and recovery evidence instead of exhausting retries into an unowned stuck state.
+- Emit a structured failed-job warning for operator alert routing on every retryable unknown state.
 - On provider success, independently verify destination token, receiver, amount, transaction, and finality.
 - On refund, independently verify token, receiver, amount, transaction, and finality.
 - On incomplete deposit, failed, or ambiguous custody, enter recovery.
@@ -201,9 +207,16 @@ For each migration:
 
 ### Target opens but provider payout fails
 
-- Keep borrowed proceeds in settlement escrow.
-- Retry the exact payout idempotently.
-- Prevent residual release until the obligation is reconciled.
+- The P0 destination adapter makes target opening and the exact solver payout one transaction. A
+  payout failure therefore reverts the target open and leaves delivered collateral in the
+  migration escrow; a lost RPC response is reconciled from the atomic destination receipt.
+- Retry the same signed target/payout command idempotently within the bounded queue budget.
+- If that budget is exhausted, terminally persist the command and open manual target/payout
+  reconciliation with the last verified collateral custody, exact solver receivable, and locked
+  recovery reserve. Do not schedule an automatic recovery action against uncertain custody.
+- If the atomic target/payout receipt finalized but source-vault settlement cannot be confirmed,
+  retry the exact settlement idempotently. Exhaustion blocks `SETTLED` and records the finalized
+  target/payout receipt, exact unsettled receivable, and locked reserve in manual recovery.
 
 ### Worker, Redis, or RPC outage
 

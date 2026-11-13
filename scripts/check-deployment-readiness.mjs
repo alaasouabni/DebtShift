@@ -22,7 +22,7 @@ const [manifestJson, routeJson] = await Promise.all([
 ]);
 const manifest = parseDebtShiftEvmDeploymentManifest(manifestJson);
 const route = parseLiveMarketConfiguration(routeJson);
-const routeHash = keccak256(stringToHex(routeJson));
+const routeHash = keccak256(stringToHex(JSON.stringify(route)));
 if (manifest.routeConfigurationHash !== routeHash) {
   throw new Error('Deployment manifest route hash does not match the selected route file.');
 }

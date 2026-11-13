@@ -17,8 +17,9 @@ import {
   type ProviderQuote,
   type SignedExecutionPlan,
   type SignedRefinanceIntent,
+  type TraceContextCarrier,
 } from '@debtshift/domain';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gt } from 'drizzle-orm';
 
 import type { DebtShiftDatabase } from './client.js';
 import {
@@ -60,6 +61,7 @@ export interface CreateAuthorizedMigrationResult {
 export async function createAuthorizedMigration(
   database: DebtShiftDatabase,
   input: CreateAuthorizedMigrationInput,
+  traceContext?: TraceContextCarrier,
 ): Promise<CreateAuthorizedMigrationResult> {
   const {
     signedIntent,
@@ -304,7 +306,12 @@ export async function createAuthorizedMigration(
 
       const planned = planNextCommand(migrationId, 'AUTHORIZED');
       if (planned === undefined) throw new Error('Authorized migration has no next command.');
-      const initialCommandId = await enqueueCommandInTransaction(transaction, migrationId, planned);
+      const initialCommandId = await enqueueCommandInTransaction(
+        transaction,
+        migrationId,
+        planned,
+        traceContext,
+      );
       return { created: true, migrationId, initialCommandId };
     },
     { isolationLevel: 'serializable', accessMode: 'read write', deferrable: false },
@@ -361,6 +368,85 @@ export async function getMigrationDetails(database: DebtShiftDatabase, migration
     reservations: storedReservations,
     recoveryCases: storedRecoveryCases,
   };
+}
+
+export async function getMigrationBorrower(
+  database: DebtShiftDatabase,
+  migrationId: string,
+): Promise<string | undefined> {
+  const [owner] = await database
+    .select({ address: wallets.address })
+    .from(migrations)
+    .innerJoin(intents, eq(migrations.intentHash, intents.intentHash))
+    .innerJoin(wallets, eq(intents.walletId, wallets.walletId))
+    .where(eq(migrations.migrationId, migrationId))
+    .limit(1);
+  return owner?.address;
+}
+
+export async function getSignedIntent(database: DebtShiftDatabase, intentHash: string) {
+  const [stored] = await database
+    .select({
+      payload: intents.payload,
+      signature: intents.signature,
+      walletAddress: wallets.address,
+    })
+    .from(intents)
+    .innerJoin(wallets, eq(intents.walletId, wallets.walletId))
+    .where(eq(intents.intentHash, intentHash))
+    .limit(1);
+  if (stored === undefined) return undefined;
+  return {
+    walletAddress: stored.walletAddress,
+    signedIntent: signedRefinanceIntentSchema.parse({
+      intent: refinanceIntentSchema.parse(stored.payload),
+      intentHash,
+      signature: signatureSchema.parse(stored.signature),
+    }),
+  };
+}
+
+export async function getSignedExecutionPlan(database: DebtShiftDatabase, planHash: string) {
+  const [stored] = await database
+    .select({
+      payload: executionPlans.payload,
+      signature: executionPlans.signature,
+      walletAddress: wallets.address,
+    })
+    .from(executionPlans)
+    .innerJoin(intents, eq(executionPlans.intentHash, intents.intentHash))
+    .innerJoin(wallets, eq(intents.walletId, wallets.walletId))
+    .where(eq(executionPlans.planHash, planHash))
+    .limit(1);
+  if (stored === undefined) return undefined;
+  return {
+    walletAddress: stored.walletAddress,
+    signedPlan: signedExecutionPlanSchema.parse({
+      plan: executionPlanSchema.parse(stored.payload),
+      planHash,
+      signature: signatureSchema.parse(stored.signature),
+    }),
+  };
+}
+
+export async function listMigrationEventsAfter(
+  database: DebtShiftDatabase,
+  migrationId: string,
+  afterSequence: number,
+  limit = 100,
+) {
+  if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+    throw new Error('Migration event cursor must be a non-negative safe integer.');
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error('Migration event page size must be an integer from 1 through 500.');
+  }
+  return database
+    .select()
+    .from(auditEvents)
+    .where(and(eq(auditEvents.migrationId, migrationId), gt(auditEvents.sequence, afterSequence)))
+    .orderBy(asc(auditEvents.sequence))
+    .limit(limit);
 }
 
 export async function listWalletPositions(database: DebtShiftDatabase, walletAddress: string) {

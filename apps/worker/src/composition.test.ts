@@ -12,7 +12,11 @@ import {
 import type { TransportObservation } from '@debtshift/intents';
 import { describe, expect, it, vi } from 'vitest';
 
-import { composeWorkflowHandlers, type WorkflowAdapterSet } from './composition.js';
+import {
+  assertWorkflowAdaptersReady,
+  composeWorkflowHandlers,
+  type WorkflowAdapterSet,
+} from './composition.js';
 import type {
   FinalizedChainAction,
   MigrationExecutionPort,
@@ -21,6 +25,28 @@ import type {
 } from './handlers.js';
 
 describe('composeWorkflowHandlers', () => {
+  it('awaits execution and registry startup attestation before command consumption', async () => {
+    const adapters = fakeAdapters('testnet', 'DEBTSHIFT_SIMULATOR');
+    const executionReady = vi.fn(async () => {});
+    const transportReady = vi.fn(async () => {});
+    const registryReady = vi.fn(async () => {});
+    adapters.execution.assertReady = executionReady;
+    adapters.transport.assertReady = transportReady;
+    adapters.registry.assertReady = registryReady;
+
+    await assertWorkflowAdaptersReady(adapters);
+
+    expect(executionReady).toHaveBeenCalledOnce();
+    expect(transportReady).toHaveBeenCalledOnce();
+    expect(registryReady).toHaveBeenCalledOnce();
+    expect(executionReady.mock.invocationCallOrder[0]).toBeLessThan(
+      transportReady.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(transportReady.mock.invocationCallOrder[0]).toBeLessThan(
+      registryReady.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+  });
+
   it('requires an explicitly sandbox-bound adapter set', () => {
     const environment = parseDebtShiftEnvironment({});
 
@@ -33,7 +59,7 @@ describe('composeWorkflowHandlers', () => {
         store: fakeStore(),
         adapters: fakeAdapters('sandbox', 'DEBTSHIFT_SIMULATOR'),
       }).size,
-    ).toBe(8);
+    ).toBe(9);
   });
 
   it('rejects adapter sets from another runtime mode', () => {
@@ -50,8 +76,11 @@ describe('composeWorkflowHandlers', () => {
     const environment = modeEnvironment('mainnet-readonly', false);
     const handlers = composeWorkflowHandlers({ environment, store: fakeStore() });
 
-    expect(handlers.size).toBe(8);
+    expect(handlers.size).toBe(9);
     await expect(handlers.get('RESERVE_LIQUIDITY')?.execute({} as DurableCommand)).rejects.toThrow(
+      'Funded execution is unavailable in mainnet-readonly mode.',
+    );
+    await expect(handlers.get('CANCEL_MIGRATION')?.execute({} as DurableCommand)).rejects.toThrow(
       'Funded execution is unavailable in mainnet-readonly mode.',
     );
     expect(() =>
@@ -95,7 +124,7 @@ describe('composeWorkflowHandlers', () => {
         store: fakeStore(),
         adapters: fakeAdapters('mainnet', 'NEAR_INTENTS_1CLICK'),
       }).size,
-    ).toBe(8);
+    ).toBe(9);
   });
 });
 
@@ -149,6 +178,8 @@ function fakeExecution(): MigrationExecutionPort {
   return {
     verifyCanonicalEvidence: vi.fn(async () => []),
     reserve: action,
+    cancelBeforeSourceClose: action,
+    expireBeforeSourceClose: action,
     closeSource: action,
     dispatchTransport: action,
     deliverDestination: action,

@@ -1,21 +1,10 @@
-import {
-  DeterministicRouteRiskAgent,
-  explanationConfigurationSchema,
-  RouteExplanationService,
-} from '@debtshift/agent';
-import { evmAddressSchema } from '@debtshift/domain';
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { DeterministicRouteRiskAgent, RouteExplanationService } from '@debtshift/agent';
+import { BadRequestException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { z } from 'zod';
+import { isAddressEqual, type Address } from 'viem';
 
+import { routeAnalysisRequestSchema } from './http-contracts.js';
 import { MARKET_INTELLIGENCE_PORT, type MarketIntelligencePort } from './market-data/ports.js';
-
-const routeAnalysisRequestSchema = z
-  .object({
-    wallet: evmAddressSchema,
-    explanation: explanationConfigurationSchema.optional(),
-  })
-  .strict();
 
 @Injectable()
 export class RouteAnalysisService {
@@ -35,9 +24,15 @@ export class RouteAnalysisService {
     });
   }
 
-  async analyze(input: unknown) {
+  async analyze(input: unknown, authenticatedWallet?: Address) {
     try {
       const request = routeAnalysisRequestSchema.parse(input);
+      if (
+        authenticatedWallet !== undefined &&
+        !isAddressEqual(request.wallet, authenticatedWallet)
+      ) {
+        throw new ForbiddenException('Wallet session does not match the requested borrower.');
+      }
       const evaluatedAt = new Date().toISOString();
       const analysis = await this.#agent.analyzeWallet({
         wallet: request.wallet,
@@ -58,7 +53,7 @@ export class RouteAnalysisService {
       );
       return { analysis, explanations };
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) throw error;
       throw new BadRequestException(
         error instanceof Error ? error.message : 'Unable to analyze refinance routes.',
       );

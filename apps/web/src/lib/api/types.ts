@@ -441,6 +441,40 @@ export interface ExecuteRequest {
 export interface ExecuteResponse {
   readonly migrationId: Hex32;
   readonly created?: boolean;
+  readonly initialCommandId?: Hex32;
+}
+
+/* ------------------------------------------------------------ wallet session */
+
+/**
+ * A one-time EIP-4361 login challenge.
+ *
+ * `message` is the exact text the wallet signs. It proves control of the
+ * wallet for API access only; it authorizes no refinance and no transaction.
+ */
+export interface WalletChallenge {
+  readonly challengeId: string;
+  readonly wallet: Address;
+  readonly chainId: number;
+  readonly message: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * The borrower session as the API reports it. The session token itself is an
+ * HttpOnly cookie this code can neither read nor store.
+ */
+export interface WalletSession {
+  readonly wallet: Address;
+  readonly chainId: number;
+  readonly expiresAt: string;
+}
+
+export interface CancellationResponse {
+  readonly migrationId: Hex32;
+  /** RESERVED while the workflow releases the reservation, then CANCELLED. */
+  readonly phase: 'RESERVED' | 'CANCELLED';
+  readonly cancellationRequested: true;
 }
 
 /* ----------------------------------------------------------------- migration */
@@ -460,6 +494,7 @@ export const MIGRATION_PHASES = [
   'FAILED_SAFE',
   'REQUOTE_REQUIRED',
   'EXPIRED',
+  'CANCELLED',
 ] as const;
 
 export type MigrationPhase = (typeof MIGRATION_PHASES)[number];
@@ -477,7 +512,19 @@ export const TERMINAL_PHASES: readonly MigrationPhase[] = [
   'FAILED_SAFE',
   'REQUOTE_REQUIRED',
   'EXPIRED',
+  'CANCELLED',
 ];
+
+/**
+ * The phases the backend accepts a borrower cancellation from: authorized or
+ * reserved, which is to say before the source loan is touched. Anything later
+ * is answered with HTTP 409.
+ */
+export const CANCELLABLE_PHASES: readonly MigrationPhase[] = ['AUTHORIZED', 'RESERVED'];
+
+export function isCancellablePhase(phase: string): boolean {
+  return CANCELLABLE_PHASES.includes(phase as MigrationPhase);
+}
 
 export function isTerminalPhase(phase: string): boolean {
   return TERMINAL_PHASES.includes(phase as MigrationPhase);
@@ -491,7 +538,8 @@ export type CommandType =
   | 'OPEN_TARGET'
   | 'SETTLE_LIQUIDITY'
   | 'FINALIZE_NEAR_RECEIPT'
-  | 'EXECUTE_RECOVERY';
+  | 'EXECUTE_RECOVERY'
+  | 'CANCEL_MIGRATION';
 
 export type CommandStatus =
   | 'PENDING'
@@ -520,6 +568,8 @@ export type EvidenceType =
   | 'LEDGER_RECONCILIATION'
   | 'NEAR_RECEIPT'
   | 'MIGRATION_EXPIRED'
+  | 'MIGRATION_CANCELLATION_REQUESTED'
+  | 'MIGRATION_CANCELLED'
   | 'REQUOTE_REQUIRED'
   | 'RECOVERY_OPENED'
   | 'RECOVERY_COMPLETED';
@@ -530,11 +580,12 @@ export type LedgerCategory =
 export interface Migration {
   readonly migrationId: Hex32;
   readonly intentHash: Hex32;
-  readonly executionPlanHash: Hex32;
+  readonly planHash: Hex32;
   readonly quoteHash: Hex32;
-  readonly borrower: Address;
   readonly phase: MigrationPhase;
   readonly version: number;
+  /** When the authorized window closes. */
+  readonly expiresAt?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   /** Null until the migration reaches COMPLETED. */
@@ -616,8 +667,58 @@ export interface AuditEvent {
   readonly sequence: number;
   readonly type: string;
   readonly phase: MigrationPhase;
+  /** Who caused the event: the workflow, or the borrower's address. */
+  readonly actor?: string;
   readonly payload: Record<string, unknown>;
+  readonly payloadHash?: Hex32;
   readonly observedAt: string;
+  readonly createdAt?: string;
+}
+
+export type RecoveryPolicy =
+  | 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE'
+  | 'RETURN_VERIFIED_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE'
+  | 'MANUAL_CUSTODY_RECONCILIATION'
+  | 'MANUAL_TARGET_AND_PAYOUT_RECONCILIATION'
+  | 'MANUAL_SETTLEMENT_RECONCILIATION'
+  | 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION'
+  | 'HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION';
+
+export type RecoveryNextPermittedAction =
+  | 'EXECUTE_SIGNED_RECOVERY'
+  | 'RECONCILE_TRANSPORT_CUSTODY'
+  | 'RECONCILE_TARGET_AND_PAYOUT'
+  | 'RECONCILE_SETTLEMENT'
+  | 'RECONCILE_RECOVERY_EXECUTION'
+  | 'RECONCILE_CANONICAL_STATE';
+
+export type RecoveryEscalationState =
+  'AUTOMATED_RECOVERY_PENDING' | 'MANUAL_REVIEW_REQUIRED' | 'RESOLVED_FAILED_SAFE';
+
+export type RecoveryCaseStatus = 'OPEN' | 'RESOLVED_FAILED_SAFE';
+
+/**
+ * One recovery the backend opened for a migration: what policy applies, who
+ * owns the next step, what that step is and by when, and which assets are
+ * still outstanding.
+ */
+export interface RecoveryCase {
+  readonly recoveryId: Hex32;
+  readonly migrationId: Hex32;
+  readonly policy: RecoveryPolicy;
+  readonly status: RecoveryCaseStatus;
+  readonly reason: string;
+  /*
+   * The responsibility lifecycle. Always sent by the current API; absent from
+   * a case recorded before 2026-11-13, so each is rendered only when present.
+   */
+  readonly nextPermittedAction?: RecoveryNextPermittedAction;
+  readonly actionDeadline?: string;
+  readonly escalationOwner?: string;
+  readonly escalationState?: RecoveryEscalationState;
+  readonly residualAssets: readonly Record<string, unknown>[];
+  readonly openedAt: string;
+  readonly resolvedAt: string | null;
 }
 
 export interface MigrationDetails {
@@ -627,6 +728,8 @@ export interface MigrationDetails {
   readonly commands: readonly Command[];
   readonly ledger: readonly LedgerEntry[];
   readonly reservations: readonly Record<string, unknown>[];
+  /** Absent from payloads recorded before the recovery lifecycle existed. */
+  readonly recoveryCases?: readonly RecoveryCase[];
 }
 
 /* ------------------------------------------------------- persisted diagnostics */

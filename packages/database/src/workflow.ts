@@ -5,8 +5,11 @@ import {
   hashCanonicalText,
   ledgerReconciliationSchema,
   phaseEvidenceFromRecords,
+  recoveryOpeningPayloadSchema,
+  traceContextCarrierSchema,
   type Evidence,
   type MigrationPhase,
+  type TraceContextCarrier,
 } from '@debtshift/domain';
 import { and, asc, eq, inArray, lte, max, or } from 'drizzle-orm';
 
@@ -32,7 +35,8 @@ export interface PlannedCommand {
     | 'OPEN_TARGET'
     | 'SETTLE_LIQUIDITY'
     | 'FINALIZE_NEAR_RECEIPT'
-    | 'EXECUTE_RECOVERY';
+    | 'EXECUTE_RECOVERY'
+    | 'CANCEL_MIGRATION';
   readonly idempotencyKey: string;
   readonly payload: Record<string, unknown>;
 }
@@ -43,6 +47,7 @@ export interface OutboxEnvelope {
   readonly topic: string;
   readonly partitionKey: string;
   readonly payload: Record<string, unknown>;
+  readonly traceContext?: TraceContextCarrier;
 }
 
 export type OutboxPublisher = (message: OutboxEnvelope) => Promise<void>;
@@ -75,13 +80,21 @@ export async function enqueueCommand(
   database: DebtShiftDatabase,
   migrationId: string,
   command: PlannedCommand,
+  traceContext?: TraceContextCarrier,
 ): Promise<string> {
   const commandId = hashCanonicalText(`debtshift.command.v1:${command.idempotencyKey}`);
   const payloadHash = hashCanonicalText(canonicalJson(command.payload));
 
   await database.transaction(async (transaction) => {
     await lockMigration(transaction, migrationId);
-    await insertCommandInTransaction(transaction, migrationId, command, commandId, payloadHash);
+    await insertCommandInTransaction(
+      transaction,
+      migrationId,
+      command,
+      commandId,
+      payloadHash,
+      traceContext,
+    );
   });
   return commandId;
 }
@@ -90,6 +103,7 @@ export async function advanceMigrationWithEvidence(
   database: DebtShiftDatabase,
   record: Evidence,
   actor: string,
+  traceContext?: TraceContextCarrier,
 ): Promise<MigrationPhase> {
   const parsedEvidence = evidenceSchema.parse(record);
   return database.transaction(
@@ -101,6 +115,30 @@ export async function advanceMigrationWithEvidence(
         .where(eq(migrations.migrationId, parsedEvidence.migrationId))
         .limit(1);
       if (migration === undefined) throw new Error('Migration disappeared while locked.');
+
+      let cancellationCommandIds: string[] = [];
+      if (
+        parsedEvidence.verificationState === 'FINALIZED' &&
+        parsedEvidence.type === 'MIGRATION_CANCELLATION_REQUESTED'
+      ) {
+        if (!['AUTHORIZED', 'RESERVED', 'CANCELLED'].includes(migration.phase)) {
+          throw new Error(`Migration cancellation is not permitted from phase ${migration.phase}.`);
+        }
+        const cancellableCommands = await transaction
+          .select({ commandId: commands.commandId, status: commands.status })
+          .from(commands)
+          .where(
+            and(
+              eq(commands.migrationId, parsedEvidence.migrationId),
+              inArray(commands.status, ['PENDING', 'DISPATCHED', 'RUNNING', 'FAILED_RETRYABLE']),
+            ),
+          )
+          .for('update');
+        if (cancellableCommands.some(({ status }) => status === 'RUNNING')) {
+          throw new Error('Migration cancellation cannot race a running financial command.');
+        }
+        cancellationCommandIds = cancellableCommands.map(({ commandId }) => commandId);
+      }
 
       const insertedEvidence = await transaction
         .insert(evidenceTable)
@@ -127,6 +165,33 @@ export async function advanceMigrationWithEvidence(
         })
         .onConflictDoNothing({ target: evidenceTable.evidenceId })
         .returning({ evidenceId: evidenceTable.evidenceId });
+
+      if (
+        insertedEvidence.length !== 0 &&
+        parsedEvidence.type === 'MIGRATION_CANCELLATION_REQUESTED'
+      ) {
+        if (cancellationCommandIds.length !== 0) {
+          await transaction
+            .update(commands)
+            .set({
+              status: 'CANCELLED',
+              lastError: 'Superseded by the borrower cancellation request.',
+              updatedAt: new Date(parsedEvidence.observedAt),
+            })
+            .where(inArray(commands.commandId, cancellationCommandIds));
+        }
+        if (migration.phase === 'AUTHORIZED') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'RELEASED', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                eq(liquidityReservations.status, 'PENDING'),
+              ),
+            );
+        }
+      }
 
       if (parsedEvidence.verificationState === 'FINALIZED') {
         if (parsedEvidence.type === 'LEDGER_RECONCILIATION') {
@@ -179,6 +244,17 @@ export async function advanceMigrationWithEvidence(
               ),
             );
         }
+        if (parsedEvidence.type === 'MIGRATION_CANCELLED') {
+          await transaction
+            .update(liquidityReservations)
+            .set({ status: 'RELEASED', updatedAt: new Date(parsedEvidence.observedAt) })
+            .where(
+              and(
+                eq(liquidityReservations.migrationId, parsedEvidence.migrationId),
+                inArray(liquidityReservations.status, ['PENDING', 'ACTIVE']),
+              ),
+            );
+        }
         if (parsedEvidence.type === 'REQUOTE_REQUIRED') {
           await transaction
             .update(liquidityReservations)
@@ -198,6 +274,7 @@ export async function advanceMigrationWithEvidence(
             .update(recoveryCases)
             .set({
               status: 'RESOLVED_FAILED_SAFE',
+              escalationState: 'RESOLVED_FAILED_SAFE',
               resolvedAt: new Date(parsedEvidence.observedAt),
               updatedAt: new Date(parsedEvidence.observedAt),
             })
@@ -229,7 +306,47 @@ export async function advanceMigrationWithEvidence(
         .where(eq(evidenceTable.migrationId, parsedEvidence.migrationId));
       const normalized = storedEvidence.map(databaseEvidenceToDomain);
       const derivedPhase = deriveMigrationPhase(phaseEvidenceFromRecords(normalized));
-      if (derivedPhase === migration.phase) return derivedPhase;
+      if (derivedPhase === migration.phase) {
+        if (
+          insertedEvidence.length !== 0 &&
+          parsedEvidence.type === 'MIGRATION_CANCELLATION_REQUESTED' &&
+          migration.phase === 'RESERVED'
+        ) {
+          const sequenceResult = await transaction
+            .select({ maximumSequence: max(auditEvents.sequence) })
+            .from(auditEvents)
+            .where(eq(auditEvents.migrationId, migration.migrationId));
+          const sequence = (sequenceResult[0]?.maximumSequence ?? 0) + 1;
+          const payload = { evidenceId: parsedEvidence.evidenceId, phase: migration.phase };
+          await transaction.insert(auditEvents).values({
+            eventId: hashCanonicalText(
+              `debtshift.audit.v1:${migration.migrationId}:${sequence.toString()}`,
+            ),
+            migrationId: migration.migrationId,
+            sequence,
+            type: 'MIGRATION_CANCELLATION_REQUESTED',
+            phase: migration.phase,
+            actor,
+            payload,
+            payloadHash: hashCanonicalText(canonicalJson(payload)),
+            observedAt: new Date(parsedEvidence.observedAt),
+          });
+          const command: PlannedCommand = {
+            type: 'CANCEL_MIGRATION',
+            idempotencyKey: `cancel:${migration.migrationId}`,
+            payload: { migrationId: migration.migrationId },
+          };
+          await insertCommandInTransaction(
+            transaction,
+            migration.migrationId,
+            command,
+            hashCanonicalText(`debtshift.command.v1:${command.idempotencyKey}`),
+            hashCanonicalText(canonicalJson(command.payload)),
+            traceContext,
+          );
+        }
+        return derivedPhase;
+      }
       assertAllowedPhaseTransition(migration.phase, derivedPhase);
 
       const [updated] = await transaction
@@ -289,6 +406,7 @@ export async function advanceMigrationWithEvidence(
           nextCommand,
           commandId,
           hashCanonicalText(canonicalJson(nextCommand.payload)),
+          traceContext,
         );
       }
       return derivedPhase;
@@ -399,6 +517,10 @@ async function openRecoveryCase(
       policy: metadata.policy,
       status: 'OPEN',
       reason: metadata.reason,
+      nextPermittedAction: metadata.nextPermittedAction,
+      actionDeadline: new Date(metadata.actionDeadline),
+      escalationOwner: metadata.escalationOwner,
+      escalationState: metadata.escalationState,
       residualAssets: metadata.residualAssets,
       openedAt: observedAt,
     })
@@ -410,6 +532,10 @@ async function openRecoveryCase(
     .set({
       policy: metadata.policy,
       reason: metadata.reason,
+      nextPermittedAction: metadata.nextPermittedAction,
+      actionDeadline: new Date(metadata.actionDeadline),
+      escalationOwner: metadata.escalationOwner,
+      escalationState: metadata.escalationState,
       residualAssets: metadata.residualAssets,
       updatedAt: observedAt,
     })
@@ -418,35 +544,8 @@ async function openRecoveryCase(
     );
 }
 
-function recoveryMetadata(record: Evidence): {
-  readonly policy: string;
-  readonly reason: string;
-  readonly residualAssets: ReadonlyArray<Record<string, unknown>>;
-} {
-  const payload = record.normalizedPayload;
-  const policy =
-    typeof payload.policy === 'string' && payload.policy.length !== 0
-      ? payload.policy
-      : 'DETERMINISTIC_RECOVERY_POLICY';
-  const reason =
-    typeof payload.reason === 'string' && payload.reason.length !== 0
-      ? payload.reason
-      : 'RECOVERY_OPENED';
-  const residualAssets = Array.isArray(payload.residualAssets)
-    ? payload.residualAssets.filter(isRecord)
-    : [];
-  return {
-    policy,
-    reason,
-    residualAssets:
-      residualAssets.length === 0
-        ? [{ kind: 'RECOVERY_EVIDENCE', normalizedPayload: payload }]
-        : residualAssets,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function recoveryMetadata(record: Evidence) {
+  return recoveryOpeningPayloadSchema.parse(record.normalizedPayload);
 }
 
 export async function publishPendingOutbox(
@@ -472,12 +571,34 @@ export async function publishPendingOutbox(
         .for('update', { skipLocked: true });
       if (message === undefined) return false;
 
+      const [command] = await transaction
+        .select({ status: commands.status })
+        .from(commands)
+        .where(eq(commands.commandId, message.commandId))
+        .limit(1)
+        .for('update');
+      if (command === undefined) throw new Error('Outbox command disappeared while locked.');
+      if (['CANCELLED', 'SUCCEEDED', 'FAILED_TERMINAL'].includes(command.status)) {
+        await transaction
+          .update(outboxMessages)
+          .set({
+            status: 'DEAD_LETTER',
+            lastError: `Command is already terminal with status ${command.status}.`,
+          })
+          .where(eq(outboxMessages.outboxId, message.outboxId));
+        return true;
+      }
+
+      const traceContext = traceContextCarrierSchema.optional().parse(message.payload.traceContext);
+      const payload = { ...message.payload };
+      delete payload.traceContext;
       const envelope: OutboxEnvelope = {
         outboxId: message.outboxId,
         commandId: message.commandId,
         topic: message.topic,
         partitionKey: message.partitionKey,
-        payload: message.payload,
+        payload,
+        ...(traceContext === undefined ? {} : { traceContext }),
       };
       try {
         await publisher(envelope);
@@ -488,7 +609,12 @@ export async function publishPendingOutbox(
         await transaction
           .update(commands)
           .set({ status: 'DISPATCHED', updatedAt: now })
-          .where(eq(commands.commandId, message.commandId));
+          .where(
+            and(
+              eq(commands.commandId, message.commandId),
+              inArray(commands.status, ['PENDING', 'FAILED_RETRYABLE']),
+            ),
+          );
       } catch (error) {
         const failure = error instanceof Error ? error.message : 'Unknown publication failure';
         await transaction
@@ -578,6 +704,7 @@ export async function enqueueCommandInTransaction(
   transaction: Parameters<Parameters<DebtShiftDatabase['transaction']>[0]>[0],
   migrationId: string,
   command: PlannedCommand,
+  traceContext?: TraceContextCarrier,
 ): Promise<string> {
   const commandId = hashCanonicalText(`debtshift.command.v1:${command.idempotencyKey}`);
   await insertCommandInTransaction(
@@ -586,6 +713,7 @@ export async function enqueueCommandInTransaction(
     command,
     commandId,
     hashCanonicalText(canonicalJson(command.payload)),
+    traceContext,
   );
   return commandId;
 }
@@ -596,6 +724,7 @@ async function insertCommandInTransaction(
   command: PlannedCommand,
   commandId: string,
   payloadHash: string,
+  traceContext?: TraceContextCarrier,
 ): Promise<void> {
   const inserted = await transaction
     .insert(commands)
@@ -611,11 +740,18 @@ async function insertCommandInTransaction(
     .returning({ commandId: commands.commandId });
   if (inserted.length === 0) return;
 
+  const parsedTraceContext = traceContextCarrierSchema.optional().parse(traceContext);
+
   await transaction.insert(outboxMessages).values({
     commandId,
     topic: 'debtshift.commands.v1',
     partitionKey: migrationId,
-    payload: { commandId, migrationId, type: command.type },
+    payload: {
+      commandId,
+      migrationId,
+      type: command.type,
+      ...(parsedTraceContext === undefined ? {} : { traceContext: parsedTraceContext }),
+    },
   });
 }
 

@@ -1,29 +1,43 @@
 'use client';
 
 /*
- * Migration polling.
+ * Reading a migration while it runs.
  *
- * There is no SSE and no WebSocket on this API — the README and
- * `docs/architecture.md` say otherwise, but `apps/api/src` contains no `@Sse`
- * handler. So this polls, and it is deliberately the ONLY place that does, so
- * that swapping it for a stream later touches one file.
+ * The state on screen always comes from one place: a read of
+ * `GET /migrations/:id`. Two things decide WHEN to read:
+ *
+ *   - the API's audit-event stream (`GET /migrations/:id/stream`, server-sent
+ *     events). Each event means "something was recorded", and is answered by
+ *     reading the migration again. An event is never itself treated as the
+ *     state, and an open connection is never treated as progress;
+ *   - a timer, which is the whole mechanism when there is no stream (the
+ *     recorded demo, an old browser, a dropped connection) and a slow safety
+ *     net when there is one.
+ *
+ * This is deliberately the ONLY place that polls or streams.
  *
  * The rules it implements, from the frontend contract:
- *   - poll every 1.5–2 s while the phase is non-terminal;
+ *   - read every 1.5–2 s while the phase is non-terminal and no stream is open;
+ *   - resume the stream after the last event already read;
  *   - pause entirely while the tab is hidden;
  *   - back off after transient failures;
- *   - stop at COMPLETED, FAILED_SAFE or EXPIRED;
+ *   - stop at a terminal phase;
  *   - never lose the last known state or the migration id on a failure.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { latestMigrationEventSequence } from '../../components/migration-client';
 import { ApiError, api } from '../../lib/api/client';
 import { isTerminalPhase, type MigrationDetails } from '../../lib/api/types';
 import { now } from '../../lib/clock';
 
 export const BASE_POLL_MS = 1_800;
 export const MAX_POLL_MS = 30_000;
+/** How often to read anyway while the stream is open, in case an event is missed. */
+export const STREAM_SAFETY_POLL_MS = 15_000;
+/** Consecutive refused stream connections after which the timer is left to do the work. */
+export const MAX_STREAM_REFUSALS = 3;
 
 /**
  * How long to wait before the next poll.
@@ -49,11 +63,14 @@ export function shouldKeepPolling(phase: string | undefined): boolean {
 }
 
 export type PollStatus = 'loading' | 'live' | 'paused' | 'stopped' | 'retrying' | 'missing';
+/** What is prompting the reads right now. */
+export type PollTransport = 'stream' | 'polling';
 
 export interface MigrationPollState {
   /** The last successful read. Kept through failures, never cleared. */
   readonly details?: MigrationDetails | undefined;
   readonly status: PollStatus;
+  readonly transport: PollTransport;
   readonly error?: string | undefined;
   readonly consecutiveFailures: number;
   readonly updatedAt?: Date | undefined;
@@ -64,6 +81,7 @@ export interface MigrationPollState {
 export function useMigrationPolling(migrationId: string): MigrationPollState {
   const [details, setDetails] = useState<MigrationDetails | undefined>(undefined);
   const [status, setStatus] = useState<PollStatus>('loading');
+  const [transport, setTransport] = useState<PollTransport>('polling');
   const [error, setError] = useState<string | undefined>(undefined);
   const [failures, setFailures] = useState(0);
   const [updatedAt, setUpdatedAt] = useState<Date | undefined>(undefined);
@@ -83,22 +101,94 @@ export function useMigrationPolling(migrationId: string): MigrationPollState {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let reading = false;
+    let readAgain = false;
+
+    let stream: EventSource | undefined;
+    let streamOpen = false;
+    let streamRefusals = 0;
 
     const schedule = (delay: number) => {
       if (cancelled) return;
+      if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(() => void run(), delay);
     };
 
-    const run = async (): Promise<void> => {
-      if (cancelled) return;
+    const closeStream = () => {
+      stream?.close();
+      stream = undefined;
+      streamOpen = false;
+      setTransport('polling');
+    };
 
-      // A hidden tab polls nothing at all. It resumes on visibilitychange.
+    /** Read now. If a read is already in flight, read once more when it lands. */
+    const readNow = () => {
+      if (cancelled) return;
+      if (reading) {
+        readAgain = true;
+        return;
+      }
+      if (timer !== undefined) clearTimeout(timer);
+      void run();
+    };
+
+    const openStream = (current: MigrationDetails) => {
+      if (stream !== undefined || streamRefusals >= MAX_STREAM_REFUSALS) return;
+      if (typeof EventSource === 'undefined') return;
+      const url = api.migrationStreamUrl(migrationId, latestMigrationEventSequence(current.events));
+      if (url === undefined) return;
+
+      // The session cookie has to travel with the stream, as with every read.
+      const source = new EventSource(url, { withCredentials: true });
+      stream = source;
+
+      const markOpen = () => {
+        if (cancelled || stream !== source) return;
+        streamOpen = true;
+        streamRefusals = 0;
+        setTransport('stream');
+      };
+      source.onopen = markOpen;
+      source.addEventListener('keepalive', markOpen);
+      // Something was recorded. What it was is read from the API, not from
+      // the event.
+      source.addEventListener('migration', () => {
+        if (cancelled || stream !== source) return;
+        markOpen();
+        readNow();
+      });
+      source.onerror = () => {
+        if (cancelled || stream !== source) return;
+        streamOpen = false;
+        setTransport('polling');
+        // The browser reconnects by itself and resumes after the last event
+        // it saw. If it has given up instead, the next read opens a new one.
+        if (source.readyState === 2) {
+          source.close();
+          stream = undefined;
+          streamRefusals += 1;
+        }
+        // A dropped stream says nothing about the migration. Read it.
+        readNow();
+      };
+    };
+
+    const run = async (): Promise<void> => {
+      if (cancelled || reading) return;
+
+      // A hidden tab reads nothing at all. It resumes on visibilitychange.
       if (typeof document !== 'undefined' && document.hidden) {
+        closeStream();
         setStatus('paused');
         schedule(BASE_POLL_MS);
         return;
       }
 
+      reading = true;
+      readAgain = false;
+      // Decided inside the read, done after it: starting the next read before
+      // this one has let go of `reading` would let the two overlap.
+      let next: (() => void) | undefined;
       try {
         const result = await api.migration(migrationId);
         if (cancelled) return;
@@ -111,8 +201,13 @@ export function useMigrationPolling(migrationId: string): MigrationPollState {
 
         if (shouldKeepPolling(result.migration.phase)) {
           setStatus('live');
-          schedule(BASE_POLL_MS);
+          openStream(result);
+          next = () => {
+            if (readAgain) void run();
+            else schedule(streamOpen ? STREAM_SAFETY_POLL_MS : BASE_POLL_MS);
+          };
         } else {
+          closeStream();
           setStatus('stopped');
         }
       } catch (caught) {
@@ -122,6 +217,7 @@ export function useMigrationPolling(migrationId: string): MigrationPollState {
 
         // A migration that does not exist is not a transient failure: stop.
         if (apiError?.code === 'NOT_FOUND') {
+          closeStream();
           setStatus('missing');
           setError(apiError.message);
           return;
@@ -134,17 +230,19 @@ export function useMigrationPolling(migrationId: string): MigrationPollState {
         // The last known state stays on screen. Losing it, or the id, on a
         // blip would be worse than showing a slightly old phase with a notice.
         setStatus('retrying');
-        schedule(nextPollDelay(count));
+        next = () => schedule(nextPollDelay(count));
+      } finally {
+        reading = false;
       }
+      next?.();
     };
 
     void run();
 
     const onVisibility = () => {
       if (typeof document !== 'undefined' && !document.hidden) {
-        if (timer !== undefined) clearTimeout(timer);
         const phase = detailsRef.current?.migration.phase;
-        if (shouldKeepPolling(phase)) void run();
+        if (shouldKeepPolling(phase)) readNow();
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
@@ -152,6 +250,8 @@ export function useMigrationPolling(migrationId: string): MigrationPollState {
     return () => {
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
+      stream?.close();
+      stream = undefined;
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [migrationId, manualTick]);
@@ -159,6 +259,7 @@ export function useMigrationPolling(migrationId: string): MigrationPollState {
   return {
     details,
     status,
+    transport,
     error,
     consecutiveFailures: failures,
     updatedAt,

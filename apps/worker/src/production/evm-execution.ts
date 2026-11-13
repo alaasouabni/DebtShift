@@ -1,7 +1,11 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
 import type { MigrationExecutionContext } from '@debtshift/database';
 import {
   getExecutionPlanTypedData,
   hashCanonicalText,
+  parseDebtShiftEvmDeploymentManifest,
   parseLiveMarketConfiguration,
   type DebtShiftEnvironment,
   type Evidence,
@@ -13,6 +17,7 @@ import {
   MorphoBlueReadAdapter,
   loadFoundryArtifact,
   readAaveReserveTokenAddresses,
+  verifyProductionDebtShiftDeployment,
   type FoundryArtifact,
 } from '@debtshift/protocols';
 import {
@@ -42,6 +47,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import {
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
+  PreSourceCloseFailureError,
   type ChainCanonicalityFailure,
   type FinalizedChainAction,
   type MigrationExecutionPort,
@@ -49,6 +55,25 @@ import {
 
 type EvmPublicClient = PublicClient<Transport, Chain>;
 type EvmWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
+
+class PreBroadcastSimulationError extends Error {
+  override readonly name = 'PreBroadcastSimulationError';
+
+  constructor(functionName: string, cause: unknown) {
+    super(`${functionName} failed during pre-broadcast simulation.`, { cause });
+  }
+}
+
+class FinalizedTransactionRevertError extends Error {
+  override readonly name = 'FinalizedTransactionRevertError';
+
+  constructor(
+    functionName: string,
+    readonly transactionHash: Hex,
+  ) {
+    super(`${functionName} reverted in finalized transaction ${transactionHash}.`);
+  }
+}
 
 interface ProductionArtifacts {
   readonly vault: FoundryArtifact;
@@ -273,6 +298,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     this.#ready = this.#verifyDeploymentBindings();
   }
 
+  async assertReady(): Promise<void> {
+    await this.#ready;
+  }
+
   async verifyCanonicalEvidence(
     records: readonly Evidence[],
   ): Promise<readonly ChainCanonicalityFailure[]> {
@@ -437,6 +466,59 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     return action;
   }
 
+  async cancelBeforeSourceClose(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
+    await this.#assertContext(context);
+    const artifacts = await this.#artifacts;
+    return this.#releaseUndrawnReservation(context, artifacts, {
+      action: 'cancelBeforeSourceClose',
+      reason: 'BORROWER_REQUESTED_CANCELLATION',
+      planHash: context.signedPlan.planHash,
+    });
+  }
+
+  async expireBeforeSourceClose(
+    context: MigrationExecutionContext,
+    reason: string,
+  ): Promise<FinalizedChainAction> {
+    await this.#assertContext(context);
+    const artifacts = await this.#artifacts;
+    const plan = context.signedPlan.plan;
+    const migrationId = context.migration.migrationId as Hex;
+    const sourceClose = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_ADAPTER_ADDRESS,
+      eventTopics.sourceClosed,
+      [migrationId, addressTopic(plan.borrower)],
+      { action: 'closeSource', reconciled: true },
+    );
+    if (sourceClose !== undefined) {
+      throw new Error('An expired pre-source migration cannot release after source closure.');
+    }
+    const sourcePosition = await this.#aave.readPosition(plan.borrower);
+    if (
+      sourcePosition === undefined ||
+      BigInt(sourcePosition.debtUnits) === 0n ||
+      BigInt(sourcePosition.debtUnits) > BigInt(plan.sourceRepaymentMaxUnits) ||
+      BigInt(sourcePosition.collateralUnits) < BigInt(plan.sourceCollateralMinUnits)
+    ) {
+      throw new Error('Source position changed before the expired reservation could be released.');
+    }
+    return this.#releaseUndrawnReservation(context, artifacts, {
+      action: 'expireBeforeSourceClose',
+      reason,
+      outcome: 'EXPIRED',
+      planHash: context.signedPlan.planHash,
+      deadline: plan.deadline,
+      quoteExpiresAt: context.quote.expiresAt,
+      sourcePosition: {
+        borrower: plan.borrower,
+        snapshotId: sourcePosition.snapshotId,
+        disposition: 'UNCHANGED',
+      },
+    });
+  }
+
   async closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
     await this.#assertContext(context);
     const artifacts = await this.#artifacts;
@@ -468,24 +550,74 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       plan,
       this.#environment.EIP712_VERIFYING_CONTRACT,
     ).message;
-    const action = await this.#writeAction(
-      this.#sourceWallet,
-      this.#sourcePublic,
-      this.#environment.SOURCE_CHAIN_ID,
-      artifacts.sourceAdapter,
-      this.#environment.SOURCE_ADAPTER_ADDRESS,
-      'closeSource',
-      [authorization, context.signedPlan.signature],
-      {
-        action: 'closeSource',
-        borrower: plan.borrower,
-        sourceRepaymentMaximumUnits: plan.sourceRepaymentMaxUnits,
-        sourceCollateralMinimumUnits: plan.sourceCollateralMinUnits,
-        feasibilityHash: proof.feasibilityHash,
-        feasibilityTransactionHash: proof.transactionHash,
-        financingRevalidation: revalidation,
-      },
-    );
+    let action: FinalizedChainAction;
+    try {
+      action = await this.#writeAction(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        artifacts.sourceAdapter,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        'closeSource',
+        [authorization, context.signedPlan.signature],
+        {
+          action: 'closeSource',
+          borrower: plan.borrower,
+          sourceRepaymentMaximumUnits: plan.sourceRepaymentMaxUnits,
+          sourceCollateralMinimumUnits: plan.sourceCollateralMinUnits,
+          feasibilityHash: proof.feasibilityHash,
+          feasibilityTransactionHash: proof.transactionHash,
+          financingRevalidation: revalidation,
+        },
+      );
+    } catch (error) {
+      if (
+        !(error instanceof PreBroadcastSimulationError) &&
+        !(error instanceof FinalizedTransactionRevertError)
+      ) {
+        throw error;
+      }
+      const reconciled = await this.#eventAction(
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        eventTopics.sourceClosed,
+        [migrationId, addressTopic(plan.borrower)],
+        { action: 'closeSource', reconciled: true },
+      );
+      if (reconciled !== undefined) {
+        return withRevalidation(reconciled, await this.#revalidate(context, 'AFTER_SOURCE_CLOSE'));
+      }
+      const sourcePosition = await this.#aave.readPosition(plan.borrower);
+      if (
+        sourcePosition === undefined ||
+        BigInt(sourcePosition.debtUnits) === 0n ||
+        BigInt(sourcePosition.debtUnits) > BigInt(plan.sourceRepaymentMaxUnits) ||
+        BigInt(sourcePosition.collateralUnits) < BigInt(plan.sourceCollateralMinUnits)
+      ) {
+        throw new Error('Source position changed after the failed source-close attempt.', {
+          cause: error,
+        });
+      }
+      throw new PreSourceCloseFailureError(
+        await this.#releaseUndrawnReservation(context, artifacts, {
+          action: 'releaseFailedSourceClose',
+          reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+          outcome: 'REQUOTE_REQUIRED',
+          failureStage:
+            error instanceof PreBroadcastSimulationError
+              ? 'PRE_BROADCAST_SIMULATION'
+              : 'FINALIZED_REVERT',
+          sourcePosition: {
+            borrower: plan.borrower,
+            snapshotId: sourcePosition.snapshotId,
+            disposition: 'UNCHANGED',
+          },
+          financingRevalidation: revalidation,
+        }),
+        error,
+      );
+    }
     if ((await this.#aave.readPosition(plan.borrower)) !== undefined) {
       throw new Error('Aave source position remains open after the finalized close transaction.');
     }
@@ -1367,6 +1499,39 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     return action;
   }
 
+  async #releaseUndrawnReservation(
+    context: MigrationExecutionContext,
+    artifacts: ProductionArtifacts,
+    payload: Record<string, unknown>,
+  ): Promise<FinalizedChainAction> {
+    const migrationId = context.migration.migrationId as Hex;
+    const existing = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      eventTopics.reservationReleased,
+      [migrationId],
+      { ...payload, reconciled: true },
+    );
+    const action =
+      existing ??
+      (await this.#writeAction(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        artifacts.vault,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'release',
+        [migrationId],
+        payload,
+      ));
+    const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+    if (exposure.status !== 4 || exposure.principalUnits !== 0n) {
+      throw new Error('Reservation release did not clear the undrawn source exposure.');
+    }
+    return action;
+  }
+
   async #recordCapacityDeterioration(
     context: MigrationExecutionContext,
     artifacts: ProductionArtifacts,
@@ -2026,6 +2191,124 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
         'Vault, escrow, or destination plan-domain allowlists are not execution-ready.',
       );
     }
+    await this.#verifyDeploymentManifest();
+  }
+
+  async #verifyDeploymentManifest(): Promise<void> {
+    if (this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH.length === 0) return;
+    const manifest = parseDebtShiftEvmDeploymentManifest(
+      await readFile(resolve(this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH), 'utf8'),
+    );
+    if (manifest.environment !== this.#environment.DEBTSHIFT_MODE) {
+      throw new Error('EVM deployment manifest environment does not match the runtime mode.');
+    }
+    if (
+      manifest.source.chainId !== this.#environment.SOURCE_CHAIN_ID ||
+      manifest.destination.chainId !== this.#environment.DESTINATION_CHAIN_ID
+    ) {
+      throw new Error('EVM deployment manifest chain IDs do not match runtime configuration.');
+    }
+    if (
+      BigInt(manifest.source.deploymentBlockNumber) !==
+        BigInt(this.#environment.SOURCE_DEPLOYMENT_BLOCK_NUMBER) ||
+      BigInt(manifest.destination.deploymentBlockNumber) !==
+        BigInt(this.#environment.DESTINATION_DEPLOYMENT_BLOCK_NUMBER)
+    ) {
+      throw new Error('EVM deployment manifest block bounds do not match runtime configuration.');
+    }
+    if (
+      manifest.routeConfigurationHash !==
+      keccak256(stringToHex(JSON.stringify(this.#configuration)))
+    ) {
+      throw new Error('EVM deployment manifest route hash does not match runtime configuration.');
+    }
+    assertAddressBindings([
+      [manifest.executor, this.#environment.EXECUTOR_ADDRESS, 'manifest executor'],
+      [manifest.source.protocol.pool, this.#configuration.source.pool, 'manifest Aave pool'],
+      [
+        manifest.source.protocol.dataProvider,
+        this.#configuration.source.dataProvider,
+        'manifest Aave data provider',
+      ],
+      [
+        manifest.source.collateralToken,
+        this.#environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
+        'manifest source collateral',
+      ],
+      [
+        manifest.source.debtToken,
+        this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+        'manifest source debt',
+      ],
+      [
+        manifest.source.contracts.liquidityVault.address,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'manifest source vault',
+      ],
+      [
+        manifest.source.contracts.migrationEscrow.address,
+        this.#environment.SOURCE_ESCROW_ADDRESS,
+        'manifest source escrow',
+      ],
+      [
+        manifest.source.contracts.sourceLending.address,
+        this.#environment.SOURCE_LENDING_ADDRESS,
+        'manifest source lending',
+      ],
+      [
+        manifest.source.contracts.sourceAdapter.address,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        'manifest source adapter',
+      ],
+      [
+        manifest.destination.protocol.morpho,
+        this.#configuration.destination.morpho,
+        'manifest Morpho deployment',
+      ],
+      [
+        manifest.destination.protocol.oracle,
+        this.#configuration.destination.morphoOracle,
+        'manifest Morpho oracle',
+      ],
+      [
+        manifest.destination.collateralToken,
+        this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS,
+        'manifest destination collateral',
+      ],
+      [
+        manifest.destination.debtToken,
+        this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS,
+        'manifest destination debt',
+      ],
+      [
+        manifest.destination.contracts.migrationEscrow.address,
+        this.#environment.DESTINATION_ESCROW_ADDRESS,
+        'manifest destination escrow',
+      ],
+      [
+        manifest.destination.contracts.targetLending.address,
+        this.#environment.DESTINATION_LENDING_ADDRESS,
+        'manifest destination lending',
+      ],
+      [
+        manifest.destination.contracts.destinationAdapter.address,
+        this.#environment.DESTINATION_ADAPTER_ADDRESS,
+        'manifest destination adapter',
+      ],
+    ]);
+    if (
+      manifest.destination.protocol.marketId.toLowerCase() !==
+      this.#configuration.destination.marketId.toLowerCase()
+    ) {
+      throw new Error(
+        'EVM deployment manifest Morpho market does not match runtime configuration.',
+      );
+    }
+    await verifyProductionDebtShiftDeployment({
+      manifest,
+      sourcePublicClient: this.#sourcePublic,
+      destinationPublicClient: this.#destinationPublic,
+    });
   }
 
   async #verifiedTokenDelivery(
@@ -2288,17 +2571,21 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     args: readonly unknown[],
     payload: Record<string, unknown>,
   ): Promise<FinalizedChainAction> {
-    const simulation = await client.simulateContract({
-      account: this.#account,
-      address,
-      abi: artifact.abi,
-      functionName,
-      args,
-    });
+    const simulation = await client
+      .simulateContract({
+        account: this.#account,
+        address,
+        abi: artifact.abi,
+        functionName,
+        args,
+      })
+      .catch((error: unknown) => {
+        throw new PreBroadcastSimulationError(functionName, error);
+      });
     const hash = await wallet.writeContract(simulation.request);
     const confirmations = this.#confirmationsForClient(client);
     const receipt = await client.waitForTransactionReceipt({ hash, confirmations });
-    if (receipt.status !== 'success') throw new Error(`${functionName} reverted: ${hash}`);
+    if (receipt.status !== 'success') throw new FinalizedTransactionRevertError(functionName, hash);
     return finalizedAction(chainId, receipt, confirmations, payload);
   }
 

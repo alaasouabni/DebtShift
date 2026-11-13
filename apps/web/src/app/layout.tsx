@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { SiteFooter, SiteHeader } from '../components/shell/index';
 import { EnvironmentProvider } from '../features/environment/environment-context';
+import { SessionGate } from '../features/wallet/session-gate';
 import { WalletProvider } from '../features/wallet/wallet-context';
 import { THEME_BOOTSTRAP_SCRIPT } from '../lib/theme';
 
@@ -60,7 +61,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
               </a>
               <SiteHeader />
               <main id="main" tabIndex={-1} style={{ flexGrow: 1 }}>
-                {children}
+                <SessionGate>{children}</SessionGate>
               </main>
               <SiteFooter />
             </div>

@@ -1,4 +1,10 @@
-import type { PersistedTargetLendingAuthorization } from '@debtshift/domain';
+import type {
+  PersistedTargetLendingAuthorization,
+  RecoveryCaseStatus,
+  RecoveryEscalationState,
+  RecoveryNextPermittedAction,
+  RecoveryPolicy,
+} from '@debtshift/domain';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -42,6 +48,7 @@ export const migrationPhaseEnum = pgEnum('migration_phase', [
   'FAILED_SAFE',
   'REQUOTE_REQUIRED',
   'EXPIRED',
+  'CANCELLED',
 ]);
 export const evidenceStateEnum = pgEnum('evidence_verification_state', [
   'PROVISIONAL',
@@ -83,6 +90,11 @@ export const reservationStatusEnum = pgEnum('reservation_status', [
   'RELEASED',
   'EXPIRED',
 ]);
+export const operationalAlertSeverityEnum = pgEnum('operational_alert_severity', [
+  'WARNING',
+  'CRITICAL',
+]);
+export const operationalAlertStatusEnum = pgEnum('operational_alert_status', ['OPEN', 'RESOLVED']);
 
 export const wallets = pgTable(
   'wallets',
@@ -99,6 +111,50 @@ export const wallets = pgTable(
     unique('wallets_chain_address_unique').on(table.chainId, table.address),
     check('wallets_chain_id_uint', sql`${table.chainId} > 0`),
     check('wallets_address_format', sql`${table.address} ~ '^0x[0-9a-f]{40}$'`),
+  ],
+);
+
+export const walletAuthChallenges = pgTable(
+  'wallet_auth_challenges',
+  {
+    challengeId: uuid('challenge_id').primaryKey(),
+    walletAddress: evmAddress('wallet_address').notNull(),
+    chainId: uint('chain_id').notNull(),
+    nonce: varchar('nonce', { length: 64 }).notNull(),
+    message: text('message').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique('wallet_auth_challenges_nonce_unique').on(table.nonce),
+    check('wallet_auth_challenges_chain_uint', sql`${table.chainId} > 0`),
+    check(
+      'wallet_auth_challenges_address_format',
+      sql`${table.walletAddress} ~ '^0x[0-9a-f]{40}$'`,
+    ),
+    check('wallet_auth_challenges_nonce_format', sql`${table.nonce} ~ '^[a-zA-Z0-9]{8,64}$'`),
+    check('wallet_auth_challenges_message_nonempty', sql`length(${table.message}) > 0`),
+    index('wallet_auth_challenges_wallet_expiry_idx').on(table.walletAddress, table.expiresAt),
+  ],
+);
+
+export const walletSessions = pgTable(
+  'wallet_sessions',
+  {
+    sessionHash: bytes32('session_hash').primaryKey(),
+    walletAddress: evmAddress('wallet_address').notNull(),
+    chainId: uint('chain_id').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    check('wallet_sessions_hash_format', sql`${table.sessionHash} ~ '^0x[0-9a-f]{64}$'`),
+    check('wallet_sessions_chain_uint', sql`${table.chainId} > 0`),
+    check('wallet_sessions_address_format', sql`${table.walletAddress} ~ '^0x[0-9a-f]{40}$'`),
+    index('wallet_sessions_wallet_expiry_idx').on(table.walletAddress, table.expiresAt),
   ],
 );
 
@@ -637,9 +693,17 @@ export const recoveryCases = pgTable(
     migrationId: bytes32('migration_id')
       .notNull()
       .references(() => migrations.migrationId),
-    policy: varchar('policy', { length: 128 }).notNull(),
-    status: varchar('status', { length: 64 }).notNull(),
+    policy: varchar('policy', { length: 128 }).$type<RecoveryPolicy>().notNull(),
+    status: varchar('status', { length: 64 }).$type<RecoveryCaseStatus>().notNull(),
     reason: text('reason').notNull(),
+    nextPermittedAction: varchar('next_permitted_action', { length: 96 })
+      .$type<RecoveryNextPermittedAction>()
+      .notNull(),
+    actionDeadline: timestamp('action_deadline', { withTimezone: true, mode: 'date' }).notNull(),
+    escalationOwner: varchar('escalation_owner', { length: 128 }).notNull(),
+    escalationState: varchar('escalation_state', { length: 64 })
+      .$type<RecoveryEscalationState>()
+      .notNull(),
     residualAssets: jsonb('residual_assets')
       .$type<ReadonlyArray<Record<string, unknown>>>()
       .notNull(),
@@ -648,7 +712,45 @@ export const recoveryCases = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (table) => [unique('recovery_cases_migration_unique').on(table.migrationId)],
+  (table) => [
+    unique('recovery_cases_migration_unique').on(table.migrationId),
+    index('recovery_cases_escalation_idx').on(table.escalationState, table.actionDeadline),
+    check(
+      'recovery_cases_action_state_consistent',
+      sql`(${table.escalationState} = 'AUTOMATED_RECOVERY_PENDING' AND ${table.nextPermittedAction} = 'EXECUTE_SIGNED_RECOVERY') OR (${table.escalationState} = 'MANUAL_REVIEW_REQUIRED' AND ${table.nextPermittedAction} <> 'EXECUTE_SIGNED_RECOVERY') OR ${table.escalationState} = 'RESOLVED_FAILED_SAFE'`,
+    ),
+    check(
+      'recovery_cases_status_state_consistent',
+      sql`(${table.status} = 'OPEN' AND ${table.escalationState} <> 'RESOLVED_FAILED_SAFE') OR (${table.status} = 'RESOLVED_FAILED_SAFE' AND ${table.escalationState} = 'RESOLVED_FAILED_SAFE')`,
+    ),
+  ],
+);
+
+export const operationalAlerts = pgTable(
+  'operational_alerts',
+  {
+    alertId: bytes32('alert_id').primaryKey(),
+    migrationId: bytes32('migration_id')
+      .notNull()
+      .references(() => migrations.migrationId),
+    type: varchar('type', { length: 96 }).notNull(),
+    severity: operationalAlertSeverityEnum('severity').notNull(),
+    deduplicationKey: varchar('deduplication_key', { length: 256 }).notNull(),
+    status: operationalAlertStatusEnum('status').notNull().default('OPEN'),
+    message: text('message').notNull(),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    firstObservedAt: timestamp('first_observed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    lastObservedAt: timestamp('last_observed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    unique('operational_alerts_deduplication_unique').on(table.deduplicationKey),
+    index('operational_alerts_open_idx').on(table.status, table.severity, table.lastObservedAt),
+    index('operational_alerts_migration_idx').on(table.migrationId, table.createdAt),
+    check('operational_alerts_id_format', sql`${table.alertId} ~ '^0x[0-9a-f]{64}$'`),
+  ],
 );
 
 export const assetCatalogVersions = pgTable(

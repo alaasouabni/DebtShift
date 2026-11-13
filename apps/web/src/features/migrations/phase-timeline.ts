@@ -7,8 +7,8 @@
  * in the authoritative event history, so the stepper can show times without
  * inventing them.
  *
- * Recovery, failed-safe and expired are deliberately NOT positions on the
- * track: they replace it. `isOffTrack` says so.
+ * Recovery, failed-safe, requote, expired and cancelled are deliberately NOT
+ * positions on the track: they replace it. `isOffTrack` says so.
  */
 
 import { FORWARD_PHASES, type AuditEvent, type MigrationPhase } from '../../lib/api/types';
@@ -23,13 +23,14 @@ export interface TimelineStep {
   readonly at?: string | undefined;
 }
 
-/** True for the four phases that are not steps on the forward track. */
+/** True for the five phases that are not steps on the forward track. */
 export function isOffTrack(phase: MigrationPhase): boolean {
   return (
     phase === 'RECOVERY' ||
     phase === 'FAILED_SAFE' ||
     phase === 'REQUOTE_REQUIRED' ||
-    phase === 'EXPIRED'
+    phase === 'EXPIRED' ||
+    phase === 'CANCELLED'
   );
 }
 

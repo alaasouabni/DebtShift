@@ -1,6 +1,7 @@
-import type { PositionSnapshot } from '@debtshift/domain';
+import { evmAddressSchema, positionSnapshotSchema, type PositionSnapshot } from '@debtshift/domain';
 import {
   compareRoutes,
+  routeComparisonSchema,
   routePolicySchema,
   type RouteCandidate,
   type RouteComparison,
@@ -45,6 +46,23 @@ export interface WalletRouteAnalysis {
   readonly analyses: readonly PositionRouteAnalysis[];
 }
 
+export const positionRouteAnalysisSchema = z
+  .object({
+    sourcePosition: positionSnapshotSchema,
+    comparison: routeComparisonSchema,
+  })
+  .strict();
+
+export const walletRouteAnalysisSchema = z
+  .object({
+    agent: z.literal('DEBTSHIFT_ROUTE_RISK_AGENT'),
+    deterministic: z.literal(true),
+    policyVersion: z.literal(1),
+    wallet: evmAddressSchema,
+    analyses: z.array(positionRouteAnalysisSchema),
+  })
+  .strict() as z.ZodType<WalletRouteAnalysis>;
+
 const chainIdsSchema = z.array(z.number().int().positive()).min(1).max(32);
 
 /** Read-only financial agent. Its tool type has no signing, broadcast, reservation, or write method. */
@@ -65,12 +83,12 @@ export class DeterministicRouteRiskAgent {
         };
       }),
     );
-    return {
+    return walletRouteAnalysisSchema.parse({
       agent: 'DEBTSHIFT_ROUTE_RISK_AGENT',
       deterministic: true,
       policyVersion: 1,
       wallet,
       analyses,
-    };
+    });
   }
 }

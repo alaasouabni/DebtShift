@@ -40,6 +40,8 @@ const STAGE_BY_PHASE: Record<MigrationPhase, FlowStage> = {
   FAILED_SAFE: 'returning',
   REQUOTE_REQUIRED: 'stopped',
   EXPIRED: 'stopped',
+  // Cancellation is only possible before the source loan is touched.
+  CANCELLED: 'stopped',
 };
 
 export function flowStageForPhase(phase: MigrationPhase): FlowStage {

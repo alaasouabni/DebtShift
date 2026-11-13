@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { MigrationExecutionContext } from '@debtshift/database';
 import { evidenceSchema, type Evidence, type EvidenceType } from '@debtshift/domain';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,6 +9,9 @@ import { NearReceiptRegistryPort, type NearRegistryClient } from './near-receipt
 const MIGRATION_ID = `0x${'11'.repeat(32)}` as const;
 const INTENT_HASH = `0x${'22'.repeat(32)}` as const;
 const PLAN_HASH = `0x${'33'.repeat(32)}` as const;
+const REGISTRY_WASM = new Uint8Array([0, 97, 115, 109]);
+const REGISTRY_WASM_SHA256 =
+  `0x${createHash('sha256').update(REGISTRY_WASM).digest('hex')}` as `0x${string}`;
 const REQUIRED_TYPES: readonly EvidenceType[] = [
   'LIQUIDITY_RESERVATION',
   'SOURCE_LENDING_AUTHORIZATION',
@@ -19,6 +24,15 @@ const REQUIRED_TYPES: readonly EvidenceType[] = [
 ];
 
 describe('NearReceiptRegistryPort', () => {
+  it('attests the deployed code, owner, ownership state, and verifier before startup', async () => {
+    const registry = new RegistryHarness();
+    const port = createPort(registry.client, evidence());
+
+    await expect(port.assertReady()).resolves.toBeUndefined();
+    registry.owner = 'unexpected.testnet';
+    await expect(port.assertReady()).rejects.toThrow('registry owner does not match');
+  });
+
   it('registers, attests, finalizes, and then replays from immutable final state', async () => {
     const registry = new RegistryHarness();
     const port = createPort(registry.client, evidence());
@@ -62,6 +76,31 @@ describe('NearReceiptRegistryPort', () => {
 
     await expect(port.finalize(context())).rejects.toThrow('signed migration bindings');
   });
+
+  it('does not finalize when an attestation write is absent from final contract state', async () => {
+    const registry = new RegistryHarness();
+    registry.dropAttestationWrites = true;
+    const port = createPort(registry.client, evidence());
+
+    await expect(port.finalize(context())).rejects.toThrow('did not persist durable evidence');
+    expect(registry.receipt).toBeNull();
+    expect(registry.client.call).not.toHaveBeenCalledWith('finalize_agreement', expect.anything());
+  });
+
+  it('rejects an immutable final receipt whose registered attestation set is incomplete', async () => {
+    const registry = new RegistryHarness();
+    const port = createPort(registry.client, evidence());
+    await port.finalize(context());
+    registry.attestations.pop();
+    if (registry.agreement === null) throw new Error('Expected a stored agreement.');
+    registry.agreement.attestation_count = registry.attestations.length;
+    const writeCount = registry.client.call.mock.calls.length;
+
+    await expect(port.finalize(context())).rejects.toThrow(
+      'Finalized NEAR agreement is missing durable evidence',
+    );
+    expect(registry.client.call).toHaveBeenCalledTimes(writeCount);
+  });
 });
 
 function createPort(client: NearRegistryClient, records: readonly Evidence[]) {
@@ -69,7 +108,10 @@ function createPort(client: NearRegistryClient, records: readonly Evidence[]) {
     environment: {
       NEAR_NETWORK: 'testnet',
       NEAR_RPC_URL: 'https://rpc.testnet.near.org',
+      NEAR_RPC_FALLBACK_URLS_JSON: [],
       NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
+      NEAR_REGISTRY_OWNER_ACCOUNT: 'owner.testnet',
+      NEAR_REGISTRY_WASM_SHA256: REGISTRY_WASM_SHA256,
       NEAR_SIGNER_ACCOUNT_ID: 'verifier.testnet',
       NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test',
       NEAR_STORAGE_DEPOSIT_YOCTO: '1000000000000000000000000',
@@ -123,12 +165,17 @@ function evidence(): readonly Evidence[] {
 }
 
 class RegistryHarness {
+  owner = 'owner.testnet';
   agreement: Record<string, unknown> | null = null;
   readonly attestations: Array<Record<string, unknown>> = [];
   receipt: Record<string, string> | null = null;
+  dropAttestationWrites = false;
 
   readonly client = {
+    code: vi.fn(async () => REGISTRY_WASM),
     view: vi.fn(async (methodName: string, args: Readonly<Record<string, unknown>>) => {
+      if (methodName === 'owner_id') return this.owner;
+      if (methodName === 'pending_owner_id') return null;
       if (methodName === 'is_verifier') return true;
       if (methodName === 'get_agreement') return this.agreement;
       if (methodName === 'get_final_receipt') return this.receipt;
@@ -159,7 +206,7 @@ class RegistryHarness {
           verifier_id: 'verifier.testnet',
           recorded_at_ns: '1794477600000000000',
         };
-        this.attestations.push(stored);
+        if (!this.dropAttestationWrites) this.attestations.push(stored);
         if (this.agreement !== null) this.agreement.attestation_count = this.attestations.length;
         return stored;
       }
@@ -176,6 +223,7 @@ class RegistryHarness {
       throw new Error(`Unexpected call ${methodName}.`);
     }),
   } satisfies NearRegistryClient & {
+    code: ReturnType<typeof vi.fn>;
     view: ReturnType<typeof vi.fn>;
     call: ReturnType<typeof vi.fn>;
   };

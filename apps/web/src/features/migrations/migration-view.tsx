@@ -10,16 +10,19 @@
  * was repaid.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { HashValue } from '../../components/shell';
 import { Alert, Badge, ButtonLink, SectionRule, Section, Button } from '../../components/ui';
-import type {
-  Command,
-  Evidence,
-  LedgerEntry,
-  MigrationDetails,
-  MigrationPhase,
+import { ApiError, api } from '../../lib/api/client';
+import {
+  isCancellablePhase,
+  type Command,
+  type Evidence,
+  type LedgerEntry,
+  type MigrationDetails,
+  type MigrationPhase,
+  type RecoveryCase,
 } from '../../lib/api/types';
 import { formatRelativeAge, formatTimestamp, truncateHex } from '../../lib/formatting';
 import {
@@ -29,6 +32,10 @@ import {
   LEDGER_CATEGORY_LABELS,
   ledgerComponentLabel,
   PHASE_LABELS,
+  RECOVERY_ACTION_LABELS,
+  RECOVERY_ESCALATION_LABELS,
+  RECOVERY_POLICY_LABELS,
+  RECOVERY_STATUS_LABELS,
   VERIFICATION_STATE_LABELS,
 } from '../../lib/labels';
 import { flowStageForPhase } from '../../components/flow/flow-stage';
@@ -44,7 +51,7 @@ import {
   readRecoveryReason,
 } from './evidence-line';
 import { buildTimeline, isOffTrack, phasePosition } from './phase-timeline';
-import { useMigrationPolling } from './use-migration';
+import { BASE_POLL_MS, useMigrationPolling } from './use-migration';
 
 export function MigrationView({ migrationId }: { readonly migrationId: string }) {
   const poll = useMigrationPolling(migrationId);
@@ -69,7 +76,8 @@ export function MigrationView({ migrationId }: { readonly migrationId: string })
           <h1 style={{ margin: 0, fontSize: 40, lineHeight: '48px' }}>No such migration.</h1>
           <p style={{ margin: 0, fontSize: 18, color: 'var(--ink-muted)' }}>
             The backend has no record of{' '}
-            <span className="mono">{truncateHex(migrationId, 10, 8)}</span>.
+            <span className="mono">{truncateHex(migrationId, 10, 8)}</span> for the account you are
+            signed in with. A migration is shown only to the borrower who signed it.
           </p>
           <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
             <ButtonLink href="/position">Back to the position</ButtonLink>
@@ -118,7 +126,13 @@ export function MigrationView({ migrationId }: { readonly migrationId: string })
 
       <MigrationHero details={details} poll={poll} />
 
+      {isCancellablePhase(phase) && !isDemoActive() ? (
+        <CancelPanel details={details} onRequested={poll.refresh} />
+      ) : null}
       {isOffTrack(phase) ? <OffTrackPanel details={details} /> : null}
+      {(details.recoveryCases?.length ?? 0) > 0 ? (
+        <RecoveryCasesPanel cases={details.recoveryCases ?? []} />
+      ) : null}
       {phase === 'COMPLETED' ? <CompletedPanel details={details} /> : null}
       {phase === 'SETTLED' ? <SettledNote /> : null}
 
@@ -141,8 +155,8 @@ export function MigrationView({ migrationId }: { readonly migrationId: string })
 
 function EnvironmentNote() {
   const { badge } = useEnvironment();
-  // Read from the demo flag, not the wallet context: the monitor has to work
-  // with no wallet at all, for instance from a shared link.
+  // Read from the demo flag rather than the wallet context, so this note does
+  // not depend on the wallet layer having settled.
   const label = isDemoActive() ? 'Recorded sandbox run' : badge.label;
   return (
     <div role="note" style={{ background: 'var(--accent-soft)', color: 'var(--ink)' }}>
@@ -354,7 +368,9 @@ function PollIndicator({ poll }: { readonly poll: ReturnType<typeof useMigration
 
   const text =
     poll.status === 'live'
-      ? `Live · polling every ${Math.round(1800 / 1000)} s`
+      ? poll.transport === 'stream'
+        ? 'Live · event stream'
+        : `Live · polling every ${Math.round(BASE_POLL_MS / 1000)} s`
       : poll.status === 'paused'
         ? 'Paused · this tab is in the background'
         : poll.status === 'retrying'
@@ -440,7 +456,10 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
   const recoveryEvidence = details.evidence.filter((item) => item.type.startsWith('RECOVERY_'));
   const recoveryReason = readRecoveryReason(details.evidence);
 
-  const tone = phase === 'EXPIRED' ? 'var(--line-strong)' : 'var(--warning)';
+  const quiet = phase === 'EXPIRED' || phase === 'CANCELLED';
+  const tone = quiet ? 'var(--line-strong)' : 'var(--warning)';
+  // The case panel below carries the reason, the policy and who acts next.
+  const hasCases = (details.recoveryCases?.length ?? 0) > 0;
 
   return (
     <section className="page" style={{ padding: '0 var(--page-gutter) 24px' }}>
@@ -467,7 +486,7 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
           <span className="mono" style={{ color: 'var(--ink-muted)' }}>
             {phase}
           </span>
-          <Badge tone={phase === 'EXPIRED' ? 'neutral' : 'warning'}>{label.label}</Badge>
+          <Badge tone={quiet ? 'neutral' : 'warning'}>{label.label}</Badge>
         </div>
 
         <h2 style={{ margin: 0, fontSize: 30, lineHeight: '38px', fontWeight: 600 }}>
@@ -477,7 +496,9 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
               ? 'The migration did not complete. Custody and residual claims are known.'
               : phase === 'REQUOTE_REQUIRED'
                 ? 'Market capacity changed. A new plan is required.'
-                : 'The authorized window closed before completion.'}
+                : phase === 'CANCELLED'
+                  ? 'You cancelled this migration. Your source loan was not touched.'
+                  : 'The authorized window closed before completion.'}
         </h2>
 
         <p style={{ margin: 0, fontSize: 16, lineHeight: '24px', color: 'var(--ink-muted)' }}>
@@ -519,7 +540,7 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
             </>
           ) : null}
 
-          {recoveryReason ? (
+          {recoveryReason && !hasCases ? (
             <>
               {/*
                 The backend records why recovery opened in the RECOVERY_OPENED
@@ -644,6 +665,348 @@ function OffTrackPanel({ details }: { readonly details: MigrationDetails }) {
             <ButtonLink href="/authorize">Prepare a new migration</ButtonLink>
           </div>
         ) : null}
+
+        {phase === 'CANCELLED' ? (
+          <>
+            <p
+              style={{
+                margin: 0,
+                padding: 'var(--space-4)',
+                background: 'var(--accent-soft)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 14,
+                lineHeight: '20px',
+              }}
+            >
+              <strong>Nothing moved and nothing is in recovery.</strong> The two signatures you gave
+              for this migration cannot be reused. Starting again means reviewing and signing a
+              fresh plan.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+              <ButtonLink href="/routes">Compare routes again</ButtonLink>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------ cancellation */
+
+/**
+ * Cancel, while the backend still allows it.
+ *
+ * Shown only in the phases the backend accepts a cancellation from, which end
+ * before the source loan is touched. Two rules: it takes a second, explicit
+ * confirmation, because it cannot be undone; and an accepted request is shown
+ * as a request. Only the phase the API reports says the migration is
+ * cancelled.
+ */
+function CancelPanel({
+  details,
+  onRequested,
+}: {
+  readonly details: MigrationDetails;
+  readonly onRequested: () => void;
+}) {
+  const [stage, setStage] = useState<'idle' | 'confirm' | 'sending'>('idle');
+  const [accepted, setAccepted] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
+
+  // The record of the request, once the backend has written it.
+  const recorded = details.evidence.some(
+    (item) => item.type === 'MIGRATION_CANCELLATION_REQUESTED',
+  );
+  const requested = recorded || accepted;
+
+  useEffect(() => {
+    if (stage === 'confirm') confirmRef.current?.focus();
+  }, [stage]);
+
+  const send = async () => {
+    setStage('sending');
+    setError(undefined);
+    try {
+      await api.cancelMigration(details.migration.migrationId);
+      setAccepted(true);
+      setStage('idle');
+      onRequested();
+    } catch (caught) {
+      setStage('idle');
+      // 409 is the backend saying the migration has moved past the point
+      // where it can be cancelled. Its own sentence is the explanation.
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : 'The cancellation request did not go through.',
+      );
+      onRequested();
+    }
+  };
+
+  return (
+    <section className="page" style={{ padding: '0 var(--page-gutter) 24px' }}>
+      <div
+        style={{
+          background: 'var(--surface-raised)',
+          border: '1px solid var(--line-strong)',
+          borderRadius: 'var(--radius-xl)',
+          padding: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          maxWidth: 860,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, lineHeight: '28px', fontWeight: 600 }}>
+          {requested ? 'Cancellation requested' : 'Cancel before anything moves'}
+        </h2>
+
+        <p
+          aria-live="polite"
+          style={{ margin: 0, fontSize: 15, lineHeight: '22px', color: 'var(--ink-muted)' }}
+        >
+          {requested
+            ? 'The backend accepted your request and is releasing the reservation. This page shows Cancelled once the backend confirms it. Until then the migration is not cancelled.'
+            : 'Your source loan has not been touched yet. Cancelling releases the reserved liquidity and ends this migration. The backend accepts it only until the source loan starts to close, and not while one of its steps is running, so it may refuse.'}
+        </p>
+
+        {error ? (
+          <Alert tone="warning" title="The migration was not cancelled">
+            {error}
+          </Alert>
+        ) : null}
+
+        {requested ? null : stage === 'idle' ? (
+          <div>
+            <Button variant="secondary" size="sm" onClick={() => setStage('confirm')}>
+              Cancel this migration
+            </Button>
+          </div>
+        ) : (
+          <div
+            ref={confirmRef}
+            tabIndex={-1}
+            role="group"
+            aria-label="Confirm cancellation"
+            style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+          >
+            <p style={{ margin: 0, fontSize: 15, lineHeight: '22px' }}>
+              <strong>This cannot be undone.</strong> Your two signatures for this migration will
+              not be reusable. To refinance afterwards you review and sign a new plan.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => void send()}
+                disabled={stage === 'sending'}
+                aria-busy={stage === 'sending'}
+              >
+                {stage === 'sending' ? 'Requesting cancellation…' : 'Yes, cancel it'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setStage('idle')}
+                disabled={stage === 'sending'}
+              >
+                Keep it running
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ----------------------------------------------------------- recovery cases */
+
+/** One residual entry, as recorded: its kind, then every simple field it carries. */
+function residualFacts(asset: Record<string, unknown>): {
+  readonly kind: string;
+  readonly facts: readonly string[];
+} {
+  const kind = typeof asset.kind === 'string' && asset.kind !== '' ? asset.kind : 'RESIDUAL';
+  const facts: string[] = [];
+  for (const [key, value] of Object.entries(asset)) {
+    if (key === 'kind' || value === null || value === undefined) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      facts.push(`${key} ${String(value)}`);
+    } else if (Array.isArray(value)) {
+      facts.push(`${key} ${String(value.length)} ${value.length === 1 ? 'entry' : 'entries'}`);
+    }
+  }
+  return { kind, facts };
+}
+
+/**
+ * Who is responsible for what happens next.
+ *
+ * The backend opens a recovery case with a policy, an owner, the one action
+ * that is permitted next and a deadline for it. This shows those as recorded.
+ * It never offers the borrower an action: no recovery step is theirs to run
+ * from this page.
+ */
+function RecoveryCasesPanel({ cases }: { readonly cases: readonly RecoveryCase[] }) {
+  return (
+    <section className="page" style={{ padding: '0 var(--page-gutter) 24px' }}>
+      <div
+        style={{
+          background: 'var(--surface-raised)',
+          border: '1px solid var(--line-strong)',
+          borderRadius: 'var(--radius-xl)',
+          padding: 32,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 24,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 24, lineHeight: '32px', fontWeight: 600 }}>
+          Recovery responsibility
+        </h2>
+
+        {cases.map((item) => {
+          const status = RECOVERY_STATUS_LABELS[item.status];
+          const escalation =
+            item.escalationState === undefined
+              ? undefined
+              : RECOVERY_ESCALATION_LABELS[item.escalationState];
+          return (
+            <article
+              key={item.recoveryId}
+              aria-label={`Recovery case ${truncateHex(item.recoveryId, 6, 4)}`}
+              style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+            >
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Badge tone={status.tone}>{status.label}</Badge>
+                {escalation ? <Badge tone={escalation.tone}>{escalation.label}</Badge> : null}
+                <span className="mono" style={{ color: 'var(--ink-muted)' }}>
+                  case {truncateHex(item.recoveryId, 6, 4)}
+                </span>
+              </div>
+
+              {escalation?.caption ? (
+                <p style={{ margin: 0, fontSize: 16, lineHeight: '24px' }}>{escalation.caption}</p>
+              ) : null}
+
+              <dl
+                className="grid-facts"
+                style={{
+                  margin: 0,
+                  display: 'grid',
+                  gridTemplateColumns: '170px minmax(0, 1fr)',
+                  gap: '10px 16px',
+                  fontSize: 14,
+                  lineHeight: '20px',
+                }}
+              >
+                <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>Why</dt>
+                <dd
+                  className="mono"
+                  style={{ margin: 0, padding: 0, borderBottom: 0, wordBreak: 'break-all' }}
+                >
+                  {item.reason}
+                </dd>
+
+                <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>Policy</dt>
+                <dd style={{ margin: 0, padding: 0, borderBottom: 0 }}>
+                  {RECOVERY_POLICY_LABELS[item.policy] ?? item.policy}{' '}
+                  <span className="mono" style={{ color: 'var(--ink-muted)' }}>
+                    {item.policy}
+                  </span>
+                </dd>
+
+                {item.nextPermittedAction ? (
+                  <>
+                    <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>
+                      Next permitted step
+                    </dt>
+                    <dd style={{ margin: 0, padding: 0, borderBottom: 0 }}>
+                      {RECOVERY_ACTION_LABELS[item.nextPermittedAction] ?? item.nextPermittedAction}{' '}
+                      <span className="mono" style={{ color: 'var(--ink-muted)' }}>
+                        {item.nextPermittedAction}
+                      </span>
+                    </dd>
+                  </>
+                ) : null}
+
+                {item.escalationOwner ? (
+                  <>
+                    <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>
+                      Owner
+                    </dt>
+                    <dd className="mono" style={{ margin: 0, padding: 0, borderBottom: 0 }}>
+                      {item.escalationOwner}
+                    </dd>
+                  </>
+                ) : null}
+
+                {item.actionDeadline ? (
+                  <>
+                    <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>
+                      Deadline for that step
+                    </dt>
+                    <dd className="num" style={{ margin: 0, padding: 0, borderBottom: 0 }}>
+                      {formatTimestamp(item.actionDeadline)}
+                    </dd>
+                  </>
+                ) : null}
+
+                <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>Opened</dt>
+                <dd className="num" style={{ margin: 0, padding: 0, borderBottom: 0 }}>
+                  {formatTimestamp(item.openedAt)}
+                  {item.resolvedAt ? ` · resolved ${formatTimestamp(item.resolvedAt)}` : ''}
+                </dd>
+
+                {item.residualAssets.length > 0 ? (
+                  <>
+                    <dt style={{ color: 'var(--ink-muted)', padding: 0, borderBottom: 0 }}>
+                      Outstanding
+                    </dt>
+                    <dd style={{ margin: 0, padding: 0, borderBottom: 0 }}>
+                      <ul
+                        style={{
+                          listStyle: 'none',
+                          margin: 0,
+                          padding: 0,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8,
+                        }}
+                      >
+                        {item.residualAssets.map((asset, index) => {
+                          const residual = residualFacts(asset);
+                          return (
+                            <li key={`${item.recoveryId}-${String(index)}`}>
+                              <span className="mono">{residual.kind}</span>
+                              {residual.facts.map((fact) => (
+                                <span
+                                  key={fact}
+                                  className="mono"
+                                  style={{
+                                    display: 'block',
+                                    color: 'var(--ink-muted)',
+                                    wordBreak: 'break-all',
+                                  }}
+                                >
+                                  {fact}
+                                </span>
+                              ))}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </dd>
+                  </>
+                ) : null}
+              </dl>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
@@ -964,16 +1327,18 @@ function EventsSection({
           </dd>
           <dt>Plan hash</dt>
           <dd className="is-control">
-            <HashValue value={details.migration.executionPlanHash} label="plan hash" />
+            <HashValue value={details.migration.planHash} label="plan hash" />
           </dd>
           <dt>Quote hash</dt>
           <dd className="is-control">
             <HashValue value={details.migration.quoteHash} label="quote hash" />
           </dd>
-          <dt>Borrower</dt>
-          <dd className="mono" style={{ wordBreak: 'break-all' }}>
-            {details.migration.borrower}
-          </dd>
+          {details.migration.expiresAt ? (
+            <>
+              <dt>Authorized until</dt>
+              <dd className="num">{formatTimestamp(details.migration.expiresAt)}</dd>
+            </>
+          ) : null}
           <dt>Phase</dt>
           <dd>
             {label} <span className="mono">({details.migration.phase})</span> · version{' '}

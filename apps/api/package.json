@@ -18,6 +18,7 @@
     "@debtshift/domain": "0.1.0",
     "@debtshift/intents": "0.1.0",
     "@debtshift/optimizer": "0.1.0",
+    "@debtshift/observability": "0.1.0",
     "@debtshift/protocols": "0.1.0",
     "@nestjs/common": "12.4.0",
     "@nestjs/config": "12.1.1",

@@ -4,20 +4,20 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Milestone tracker
 
-| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                                                                                     |
-| ----------------------------------- | ----------- | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                                                                                             |
-| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                                                                                              |
-| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                                                                                        |
-| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                     |
-| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                 |
-| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                  |
-| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, refund/timeout recovery, market deterioration, reorg guards, and the exact happy-path settlement ledger pass; remaining recovery-ledger branches and alerting remain.                                               |
-| M6 Complete API and web product     | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                    |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                             |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains. |
-| M9 Security and operations          | NOT_STARTED | -          | -          | -                                                                                                                                                                                                                                                                                                    |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                  |
+| Milestone                           | Status      | Started    | Completed  | Evidence / notes                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------------- | ----------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strategy documentation              | COMPLETE    | 2026-11-08 | 2026-11-12 | The complete strategy set now encodes the production-first architecture, four execution modes, contract-backed sandbox, mainnet write gate, and two-day submission plan.                                                                                                                                                                                                                                                              |
+| M0 Repository foundation            | COMPLETE    | 2026-11-08 | 2026-11-08 | Clean `npm ci`; full TypeScript gate; API/web smoke checks; Compose validation; Foundry build; NEAR fmt/test/clippy/WASM gate all pass.                                                                                                                                                                                                                                                                                               |
+| M1 Domain and persistence           | COMPLETE    | 2026-11-08 | 2026-11-09 | Runtime schemas, canonical/EIP-712 hashing, signature interfaces, evidence-derived phases, 19-table migration, constraints, and cross-language fixtures pass.                                                                                                                                                                                                                                                                         |
+| M2 Contract-backed sandbox slice    | COMPLETE    | 2026-11-09 | 2026-11-09 | Browser/API/outbox/worker/dual-Anvil happy, refund, timeout, replay, and restart-at-every-phase checks pass with real contract transactions and PostgreSQL/Redis smoke evidence.                                                                                                                                                                                                                                                      |
+| M3 EVM adapters and fork validation | COMPLETE    | 2026-11-09 | 2026-11-12 | Production Aave and Morpho modules, signed adapters, isolated recovery reserve, and settlement passed the complete current-code workflow at pinned Base block 55,600,000. Unit, fuzz, and invariant gates also pass.                                                                                                                                                                                                                  |
+| M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                                                                                                                                                   |
+| M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, asset-safe pre-source expiry/cancellation/revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                             |
+| M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains.                                                 |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, guarded source-bound manifests/deployment/readiness CLIs, startup code/role attestation, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, and manifest-bound EVM/NEAR startup attestation pass focused tests. Live credentialed validation remains.                                                                                                                                  |
+| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, credential-safe distributed traces, provisioned operations dashboards, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. External alert delivery, operator acknowledgement, and provenance publication acceptance remain deployment gates. |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Source-commit-bound EVM and NEAR manifests, guarded clean-worktree deployment/readiness CLIs, pre-consumption runtime attestation, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                   |
 
 ## Submission-critical mode
 
@@ -35,13 +35,14 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Current active task
 
-- **Task:** P0.7/P0.8 - deploy the verified full sandbox image and registry, collect public testnet
-  evidence for the single allowlisted route, and run the complete acceptance gate.
+- **Task:** P0.5/P0.7 - finish safe operational and recovery gates that do not require external
+  credentials, then deploy the verified full sandbox image and registry and collect public evidence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Supply hosting and NEAR credentials to the verified stack, deploy the
-  hosted sandbox and NEAR testnet registry, run the public testnet workflow, perform an authenticated
-  official 1Click dry quote when a token is available, then execute acceptance. The Linux NEAR CI,
-  pinned Base fork, live route, official schema, security audit, and clean Docker gates already pass.
+- **Next verification:** Complete the repository and clean-stack gate for each internal checkpoint.
+  When hosting and NEAR credentials are available, deploy the hosted sandbox and NEAR testnet
+  registry, run the public testnet workflow, perform an authenticated official 1Click dry quote when
+  a token is available, then execute acceptance. The Linux NEAR CI, pinned Base fork, live route,
+  official schema, security audit, and clean Docker gates already pass.
 
 ## Decision log
 
@@ -330,6 +331,33 @@ This file is updated throughout implementation. It is the first place to inspect
   durable ledger rows. A settlement claim must be independently queryable and must distinguish
   observed transfers from signed economic classifications.
 
+### ADR-024 - Canonical public-testnet protocols without false official-deployment claims
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Evidence:** The current official
+  [Aave address book](https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Sepolia.sol)
+  publishes an Aave V3 Sepolia deployment. The current official
+  [Morpho SDK chain registry](https://github.com/morpho-org/sdks/blob/main/packages/morpho-ts/src/chain.ts)
+  enumerates production networks and no public testnet, while the
+  [Morpho Blue repository](https://github.com/morpho-org/morpho-blue) supplies the canonical audited
+  protocol source for permissionless deployment. These observations are version-sensitive and must
+  be rechecked before deployment.
+- **Decision:** Public EVM testnet evidence may use the official Aave Sepolia deployment and a
+  DebtShift-operated destination deployment built from a pinned canonical Morpho Blue source commit.
+  The Morpho deployment must create a real market with real public-testnet token, oracle, IRM,
+  liquidity, borrow, authorization, receipt, and explorer state. `MockMorphoBlue`, local test tokens,
+  or application-returned market success are prohibited from public testnet evidence.
+- **Production boundary:** A DebtShift-operated testnet deployment is protocol-compatible evidence,
+  not an official Morpho testnet or production deployment. Official production behavior remains
+  proven through pinned forks and the configured official mainnet singleton/market.
+- **Transport boundary:** Only the unavailable 1Click testnet boundary remains explicitly simulated;
+  it must still produce real source/destination public-chain token transactions and independent
+  receipt/balance verification.
+- **Deployment consequence:** Pin source commits and artifact hashes, publish dependency and
+  DebtShift manifests, verify both runtime bytecode and market parameters, and refuse external
+  deployment until the route, oracle, funding, signer, RPC, gas, and recovery balances are reviewed.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                              |
@@ -344,6 +372,404 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Funded public-testnet transport startup gate added
+
+- The provider-neutral startup boundary now awaits execution, transport, and registry readiness in
+  that order before the worker creates a queue consumer.
+- The funded testnet transport independently reads both RPC chain IDs, verifies deployed collateral
+  token code on each chain, and requires the executor to hold non-zero native gas plus pre-funded
+  source recovery and destination delivery collateral on both networks. Direct transport calls also
+  await the same gate; exact per-migration amounts remain checked immediately before each transfer.
+- Focused worker type checks and nine startup/readiness tests pass. The complete repository gate
+  also passes OpenAPI drift, formatting, script checks, all 11 lint/type workspaces, 85 worker tests,
+  every other package suite, and all 11 production builds. No RPC write, external deployment, or
+  transaction broadcast was performed.
+
+### 2026-11-13 - EVM deployment provenance and worker startup attestation implemented
+
+- Extended the strict two-chain EVM manifest with the full lowercase Git source commit. The guarded
+  deployer now rejects a dirty worktree, hashes the schema-normalized route rather than its JSON
+  whitespace, and reserves a new manifest path before its first contract deployment so an existing
+  record cannot be discovered only after gas has been spent.
+- Production funded `testnet` and write-enabled `mainnet` configuration now require
+  `EVM_DEPLOYMENT_MANIFEST_PATH`. Before creating a queue consumer, the worker waits for both the EVM
+  and NEAR adapters to attest readiness.
+- EVM startup compares the manifest mode, chain IDs, deployment block bounds, normalized route hash,
+  protocol/token/market identities, executor, and all seven DebtShift addresses to runtime
+  configuration. It then runs the independent verifier over canonical deployment/configuration
+  receipts and block hashes, runtime code hashes, immutable bindings, roles, pause state,
+  plan-domain links, and the disabled onchain workflow switch.
+- Added the executable `20-evm-deployment.md` operator procedure covering account separation,
+  preflight, exact inputs, deployment, read-only readiness, manifest-to-runtime mapping, worker
+  startup, partial-deployment containment, and release evidence. An empty reserved manifest is
+  explicitly treated as an interrupted attempt, never as proof that no transaction was mined.
+- The complete repository gate passes OpenAPI drift, formatting, script syntax/readiness tests,
+  lint, all 11 workspace type checks, 108 domain tests, 82 worker tests, 22 database tests, all other
+  package tests, and all 11 production builds. The two-Anvil deployment/readiness gate passes both
+  canonical receipt/code/role verification and runtime-code tamper rejection; Compose parses and the
+  production npm audit reports zero vulnerabilities. An existing PGlite forward-migration test
+  exceeded Vitest's generic five-second budget by 29 ms under the first parallel run, so its
+  integration-test budget is now explicit at 15 seconds; the focused and complete reruns pass.
+- The local Solidity umbrella command stopped before execution because the host has Forge `1.5.1`
+  while the repository correctly requires `1.9.0`; the unchanged contract gate remains enforced
+  with the pinned toolchain in CI. No external transaction was signed or broadcast, and mainnet
+  execution remained disabled.
+- GitHub Actions quality run `43433864649` passed the TypeScript, pinned EVM/deployment/demo, Linux
+  NEAR sandbox, dependency and full-history secret scans, production-container scan, and runtime
+  SBOM gates for checkpoint `aa07317`.
+
+### 2026-11-13 - Guarded NEAR deployment and startup attestation implemented
+
+- Added a strict version-1 NEAR manifest for testnet/mainnet registry deployments. It binds the
+  network, exact source commit, distinct registry/owner/verifier identities, artifact SHA-256,
+  deployed NEAR code hash, final transaction/block evidence, initialized storage, timestamp, and a
+  disabled workflow-write switch; malformed, mismatched, duplicate, or drifted records fail schema
+  validation.
+- Added `npm run deploy:near`. It requires a clean Git worktree, explicit deployment approval,
+  public HTTPS RPC/network agreement, an existing registry account, a full-access deployment key,
+  a configurable balance floor, existing distinct owner/verifier accounts, and empty deployed code.
+  It refuses upgrades, sends deployment plus initialization as one finality-waited action batch,
+  re-reads final code/roles/storage, and writes the manifest with exclusive-create semantics.
+- Added `npm run check:near-deployment`. It keeps mainnet execution disabled and verifies every
+  configured RPC against the manifest's network, contract bytes, SHA-256, NEAR code hash, owner,
+  pending-owner state, exact verifier set, storage floor, and initialization height, then verifies
+  the final deployment transaction through the primary endpoint.
+- Added an executable deterministic readiness test covering the healthy two-provider path and
+  wrong-network, code-drift, pending-owner, and failed-transaction rejection. Script syntax and the
+  test are part of the repository-wide `npm run check` gate.
+- Hosted sandbox, testnet, and write-enabled mainnet configurations now require the manifest's
+  registry account, owner, and WASM SHA-256 together with the verifier account/key. Before creating
+  a queue worker, startup hashes final contract bytes and checks the owner, absence of a pending
+  transfer, and signer verifier role through the safe failover client.
+- The full repository gate passed OpenAPI drift, formatting, script checks, all 11 lint/typecheck
+  workspaces, 107 domain tests, 81 worker tests, all other package tests, and all 11 production
+  builds. Compose configuration also parses with the new values. The preceding safe-failover commit
+  passed GitHub quality run `43427515013`, including TypeScript, EVM/deployment/demo, Linux NEAR
+  sandbox, dependency/secret/container scans, and SBOM generation.
+- GitHub Actions quality run `43430774187` passed the same complete gate for guarded NEAR deployment
+  checkpoint `6200643`.
+- The public testnet deployment checkbox remains open: no funded registry/deployer/verifier
+  credentials are present, no NEAR transaction was signed or broadcast, and mainnet execution
+  remained disabled. The complete operator procedure and evidence requirements are in
+  `19-near-registry-deployment.md`.
+
+### 2026-11-13 - Safe NEAR testnet RPC failover completed
+
+- Added a typed primary plus ordered fallback configuration with at most four fallbacks. URLs must
+  be unique HTTP(S) endpoints, and public NEAR networks require HTTPS.
+- Added per-endpoint network-ID validation before responses are accepted. Idempotent registry views
+  use final-state reads and fail over immediately across only the configured endpoints.
+- Kept transaction semantics deliberately single-endpoint: no registry write is automatically
+  rebroadcast after a timeout or ambiguous response. The preferred endpoint rotates for the next
+  durable command attempt, which re-reads agreement, attestation, and receipt state before any
+  still-missing mutation can be submitted.
+- Converted only typed RPC unavailability/ambiguity into a generic retryable workflow error.
+  Immutable registry conflicts remain terminal, and raw provider messages, tokens, and URLs do not
+  enter durable errors or telemetry.
+- Added configuration, failover, no-rebroadcast, wrong-network, redaction, and workflow retry tests.
+  The repository gate passed OpenAPI drift, formatting, lint, all workspace type checks, 105 domain
+  tests, 80 worker tests, the remaining package tests, and all 11 production builds. Compose
+  configuration parsed successfully, and the production npm audit reported zero vulnerabilities.
+- Read-only status probes confirmed the currently documented FASTNEAR, dRPC, and Intear endpoints
+  all reported `testnet`, protocol version 88, matching heads, and `syncing=false`. These are
+  deployment-time observations, not baked-in trust: operators must revalidate the approved list.
+- No NEAR transaction was signed or broadcast, no external deployment changed, and mainnet
+  execution remained disabled.
+
+### 2026-11-13 - Credential-safe tracing and operations dashboards implemented
+
+- Added a dedicated OpenTelemetry package with a no-op default, deployment-selected OTLP/HTTP
+  export, pinned dependencies, private-collector HTTP and remote HTTPS enforcement, embedded-secret
+  rejection, resource identity, and graceful API/worker shutdown.
+- Added strict W3C trace-context schemas. API requests accept only `traceparent`/`tracestate`; the
+  transactional outbox carries that context separately from financial command hashes and payloads,
+  BullMQ preserves it, and worker command spans propagate their active parent into each next
+  evidence-derived command.
+- Restricted spans to mode, HTTP method/status, command type/attempt/final-attempt, and sanitized
+  error class. Bodies, signatures, credentials, raw URLs, provider responses, IDs, and error
+  messages are excluded by construction and unapproved attributes throw before export.
+- Added a direct finalized-reconciliation imbalance gauge and provisioned pinned Prometheus,
+  Grafana, and Jaeger services behind an optional loopback-only Compose profile. The dashboard
+  covers health/freshness, phases, phase age, command failure/attempt rates, outbox backlog, alerts,
+  and unexplained ledger imbalance.
+- The complete repository gate passes OpenAPI drift, formatting, lint, all package type checks and
+  tests, and all 11 production builds. The production npm audit reports zero vulnerabilities. The
+  pinned Foundry `1.9.0` gate passes all 33 Solidity tests and both two-node deployment/tamper tests.
+  On Windows, the pinned Rust `1.95.0` gate passes format, eight registry tests, clippy, and the
+  cargo-near WASM build with SHA-256
+  `4a9adf1ed8f95b047b2f99e9ec296484540f3571147af3e761d1ecabdc0ef56d`; the upstream
+  near-workspaces sandbox binary remains Linux/macOS-only and is therefore enforced by Linux CI.
+- Rebuilt the final production-shaped image as manifest
+  `sha256:7367da403780eaf1589aca9f67988351a72cb4a1d38a348795a7cb38aa4f5bc8`, with BuildKit
+  attestation manifest
+  `sha256:81eb24d8cb5784b106e54be84bd861fde0244018e6497c3305073bae8bea80b5`.
+  API, web, chains, PostgreSQL, and Redis were healthy; Prometheus reported its API target up,
+  Grafana `13.3.0` provisioned only the read-only Prometheus source and `DebtShift Operations`
+  dashboard, and Jaeger `2.23.0` reported both DebtShift services.
+- The rebuilt stack's signed smoke migration
+  `0x891d5f30d21621103c60f967f72df223150756b8fc3bbbfdd9bf97824d9983e1` reached `SETTLED`
+  with 17 evidence records, 16 ledger rows, verified wallet session/SSE/metrics, and zero unexplained
+  imbalance. Jaeger trace `b4e5b48c8c69ee7ff9b50bf13ca9bdab` contained one API span and 12
+  causally linked worker-attempt spans. Exported application keys were limited to the reviewed
+  allowlist plus Jaeger's warning metadata; no financial identifier, body, signature, credential,
+  URL, provider response, or error message appeared.
+- Mainnet execution remained disabled; no external deployment, credential use, broadcast, or
+  real-fund movement occurred.
+
+### 2026-11-13 - Authoritative metrics and structured workflow logs
+
+- Added `GET /v1/metrics` in Prometheus text format. It reads authoritative PostgreSQL aggregates
+  for all 14 phases, phase-age histograms, transitions, commands/attempts, evidence, chain finality,
+  transport, reservations, recoveries, alerts, outbox, and ledger state without identifiers in
+  labels.
+- Added structured JSON workflow records for API preparation/authorization and worker command
+  start, reconciliation, evidence persistence, evidence-derived phase, retry failure, exhaustion,
+  and success. Records contain correlation IDs, command type, phase, and chain where applicable but
+  no signed payload, credential, or private key.
+- Added one PGlite aggregation integration test, one Prometheus escaping/histogram test, and worker
+  lifecycle log assertions. The full repository gate passed: database 17 tests, API 10 tests, worker
+  55 tests, formatting, lint, types, and builds.
+- Rebuilt the production-shaped local image and exercised the preserved Docker stack. The endpoint
+  returned HTTP 200 with the Prometheus content type and real non-zero phase, command, reservation,
+  alert, transport, and ledger series.
+- After resetting only the disposable Anvil service, the strengthened signed HTTP-to-chain smoke
+  reached `SETTLED` with migration
+  `0x91a73a4fad92ad8c2aa564efb3063a5ccd13f6c72cacc645d1c294417e948c74`, 17 evidence records,
+  16 ledger entries, zero unexplained imbalance, and `metricsVerified: true`; its structured log
+  covered the complete executable phase chain. Sandbox NEAR receipt registration remains
+  intentionally pending without credentials.
+- Mainnet execution remained disabled; no external deployment, credential use, mainnet broadcast,
+  or real-fund movement occurred.
+
+### 2026-11-13 - Operator runbooks and isolated database restore drill
+
+- Added executable runbooks for containment, worker restart, RPC failover, Redis reconstruction,
+  stuck reservations, transport refunds/unknown custody, destination recovery, capacity loss,
+  supplementary funding, solver payout failure, emergency pause, evidence mismatch, and closure.
+- Documented add-before-remove EVM relayer and NEAR verifier rotation while preserving the actual
+  contract boundary: the first EVM deployment requires a stable owner multisig and does not claim a
+  universal ownership-transfer path.
+- Added `npm run ops:drill:database-restore`. It creates a custom-format PostgreSQL backup, restores
+  only into a randomly named sibling database, verifies the public table set, exact row counts, and
+  Drizzle migration history, and removes the isolated database and temporary artifact.
+- The drill passed against the preserved Docker stack: 21 public tables, 386 rows, 153,366 backup
+  bytes, SHA-256 `2cddef6e57012668c3d8b147eb08c9763212ac0ae6065002fbdb87fb0ab13e60`,
+  and no source-database mutation.
+- Mainnet execution remained disabled; no deployment, credential use, broadcast, or real-fund
+  movement occurred.
+
+### 2026-11-13 - Isolated forward-migration and restore-recovery drill
+
+- Added `npm run ops:drill:database-migration-recovery` and documented the forward-only production
+  policy: never improvise reverse DDL over append-only financial history; recover a verified
+  pre-change snapshot only before reopening writes, otherwise preserve history and forward-repair.
+- The drill creates a random sibling database from `template0`, applies all ten checked-in migrations
+  through the real Drizzle migrator, and never connects to the application database.
+- A deliberately invalid transactional candidate proved atomic DDL rollback. A valid forward
+  candidate then changed schema and data, after which the script recreated only its generated
+  database from the pre-change custom-format backup.
+- The drill passed with 22 public tables, one fixture row, 69,792 backup bytes, SHA-256
+  `faa7bb1a9087da482c7ceddd04ec4c1bdb999cb6d52a4c2a012f0f5a6fe1d495`, exact schema/count/history
+  recovery, candidate-column absence, and an idempotent post-recovery migration run.
+- Mainnet execution remained disabled; no external deployment, credential use, broadcast, or
+  real-fund movement occurred.
+
+### 2026-11-13 - Reload-safe borrower evidence workspace and durable SSE
+
+- Added `GET /v1/migrations/:migrationId/stream` as a PostgreSQL-audit-backed SSE channel. Every
+  migration event carries its durable sequence as the SSE ID; reconnect takes the newer of the
+  `after` query cursor and `Last-Event-ID`, rejects malformed/oversized cursors, emits bounded
+  keepalives, and never treats provider status as application completion.
+- The borrower page now places an authorized migration ID in the URL and restores its complete
+  details after reload without browser storage. Native `EventSource` reconnect resumes from the
+  last durable event and explicitly reports connecting, live, reconnecting, or terminal state.
+- Expanded exact authorization review to show intent, plan, quote, destination/refund/payout
+  receivers, and nonce before signing. Expanded the financing proof with classified costs, solver
+  principal, maximum safe capacity, finalized external funding, required destination borrowing,
+  exact shortfall, validity, and capacity-evidence provenance.
+- Added distinct provider/verification timeline labels plus durable reservation, ledger debit/credit,
+  audit hash, residual asset, and recovery views. The responsive/accessibility styles passed the
+  production Next build and a 1,440-pixel local visual QA pass.
+- Added database event-cursor integration assertions, API cursor validation tests, browser URL/stream
+  helper tests, and a real SSE assertion to `smoke:local`. The full gate passed with database 17,
+  API 16, web 3, and worker 55 tests.
+- Rebuilt the minimized production-shaped image and reset only disposable Anvil state. The signed
+  HTTP-to-chain smoke reached `SETTLED` for migration
+  `0x56fc0aa0743fd3b86476b205364de7e39cedaf3b8bc77cbb3ee809c73d9357d1` with 17 evidence records,
+  16 ledger rows, zero unexplained imbalance, `eventStreamVerified: true`, and
+  `metricsVerified: true`.
+- Mainnet execution remained disabled; no external deployment, credential use, broadcast, or
+  real-fund movement occurred.
+
+### 2026-11-13 - Fail-closed security scans and minimized runtime image
+
+- Added a dedicated CI security job: zero high/critical production npm findings, full-history
+  Gitleaks `8.30.1`, and a Trivy `0.76.2` scan of the actual built runtime image. Third-party actions
+  added by this gate are pinned to immutable commit SHAs, and the scan emits a retained CycloneDX
+  SBOM.
+- Gitleaks initially identified thirteen known local-fixture matches across history. The configuration
+  allowlists only the exact two public Anvil keys and two deterministic Anvil token addresses; a
+  second scan covered all 25 commits and found no unallowlisted leak.
+- The first container scan correctly rejected the former Node `22.16.0`/Debian `12.11` image for
+  five fixable critical OS findings, vulnerable package-manager dependencies, and additional high
+  findings. No CVE or file path was ignored.
+- Refreshed Node to `22.23.5`/Debian `12.15` at immutable digest
+  `sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee` and converted the image to
+  a multi-stage runtime without npm, Corepack, Yarn, curl, or unused Foundry binaries. Compose now
+  invokes the database migrator and Next server directly with Node.
+- The rebuilt `debtshift-app:local` manifest list is
+  `sha256:e2613a413de5d1ef6cc97084adf1d4550760cf4bc76a9396c6a5654065b50a08`.
+  Trivy reports zero fixable high/critical OS or library findings, and the production npm audit
+  reports zero vulnerabilities.
+- A separate non-failing inventory reports 35 Debian high/critical package associations for which
+  the current security feed supplies no fixed version (`affected`, `fix_deferred`, or
+  `will_not_fix`); several CVEs repeat across related util-linux packages. They remain an explicit
+  upstream-base review item before any real-fund release and are not represented as resolved.
+- A full Compose recreate preserved database/Redis volumes, migration exited `0`, all long-running
+  roles became healthy, and `npm run smoke:local` completed a signed contract-backed refinance at
+  migration `0xc469782becebcd32b21ac8edf8fc728c9b332a8a0d608fa8ccea2b053d262654`:
+  `SETTLED`, 17 evidence records, 16 ledger rows, and zero unexplained imbalance.
+- No public-chain write, provider commit, external deployment, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
+
+### 2026-11-13 - Terminal transport and NEAR receipt alerts completed
+
+- Added terminal transport reconciliation against the provider leg, verified destination/refund
+  transaction, observed base-unit amount, and durable recovery evidence. A `SUCCESS` state without
+  matching destination balance evidence, a refund without exact recovery evidence, or a known
+  terminal custody state without recovery now opens `TRANSPORT_TERMINAL_MISMATCH`.
+- Added the distinct `DESTINATION_FUNDING_BELOW_MINIMUM` critical condition so a provider-success
+  label cannot hide delivery below the signed minimum.
+- Added durable NEAR receipt verification for every stored final receipt: agreement identity,
+  terminal status, raw receipt hash, canonical bundle re-hash, and deterministic evidence ID must
+  all agree. A `COMPLETED` migration with no active finalized NEAR receipt is also critical.
+- Expanded the PGlite drill from fourteen to seventeen simultaneous conditions and proved exact
+  deduplication, severity escalation, repaired-receipt recognition, terminal resolution, and
+  history preservation. The fixture distinguishes the provider's destination transaction from the
+  separate on-chain delivery action that anchors the evidence.
+- Preserved-state restart validation caught and corrected an initial comparison between those two
+  distinct transaction hashes. The corrected worker matched each terminal leg against
+  `normalizedPayload.observation.destinationTransactionHash`, resolved all five false alerts
+  without modifying application data, and left only the expected three terminal NEAR-finalization
+  failures plus five stale sandbox migrations open.
+- `npm run check` passes formatting, lint, type checking, all builds, and 180 tests (three
+  environment-gated fork tests skipped). The rebuilt `debtshift-app:local` manifest list is
+  `sha256:e92e51e638a228823548e5be6df53ab53523184e86a9b03991affe54afa4f309`; the image build also
+  passed the Solidity/workspace builds and reported zero production dependency vulnerabilities.
+- No external deployment, provider commit, public-chain write, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
+
+### 2026-11-13 - Financial and custody alert coverage completed
+
+- Extended the durable scanner from six workflow-health conditions to fourteen P0 conditions. New
+  critical paths cover reservation underfunding, retracted/rejected chain evidence, invalid or
+  persistence-divergent settlement ledgers, expired financing feasibility, missing or expired
+  supplementary funding, capacity/policy deterioration, outstanding solver exposure, and target
+  opening/atomic payout failure after verified destination delivery.
+- Financial predicates use only active finalized evidence. A retraction/rejection supersedes its
+  original record, supplementary contributions reconcile to signed evidence identifiers and exact
+  units, and ledger alerts compare the schema-validated reconciliation with every durable component
+  row rather than trusting a phase label.
+- Alert scans now bound financial queries to active migration identifiers. The PGlite integration
+  drill opens all fourteen conditions, proves deterministic deduplication and deadline severity
+  escalation, then resolves all records without deleting their history.
+- `npm run check` passes with 180 tests and all production builds. Rebuilt image
+  `debtshift-app:local` (manifest list
+  `sha256:fef94b68810aca8f564b35ef15fa13c3aec7c7320ad017cc2972707ede3f1919`) reports zero
+  production dependency vulnerabilities. The recreated worker started cleanly against preserved
+  PostgreSQL/Redis/chain state.
+- The first preserved-database scan opened no false new financial conditions. Its eight existing
+  alerts are evidence-backed: five stale `SETTLED` migrations and three terminal
+  `FINALIZE_NEAR_RECEIPT` commands from the intentionally unconfigured sandbox registry history.
+- No external deployment, provider commit, public-chain write, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
+
+### 2026-11-13 - Financial retry exhaustion made durable and recoverable
+
+- Fixed the queue/processor boundary so BullMQ's configured final attempt is explicit. A command
+  that exhausts retryable failures now becomes `FAILED_TERMINAL` instead of remaining stranded as
+  `FAILED_RETRYABLE` after the queue stops delivering it; the terminal-command alert can therefore
+  surface every exhausted command.
+- Target opening and solver payout remain one atomic destination transaction. An unconfirmed result
+  is retried through receipt reconciliation; exhaustion opens manual target/payout reconciliation
+  with last verified destination collateral, the exact solver receivable, and the locked recovery
+  reserve. No automatic recovery command is scheduled against uncertain custody.
+- Origin dispatch and official 1Click submission/status failures now cross the provider boundary as
+  workflow-retryable errors. Dispatch exhaustion records exact vault/collateral custody and solver
+  exposure in manual recovery instead of leaving a queue-exhausted command retryable forever.
+- Post-payout source-vault settlement is also retried idempotently. Exhaustion blocks `SETTLED` and
+  stores the finalized target/payout receipt, exact principal and fee claim, target collateral and
+  debt, payout receiver, and locked reserve in a manual recovery case.
+- Added processor and queue boundary tests, focused handler tests for both target/payout and
+  settlement exhaustion, and a real dual-Anvil/PGlite workflow that reaches `TARGET_OPEN`, injects
+  final-attempt settlement failure, and proves terminal command state, open manual recovery, no
+  automatic recovery command, and no false ledger rows.
+- `npm run check` passes with 180 implemented tests and all production builds. Rebuilt image
+  `debtshift-app:local` (manifest list
+  `sha256:95908a79fb4a75b6d466aaf6f7db0f0284f7fcd90245f7059ef4d81e13823181`) passed
+  Solidity/workspace builds and reports zero production dependency vulnerabilities; the recreated
+  worker started cleanly without changing PostgreSQL, Redis, or chain state.
+- After reseeding only the disposable Anvil fixture, signed HTTP-to-chain smoke migration
+  `0x5c6fd0b0af43503ed3342231d5c6a1943970b200ce4d7034f4c7eb8b3edfe02b` reached `SETTLED` with 17
+  evidence records, 16 ledger rows, and zero unexplained imbalance. PostgreSQL and Redis volumes
+  were preserved.
+- No external deployment, 1Click commit, public-chain write, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
+
+### 2026-11-13 - Durable operator-alert scanner implemented and stack-verified
+
+- Added migration `0009` and the append-preserving `operational_alerts` table with deterministic
+  identifiers, per-condition deduplication, warning/critical severity, first/last observation times,
+  structured details, and explicit open/resolved lifecycle state.
+- The worker now serializes periodic alert scans and emits structured change warnings. The first P0
+  set covers signed execution deadlines, stale active migrations, stale recovery cases, unknown
+  transport custody, terminal command failures, and a settled migration missing ledger rows.
+- Added environment-validated scan, deadline-lead, stale-migration, and stale-recovery thresholds.
+  These operational timers do not extend a signed execution deadline or advance workflow state.
+- The PostgreSQL-compatible integration test opens all six conditions, proves repeated-scan
+  deduplication, escalates a crossed deadline from warning to critical, and resolves every row after
+  the affected migrations become terminal. The schema test also asserts the new table and its
+  critical identity/deduplication constraints.
+- `npm run check` passes formatting, lint, the complete TypeScript graph, 172 implemented tests, and
+  all ten production builds. The rebuilt application image passed Solidity and workspace builds;
+  its pruned production dependency graph reports zero vulnerabilities.
+- Applied migration `0009` to the existing Compose database without deleting PostgreSQL or Redis
+  volumes. The scanner immediately exposed five real pre-existing alerts: two terminal NEAR receipt
+  commands and three stale settled migrations. This validates useful detection rather than a
+  synthetic log-only path.
+- Signed HTTP-to-chain smoke migration
+  `0x5fd920ecf70cc839fc2fbaa4ad5d4e2bad3528bd427ed460ef6e6bdf2f3f067d` reached `SETTLED` with 17
+  evidence records, 16 durable ledger rows, zero unexplained imbalance, and no alert for that fresh
+  migration.
+- No external deployment, 1Click commit, public-chain write, mainnet write, or real-fund movement
+  occurred. `MAINNET_EXECUTION_ENABLED` remains false.
+- Checkpoint `76d6eaf` is on `main`; GitHub Actions run `43354856752` passed the TypeScript gate,
+  all EVM contract/deployment/API/worker/demo gates, and the Linux NEAR sandbox gate.
+
+### 2026-11-13 - Unknown 1Click state and retry boundary hardened
+
+- Changed official 1Click status parsing so a future undocumented provider state is still validated
+  against the signed quote/deposit binding, hashed, and returned as a fail-closed `UNKNOWN`
+  observation instead of being discarded by schema parsing.
+- The production transport adapter now persists that raw response in `provider_observations`; the
+  workflow also records `UNKNOWN` on the transport leg, emits no destination evidence, and performs
+  no target action.
+- Before the signed deadline, ambiguous custody raises only a retryable command failure. At or after
+  the deadline it appends `MIGRATION_EXPIRED` and `RECOVERY_OPENED` with
+  `AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED`, preserving custody uncertainty for an operator rather than
+  inventing a provider terminal state.
+- Made BullMQ command attempts, exponential base delay, and stale-worker lease recovery explicit,
+  bounded, environment-validated configuration. Provider HTTP retry, timeout, token-bucket rate
+  limiting, cache/coalescing, and circuit-breaker tests were already present and remain green.
+- Focused verification passes: 24 intents tests, 41 domain tests, 46 worker tests, the TypeScript
+  project graph, formatting, and Compose configuration validation.
+- The complete repository check passed, the updated production image rebuilt with zero npm
+  vulnerabilities, and in-place Compose smoke migration
+  `0xecf74088a1225d1ec58e8b517c4e964ef214b0533f4261199561b39ba738e110` reached `SETTLED` with
+  17 evidence records, 16 durable ledger entries, and zero unexplained imbalance.
+- Checkpoint `32886b8` is on `main`; GitHub Actions run `43347466040` passed TypeScript, all EVM
+  contract/deployment/API/worker/demo gates, and the Linux NEAR sandbox gate.
 
 ### 2026-11-13 - Durable settlement ledger implemented and clean-stack verified
 
@@ -885,6 +1311,388 @@ operative source of truth.
   key field. The default remains fully functional without a model or credential.
 - Verification passes: 5 optimizer tests, 7 agent/security tests, 4 API tests including the signed
   dual-Anvil flow, API/web lint and type checks, and production API/web builds.
+
+### 2026-11-13 - Durable borrower wallet sessions completed
+
+- Added five-minute, one-time EIP-4361 challenges and eight-hour opaque sessions. Raw session
+  tokens are sent only as `HttpOnly`, `SameSite=Strict` cookies; PostgreSQL stores only SHA-256
+  token hashes, expiry, revocation, and last-seen metadata. Production public URLs now fail startup
+  unless both web and API origins use HTTPS.
+- Added challenge, verification, session, and logout endpoints; exact-origin credentialed CORS;
+  borrower-scoped guards for positions, analysis, preparation, execution, migration details,
+  evidence, and cursor-resumable SSE. Unknown or mismatched migration ownership returns not found.
+- Kept API login separate from financial consent: the EIP-4361 message states that it does not
+  authorize a refinance or transaction, while the bounded intent and exact plan still require two
+  independent EIP-712 signatures.
+- Added migration `0010_rich_dexter_bennett.sql` for challenge/session persistence, atomic
+  challenge consumption, replay rejection, session revocation, malformed-input handling, and EOA
+  plus configured-RPC EIP-1271-compatible verification.
+- Updated the browser flow to prove wallet control before loading borrower data, send credentialed
+  requests, and reconnect SSE with credentials. Updated the real-service smoke to prove an
+  unauthenticated `401` before completing the signed session flow.
+- `npm run check` passed across all ten packages. The rebuilt production-shaped Compose stack was
+  healthy and `npm run smoke:local` reached `SETTLED` for migration
+  `0x97bffe60cd19977942f2553d5b62ccebfcfa48e46f048f953e38caa85cc83023` with 17 evidence records,
+  16 balanced ledger entries, authenticated SSE replay, and zero unexplained imbalance.
+- The isolated migration recovery drill applied all 11 checked-in migrations, verified 24 public
+  tables, rolled back a failed transactional candidate, restored the pre-change backup, and proved
+  the migrator idempotent without accessing the source database.
+- GitHub Actions run `43375948258` passed the TypeScript, EVM, NEAR, and security/container jobs for
+  this durable wallet-session checkpoint.
+
+### 2026-11-13 - OpenAPI 3.1 and generated SDK contracts completed
+
+- Added runtime-backed request and response contracts for every public REST/SSE route: health,
+  wallet challenge/session/logout, borrower positions and history, market discovery, deterministic
+  analysis and optional explanation configuration, transport quotes, exact preparation and
+  execution authorization bundles, migration details/events/evidence, SSE cursors, and metrics.
+- Centralized OpenAPI document creation, stable operation IDs, the `debtshift_session` cookie
+  security scheme, response errors, cookie headers, and the explicit separation between API login
+  and EIP-712 financial authorization. The document uses OpenAPI 3.1 because its schemas use native
+  JSON Schema 2020-12 constructs.
+- Added a dependency-free deterministic generator that checks in `docs/openapi.json` and strongly
+  typed operation/request/response mappings under `@debtshift/sdk`. `npm run openapi:check` now
+  regenerates both artifacts and rejects drift as part of the normal repository gate.
+- Added output schemas at the optimizer and read-only agent boundaries and validate calculated
+  feasibility, route comparison, and wallet analysis results at runtime before exposing them.
+- Added API contract tests proving unique stable operation IDs, explicit success responses, public
+  challenge creation, HttpOnly-cookie documentation without session-hash exposure, complete
+  execution authorization fields, valid cookie security references, and authenticated evidence.
+- The first clean TypeScript CI run exposed an accidental generator dependency on sandbox Foundry
+  artifacts through `AppModule` construction. The generator and contract tests now use a
+  controller-only Nest metadata module with inert providers; an isolation check passed while the
+  entire `contracts/evm/out` directory was temporarily unavailable.
+- Rejected third-party generators that introduced an avoidable high-severity development
+  dependency; the repository retains zero production audit findings and no new generator package.
+- `npm run check` passed across all ten packages, including OpenAPI drift detection, formatting,
+  lint, type checks, all tests, and production builds. Independent repeated regeneration produced
+  byte-for-byte identical specification and SDK artifacts.
+
+### 2026-11-13 - Evidence lifecycle and financing persistence audited
+
+- Added a PostgreSQL-compatible integration proof that `PROVISIONAL` and `CONFIRMED` observations
+  are append-only durable evidence but cannot activate a liquidity reservation, increment the
+  migration version, or advance the `AUTHORIZED` phase.
+- Retained the existing finalized-evidence gate for phase entry and reservation activation, plus
+  the canonicality tests in which append-only `RETRACTED` evidence supersedes finalized orphaned
+  observations before recovery or requote handling.
+- Audited the durable financing path: initial feasibility analysis and exclusive classifications,
+  finalized migration-specific supplementary funding, checkpoint revalidation evidence, signed
+  settlement obligations, and exact receipt-linked ledger reconciliation are all persisted and
+  exercised by the repository/worker integration suites.
+- Focused database verification passed with seven files and 19 tests, followed by database lint and
+  type checks.
+
+### 2026-11-13 - Recovery responsibility and terminal escalation completed
+
+- Replaced free-form recovery metadata with a strict domain contract. Every recovery case now
+  records its typed policy, exact residual custody/receivable claims, next permitted action, action
+  deadline, escalation owner, and escalation state.
+- Added a forward-safe database migration that backfills existing recovery cases before enforcing
+  non-null columns and database checks. Automatic cases may permit only signed recovery execution;
+  manual cases cannot schedule that financial action, and resolved cases must be explicitly
+  `RESOLVED_FAILED_SAFE`. The isolated PostgreSQL recovery drill passed all 12 checked-in
+  migrations, rollback, backup/restore, pre-change recovery, and idempotent reapplication checks.
+- Classified verified refund/known-custody and post-source deterioration as automatic signed
+  recovery. Ambiguous custody, canonical-chain incidents, exhausted transport, target/payout, and
+  settlement commands require their exact manual reconciliation paths.
+- Made recovery execution failures retryable and added a final-attempt transition from
+  `AUTOMATED_RECOVERY_PENDING` to `MANUAL_RECOVERY_EXECUTION_RECONCILIATION`, preserving exact
+  collateral, solver receivable, and recovery-reserve claims without emitting false completion.
+- Added a critical, deduplicated `RECOVERY_ACTION_DEADLINE_EXCEEDED` alert with the assigned owner,
+  action, state, and overdue duration. API/OpenAPI/SDK and the borrower/operator recovery view expose
+  the responsibility fields.
+- Domain, handler, processor, database migration/workflow/alert, and dual-Anvil workflow tests pass,
+  including the injected recovery-receipt outage that remains in `RECOVERY` with a terminal command
+  and open manual case. The full repository gate passed deterministic OpenAPI generation, formatting,
+  lint, type checks, all tests (including 58 worker tests), and all production builds.
+
+### 2026-11-13 - Owner-scoped artifacts and safe cancellation completed
+
+- Added authenticated borrower-owned reads for persisted signed refinance intents and exact
+  execution plans. A different wallet receives not found, preserving the same anti-enumeration
+  boundary as migration reads.
+- Added a terminal `CANCELLED` phase and append-only cancellation request/completion evidence.
+  Cancellation before a reservation atomically cancels the pending reserve command and releases
+  its persistence reservation without moving borrower assets.
+- Cancellation after reservation cancels the pending source-close command, enqueues a durable
+  `CANCEL_MIGRATION` command, calls the liquidity vault's contract release path, independently
+  verifies the released reservation, and advances only from finalized release evidence.
+- Reject cancellation once source closure is running or has evidence, because the financial action
+  may already be racing. Repeated cancellation is idempotent after the terminal phase.
+- Closed an outbox race found by the new two-chain test: publication now locks the command and
+  dead-letters terminal-command messages instead of changing a cancelled command back to
+  `DISPATCHED`. A database regression test proves the canceled action is never delivered.
+- Added the cancel action to the borrower UI only in cancellable phases and refreshed the OpenAPI
+  3.1 document and generated SDK with signed-artifact reads and explicit cancellation conflict
+  responses.
+- Added migration `0012_closed_black_bird.sql` for the append-only PostgreSQL enum change. The
+  isolated recovery drill applied all 13 migrations, rolled back a failed candidate, restored the
+  pre-change state, and proved idempotent reapplication without touching the source database.
+- The complete 18-scenario contract-backed workflow suite passes. EVM compilation/tests/invariants
+  and deployment checks pass; Rust 1.95 format, 8 workspace tests, strict Clippy, and the NEAR
+  sandbox integration test pass in isolated Linux containers.
+- The final repository gate passes deterministic OpenAPI/SDK regeneration, formatting, lint, type
+  checks, all package tests (including 21 database, 24 API, and 68 worker tests), and all ten
+  production builds. The aggregate run also verifies the bounded 30-second cold migration setup
+  across all 13 migrations.
+- GitHub Actions quality run `43388863063` passed its TypeScript, EVM, NEAR, security, container,
+  and SBOM jobs for checkpoint `7ce52a3`. The pinned production Aave/Morpho fork also passed on that
+  exact commit against Base's official free RPC at block `55,600,000`.
+
+### 2026-11-13 - Safe source-close revert release completed
+
+- Classified source-close failures by transaction certainty. Only a failed pre-broadcast contract
+  simulation or an explicitly finalized reverted receipt is eligible for automatic release; an
+  unknown broadcast or receipt outcome cannot be treated as a revert.
+- After a proven safe revert, the execution adapter rechecks for an already-finalized source-close
+  event and confirms the source position remains open within the signed collateral/debt bounds before
+  releasing the undrawn vault reservation. The release receipt becomes finalized financing/requote
+  evidence and the signed plan cannot be silently reused.
+- Added a real two-Anvil scenario that pauses the source adapter after reservation. It proves the
+  close is never broadcast, the 10 WETH / 10,000 USDC source position is unchanged, no source-close
+  evidence exists, the vault reservation and reserved-undrawn balance are zeroed, and the workflow
+  terminates `REQUOTE_REQUIRED`.
+- Handler unit coverage and all 16 durable two-chain workflow scenarios pass after the change. The
+  complete repository gate passes OpenAPI drift, formatting, lint, types, all tests (62 worker
+  tests), and all production builds.
+- GitHub Actions quality run `43391247803` passed TypeScript, EVM, NEAR, security/container scanning,
+  and SBOM generation for checkpoint `f3cfb89`.
+
+### 2026-11-13 - Pre-source expiry made asset-safe
+
+- Added a deterministic deadline/quote-expiry guard to both pre-source commands. Expiry before
+  reservation records terminal `MIGRATION_EXPIRED` evidence without executing any chain action.
+- Expiry after reservation never invokes source closure. The execution adapter first proves that no
+  source-close event exists and the open source position remains within signed bounds, then releases
+  the undrawn reservation onchain and uses that finalized release receipt as expiration evidence.
+- Added unit coverage for both evidence alternatives and a real two-Anvil scenario that advances the
+  workflow clock after reservation. It proves the 10 WETH / 10,000 USDC position is unchanged, no
+  source-close evidence exists, vault status is released with zero receivable/reserved-undrawn
+  balance, and the durable workflow terminates `EXPIRED`.
+- All 17 durable two-chain scenarios and all 67 worker tests pass after the change.
+- GitHub Actions quality run `43392652909` passed TypeScript, EVM, NEAR, security/container scanning,
+  and SBOM generation for checkpoint `71325d5`.
+
+### 2026-11-13 - Duplicate-delivery interruption proof completed
+
+- Added a real two-Anvil happy-path chaos scenario that reconstructs the processor before every
+  command, retains the same durable message through retryable transport polling, and redelivers each
+  message after completion to model worker restart and at-least-once queue delivery.
+- The test proves each of the six irreversible financial evidence types appears exactly once with a
+  distinct finalized transaction, duplicate delivery does not increment the completed command's
+  logical attempt, and the source/target positions settle to the single-execution values.
+- Together with the authenticated API execute-deduplication test, transactional outbox publish
+  failure/recovery test, stale-running-command recovery, database uniqueness constraints, and direct
+  replay reconciliation of every EVM action, this closes the worker/API/queue interruption duplicate
+  asset-movement acceptance item. Redis remains non-authoritative delivery infrastructure.
+- All 18 durable two-chain scenarios and all 68 worker tests pass after the change.
+
+### 2026-11-13 - Refund custody acceptance evidence tightened
+
+- Strengthened the real two-Anvil refunded-transport scenario to inspect the durable recovery
+  opening: exact input/refund amount, refund transaction hash, provider state, and custody
+  disposition must all be present before the signed recovery command is planned.
+- The finalized recovery evidence now has explicit test assertions for the signed borrower receiver,
+  full 10 WETH refund, and isolated recovery-reserve settlement. Direct chain reads prove source
+  escrow custody is zero, the borrower holds the full refund, no destination loan exists, and the
+  solver principal receivable is zero.
+- The production execution path independently verifies the finalized refund transaction's exact
+  token, source escrow receiver, amount, block, and confirmation depth before registering custody;
+  provider status alone is never sufficient.
+- GitHub Actions quality run `43394483172` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for refund-custody checkpoint `4ab2ad3`.
+
+### 2026-11-13 - Invalid destination delivery evidence stopped before chain movement
+
+- Added three durable two-Anvil provider-adversary scenarios for the exact signed quote with a wrong
+  destination token, wrong destination receiver, or below-minimum output amount.
+- Each scenario must record the exact deterministic verification failure, omit both
+  `TRANSPORT_DESTINATION` and `TARGET_POSITION` evidence, keep destination escrow empty, and prove the
+  borrower has no destination loan. The contract-backed recovery returns the full source collateral
+  in the controlled simulator boundary.
+- The production-neutral handler invokes destination delivery only after provider, simulation mode,
+  quote hash, transaction presence, token/chain/decimals, receiver, and minimum amount all match.
+  Production then independently verifies finalized chain delivery before target borrowing.
+- The complete repository gate passes with all 21 durable two-chain scenarios and all 71 worker
+  tests, in addition to OpenAPI drift, format, lint, type, and production-build checks.
+- GitHub Actions quality run `43395136633` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for invalid-delivery checkpoint `9745a49`.
+- GitHub Actions quality run `43393718314` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for interruption checkpoint `003235d`.
+
+### 2026-11-13 - Unsafe destination market acceptance evidence completed
+
+- Existing contract-backed scenarios mutate live destination liquidity, collateral price, borrow
+  APR, and protocol maximum LTV after destination funding but before target borrowing. Each exact
+  revalidation records the safe capacity and shortfall and enters failed-safe recovery without
+  emitting target-position evidence.
+- Strengthened the price, rate, and LTV scenarios with direct lending-contract reads proving the
+  borrower target position remains exactly zero after recovery. The liquidity case already carried
+  the same direct assertion plus exact collateral custody and solver exposure checks.
+- Pre-source variants continue to prove that price, rate, or liquidity deterioration releases the
+  reservation with the source position unchanged and requires a fresh quote.
+- GitHub Actions quality run `43395731931` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for unsafe-target checkpoint `b5c1fc2`.
+
+### 2026-11-13 - Quote-time capacity rejection proven before commitment
+
+- Strengthened the authenticated preparation integration flow by reducing the live target market's
+  protocol LTV until every deterministic route has a non-zero funding shortfall.
+- Preparation rejects before requesting a transport quote. The test proves there are no provider
+  quote, migration, reservation, or command rows and directly reads the source position unchanged
+  with zero vault `reservedUndrawn` balance.
+- The fixture then restores safe market state and completes the existing signed prepare/execute flow,
+  proving the rejection is capacity-specific rather than a poisoned service or database state.
+- GitHub Actions quality run `43396276721` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for quote-capacity checkpoint `253eca1`.
+
+### 2026-11-13 - Supplementary funding gating completed
+
+- The contract-backed positive path now proves the exact fee commitment is already `LOCKED` in the
+  migration-specific destination escrow before source liquidity reservation. It then proves the
+  reservation becomes active, the destination borrow is reduced by the funded fee, settlement pays
+  the complete obligation, and the funding record becomes `SPENT`.
+- Added fail-closed execution cases for signed-but-absent escrow funding, mismatched evidence hash,
+  and expired funding. Every case rejects before source reservation, leaves the source loan
+  unchanged, and proves reservation status, principal receivable, and `reservedUndrawn` remain zero.
+- Expanded deterministic feasibility coverage so `PROVISIONAL`, `CONFIRMED`, `RETRACTED`, and
+  `REJECTED` observations, wrong settlement asset, wrong migration binding, and expired authorization
+  are never counted. Each invalid candidate retains its funding shortfall.
+- The complete repository gate passes with 73 worker tests, including all five contract-backed local
+  execution-port cases, plus the expanded optimizer matrix, OpenAPI drift, format, lint, type, and
+  production-build checks.
+- GitHub Actions quality run `43397484435` passed the TypeScript, EVM, NEAR,
+  security/container-scanning, and SBOM gates for supplementary-funding checkpoint `9bccca3`.
+
+### 2026-11-13 - Signed route and slippage caps enforced at execution
+
+- Audited the complete route commitment: chain and market identities, source/destination tokens,
+  deposit/destination/refund/payout receivers, principal, fee, financing, collateral bounds, quote,
+  and deadline are all included in the deterministic route hash signed by the borrower.
+- Added explicit mutation tests for chain, market, token, receiver, principal, and fee fields. Each
+  stale commitment is rejected before execution, and a separately mutated slippage limit invalidates
+  the signed refinance intent.
+- Closed an execute-time gap for externally assembled requests: the API now independently derives
+  the minimum output permitted by the signed slippage basis points and rejects a persisted provider
+  quote whose minimum output is weaker, even when both authorization layers are freshly re-signed.
+- The authenticated two-chain API flow proves a zero-slippage request against the normal 50-bps
+  quote creates no migration, reservation, or command; the original bounded request then succeeds.
+- The complete repository gate passes deterministic OpenAPI regeneration, formatting, lint, type
+  checks, all package tests (including 54 domain, 24 API, and 73 worker tests), and all ten
+  production builds.
+
+### 2026-11-13 - Phase predicates and transition graph exhaustively verified
+
+- Added executable derivation cases for all 15 migration phases. Each case removes every required
+  finalized-evidence predicate one at a time and proves the incomplete prefix cannot enter that
+  phase; absence of the mandatory source snapshot remains a hard error.
+- Added one parameterized test per permitted transition, covering all 27 declared graph edges from
+  draft through completion, recovery, expiry, requote, cancellation, and failed-safe termination.
+- Exhaustively checked the complete 15-by-15 matrix and proved every one of the other 198 phase
+  pairs is rejected by both the boolean guard and throwing transition assertion.
+- The state-machine tests preserve the intentional distinction between a draft cancellation and a
+  recovery completion: the terminal evidence predicate derives the outcome, while the separately
+  enforced transition graph prevents an illegal direct jump.
+- Domain type checks and all 97 domain tests pass after the matrix expansion.
+- GitHub run `43398835750` passed TypeScript, EVM, and NEAR for the preceding cap-enforcement
+  checkpoint but its security job identified a documentation sentence as a generic-key false
+  positive. Added a line-exact allowlist for only that route-binding sentence; pinned gitleaks
+  8.30.1 then scanned all 46 commits and reported no leaks.
+- GitHub Actions quality run `43400476244` passed all TypeScript, EVM, NEAR, security/container,
+  and SBOM jobs for phase-transition checkpoint `06504e3`.
+
+### 2026-11-13 - User AI credential and remote payload boundaries completed
+
+- Replaced nested optimizer-object forwarding with a strict explanation payload schema and explicit
+  field-by-field copy. The remote provider now receives only display economics, safety limits,
+  aggregate financing amounts, rejection codes/messages, and block/timestamp freshness data.
+- Removed token/contract/escrow/refund addresses, chain IDs, snapshot/block/conversion hashes,
+  migration/evidence IDs, funding records, authorization material, and operational provenance from
+  the remote body. Runtime-injected secret fields at the candidate, financing, and provenance levels
+  are dropped before hashing or serialization.
+- Strengthened the credential test to prove the key exists only in the provider authorization
+  header, never in the body or returned result. A provider failure containing the sentinel key is
+  discarded into the deterministic fallback without a log or response leak.
+- Added architectural guards: the credential-handling module and API route cannot import database,
+  Redis, logging, or telemetry sinks; production browser source cannot use persistent storage,
+  script-visible cookies, or analytics/error-reporting sinks.
+- Focused type checks and tests pass with 9 agent/security tests, 4 web tests, and 25 API tests.
+  This closes the two credential/payload definition-of-done items and mitigates R-26 and R-28.
+
+### 2026-11-13 - Completion now requires exact final NEAR registry state
+
+- Strengthened the production registry adapter so a successful write response is never enough to
+  emit `NEAR_RECEIPT`. It re-reads the complete attestation set from final NEAR state and requires an
+  exact match to every active finalized durable evidence record before finalizing the agreement.
+- Replays of an already-finalized agreement now verify the same immutable attestation set rather
+  than trusting the receipt hash alone. Missing, unexpected, duplicate, or conflicting attestations
+  reject completion without attempting another registry write.
+- After finalization, the worker re-reads the agreement and receipt independently, verifies the
+  signed intent/plan/actor/network bindings, exact attestation count, matching receipt views,
+  `COMPLETED` terminal status, and the locally recomputed receipt-bundle hash.
+- Added adversarial tests for an acknowledged attestation write that never appears in final state
+  and an immutable receipt whose registered set is incomplete. Both remain fail-closed; the focused
+  registry suite passes all five cases and the worker type check passes.
+- The complete repository gate passes OpenAPI drift, formatting, lint, all ten package type checks,
+  75 worker tests, every other package suite, and all ten production builds.
+- This closes the code-level `COMPLETED`/NEAR registration definition-of-done item. The separate
+  external requirement to deploy the registry and preserve a matching NEAR testnet receipt remains
+  open until funded testnet credentials are available.
+
+### 2026-11-13 - Live read-only route and security register refreshed
+
+- `npm run check:live-route` passed against Base block `56,863,212` and Arbitrum block
+  `523,828,471`. Aave reserve identities and bytecode, Morpho market identity/LLTV/liquidity,
+  Chainlink observations, and the official 1Click asset catalog all matched the configured route.
+- The catalog observation hash was
+  `0xb30cbab56df469112e819e6ae10e9b56ee803fe83777e3963516ec060e468c6d` at
+  `2026-11-13T09:43:39.642Z`. This is time-sensitive read-only evidence, not transaction authority.
+- The official 1Click OpenAPI compatibility check passed for quote, status, and deposit-submission
+  schemas at SHA-256 `9a2e676682aa6dec6905c82f1b2cc0ec72eda97964369aa51ec35eb82ccac0a3`.
+- Added adversarial fee-on-transfer token tests. Exact-delta guards reject and atomically roll back
+  both taxed pulls and taxed payouts; the complete EVM compiler, unit, fuzz, invariant, and format
+  gate passes.
+- Reconciled every risk-register status against implemented controls and passing evidence. Only
+  R-16 (external secret-manager/relayer rotation drill) and R-21 (final mainnet exposure review and
+  authorization) remain open; `MITIGATED` is explicitly not an audit or deployment claim.
+- GitHub Actions quality run `43403559848` passed TypeScript, EVM, NEAR, security/container, and
+  SBOM jobs for final-registry-state checkpoint `e31683c`.
+
+### 2026-11-13 - Foundry toolchain and sandbox evidence made reproducible
+
+- GitHub Actions run `43404983056` exposed a formatter-only drift: CI and the documented setup used
+  Foundry `1.9.0`, while the Docker build still installed `1.5.1`. All non-EVM jobs passed in that
+  run; the EVM job stopped at `forge fmt --check` before execution tests.
+- Added `.foundry-version`, made the EVM gate fail fast on a mismatched Forge version, upgraded the
+  checksum-verified Docker toolchain to `1.9.0`, and applied the formatter result produced by that
+  exact version. The Linux release archive is pinned to upstream SHA-256
+  `8d17599b42e3139f1a9c171be3798c4ed8e743ae17b84cc3435e57bf2a51ae99`.
+- Verified the isolated official Windows `1.9.0` release archive against upstream SHA-256
+  `2b02444d46c9218fe2e6be66015265ce131fe6b7c384e33e630b00f9a0bff072`; the complete 33-test EVM
+  compiler/unit/fuzz/invariant/format gate and the two-node deployment/tamper suite pass.
+- The full repository gate passes OpenAPI drift, formatting, lint, all package type checks/tests,
+  all 75 worker tests, real dual-Anvil integrations, and all ten production builds.
+- Rebuilt the complete Compose stack without replacing its named PostgreSQL or Redis volumes. The
+  application image is
+  `sha256:9109c9619b29d319498c60de3d7c327098a2f78222171b56b66dddffa416442d`, with BuildKit
+  attestation manifest
+  `sha256:e7a95e643ac1048ee1b72bf9a4d5bfff0bffcf008ca2b0cc92ad5dcc396e7b8c`.
+- `npm run smoke:local` completed migration
+  `0x47f738fb20f8adc1733e1c12ba2ef36d69917b6d2ac42d0a6406ffc1723ac40b` at `SETTLED` with 17
+  finalized evidence records, 16 ledger entries, zero unexplained imbalance, and verified wallet
+  session, SSE, and metrics. `17-sandbox-evidence-example.md` records every evidence and transaction
+  hash and states why this is private-chain evidence rather than public execution proof.
+- GitHub Actions quality run `43409003610` passed TypeScript, the corrected Foundry/EVM and
+  deployment gates, NEAR format/test/clippy/WASM/sandbox checks, dependency and full-history secret
+  scans, production-container build and vulnerability scan, and runtime SBOM publication for
+  checkpoint `f0a807e`.
+- GitHub Actions quality run `43409934145` repeated every required job successfully for handoff
+  checkpoint `b7413ec`.
+- Reran `npm run check:forks` on `b7413ec` against the official free Base RPC and pinned block
+  `55,600,000`. The complete production Aave/Morpho adapter workflow passed using disposable local
+  Anvil state and Foundry `1.9.0`; no public-chain transaction was broadcast. This removes the
+  previously assumed need for a paid archival RPC at this checkpoint.
 
 ## Work-session handoff template
 

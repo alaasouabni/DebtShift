@@ -60,11 +60,11 @@ describe('initial PostgreSQL migration', () => {
         '${hash('7')}', '${hash('5')}', 'RESERVE_LIQUIDITY', 'seed:reserve', '{}', '${hash('8')}'
       );
     `);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await database.close();
-  });
+  }, 30_000);
 
   it('creates every durable workflow table', async () => {
     const result = await database.query<{ table_name: string }>(`
@@ -87,6 +87,7 @@ describe('initial PostgreSQL migration', () => {
       'market_snapshots',
       'markets',
       'migrations',
+      'operational_alerts',
       'outbox_messages',
       'position_snapshots',
       'positions',
@@ -94,6 +95,8 @@ describe('initial PostgreSQL migration', () => {
       'provider_quotes',
       'recovery_cases',
       'transport_legs',
+      'wallet_auth_challenges',
+      'wallet_sessions',
       'wallets',
     ]);
   });
@@ -112,10 +115,20 @@ describe('initial PostgreSQL migration', () => {
       'ledger_entries_migration_component_unique',
       'ledger_entries_migration_sequence_unique',
       'migrations_version_nonnegative',
+      'operational_alerts_deduplication_unique',
+      'operational_alerts_id_format',
       'outbox_command_unique',
       'provider_observations_response_unique',
       'provider_quotes_min_lte_expected',
       'transport_legs_migration_id_leg_index_pk',
+      'wallet_auth_challenges_address_format',
+      'wallet_auth_challenges_chain_uint',
+      'wallet_auth_challenges_message_nonempty',
+      'wallet_auth_challenges_nonce_format',
+      'wallet_auth_challenges_nonce_unique',
+      'wallet_sessions_address_format',
+      'wallet_sessions_chain_uint',
+      'wallet_sessions_hash_format',
       'wallets_chain_address_unique',
     ];
     const result = await database.query<{ conname: string }>(
@@ -221,4 +234,75 @@ describe('initial PostgreSQL migration', () => {
       `),
     ).rejects.toThrow();
   });
+});
+
+describe('recovery responsibility forward migration', () => {
+  it('normalizes and backfills a legacy recovery case before enforcing constraints', async () => {
+    const database = new PGlite();
+    try {
+      const recoveryMigration = '0011_groovy_pete_wisdom.sql';
+      const recoveryMigrationIndex = migrationFiles.indexOf(recoveryMigration);
+      if (recoveryMigrationIndex < 1) {
+        throw new Error('Recovery responsibility migration is missing or out of order.');
+      }
+      for (const migrationFile of migrationFiles.slice(0, recoveryMigrationIndex)) {
+        await database.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
+      }
+      await database.exec(`
+        INSERT INTO wallets (wallet_id, chain_id, address, account_type)
+        VALUES ('00000000-0000-0000-0000-000000000001', 31337,
+          '0xa1d79dfa76e98d5e8a776114d9524c4b6e888daa', 'EOA');
+        INSERT INTO intents (intent_hash, wallet_id, nonce, expiration, payload, signature)
+        VALUES ('${hash('1')}', '00000000-0000-0000-0000-000000000001', 1,
+          2000000000, '{}', '0x00');
+        INSERT INTO execution_plans
+          (plan_hash, migration_id, intent_hash, nonce, deadline, route_hash, payload, signature)
+        VALUES ('${hash('2')}', '${hash('5')}', '${hash('1')}', 2, 1999999999,
+          '${hash('6')}', '{}', '0x00');
+        INSERT INTO provider_quotes
+          (quote_hash, quote_id, provider, mode, amount_in_units, expected_amount_out_units,
+           minimum_amount_out_units, payload, raw_response_hash, expires_at)
+        VALUES ('${hash('3')}', 'legacy-recovery', 'DEBTSHIFT_SIMULATOR', 'SIMULATED',
+          100, 99, 98, '{}', '${hash('4')}', now() + interval '1 hour');
+        INSERT INTO migrations
+          (migration_id, intent_hash, plan_hash, quote_hash, phase, expires_at)
+        VALUES ('${hash('5')}', '${hash('1')}', '${hash('2')}', '${hash('3')}', 'RECOVERY',
+          now() + interval '1 hour');
+        INSERT INTO recovery_cases
+          (recovery_id, migration_id, policy, status, reason, residual_assets, opened_at)
+        VALUES ('${hash('7')}', '${hash('5')}', 'DETERMINISTIC_RECOVERY_POLICY', 'OPEN',
+          'TRANSPORT_REFUNDED', '[{"kind":"TRANSPORT_CUSTODY"}]',
+          '2026-11-13T07:00:00.000Z');
+      `);
+
+      await database.exec(readFileSync(`${migrationsDirectory}/${recoveryMigration}`, 'utf8'));
+
+      const migrated = await database.query<{
+        policy: string;
+        next_permitted_action: string;
+        action_deadline: Date | string;
+        escalation_owner: string;
+        escalation_state: string;
+      }>(`
+        SELECT policy, next_permitted_action, action_deadline, escalation_owner, escalation_state
+        FROM recovery_cases
+      `);
+      expect(migrated.rows[0]).toEqual({
+        policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        next_permitted_action: 'EXECUTE_SIGNED_RECOVERY',
+        action_deadline: new Date('2026-11-13T07:00:00.000Z'),
+        escalation_owner: 'DEBTSHIFT_WORKER',
+        escalation_state: 'AUTOMATED_RECOVERY_PENDING',
+      });
+      await expect(
+        database.exec(`
+          UPDATE recovery_cases
+          SET escalation_state = 'MANUAL_REVIEW_REQUIRED'
+          WHERE recovery_id = '${hash('7')}'
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  }, 15_000);
 });

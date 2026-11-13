@@ -32,7 +32,11 @@ terminal NEAR receipt or advances to `COMPLETED`. A hosted sandbox must set all 
 - `DEBTSHIFT_NODE_ENV=production`
 - `NEAR_NETWORK=testnet`
 - `NEAR_RPC_URL` set to the selected NEAR testnet RPC endpoint
+- `NEAR_RPC_FALLBACK_URLS_JSON` set to an ordered JSON array of zero to four independently operated,
+  explicitly approved testnet RPC endpoints
 - `NEAR_REGISTRY_ACCOUNT`
+- `NEAR_REGISTRY_OWNER_ACCOUNT` set to the owner recorded in the verified deployment manifest
+- `NEAR_REGISTRY_WASM_SHA256` set to the `0x`-prefixed artifact hash recorded in that manifest
 - `NEAR_SIGNER_ACCOUNT_ID`
 - `NEAR_SIGNER_PRIVATE_KEY`
 
@@ -40,6 +44,10 @@ Production startup then fails closed if any registry credential is missing. The 
 dedicated funded testnet verifier account with only the required registry permissions. A private
 NEAR sandbox remains valid for developer-operated deployments, but its evidence must retain the
 `sandbox` network label.
+
+Every configured public NEAR URL must use HTTPS and report `testnet`. Final-state registry reads may
+fail over immediately. A registry write is never rebroadcast to another RPC during the same worker
+attempt; an ambiguous outcome is reconciled from final contract state on the next durable attempt.
 
 `NEXT_PUBLIC_API_URL` is a build argument. Set it to the public API `/v1` URL before building a
 hosted image. Set `WEB_PUBLIC_URL` and `API_PUBLIC_URL` to the matching public origins. Do not put

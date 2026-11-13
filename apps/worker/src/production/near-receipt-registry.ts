@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { MigrationExecutionContext } from '@debtshift/database';
 import {
   evidenceSchema,
@@ -9,6 +11,7 @@ import {
 import { Account, JsonRpcProvider, KeyPairSigner } from 'near-api-js';
 
 import type { ReceiptRegistryPort } from '../handlers.js';
+import { NearRpcFailoverClient, type NearRpcEndpoint } from './near-rpc-failover.js';
 
 const REQUIRED_COMPLETION_EVIDENCE: readonly EvidenceType[] = [
   'LIQUIDITY_RESERVATION',
@@ -28,7 +31,10 @@ type RegistryEnvironment = Pick<
   DebtShiftEnvironment,
   | 'NEAR_NETWORK'
   | 'NEAR_RPC_URL'
+  | 'NEAR_RPC_FALLBACK_URLS_JSON'
   | 'NEAR_REGISTRY_ACCOUNT'
+  | 'NEAR_REGISTRY_OWNER_ACCOUNT'
+  | 'NEAR_REGISTRY_WASM_SHA256'
   | 'NEAR_SIGNER_ACCOUNT_ID'
   | 'NEAR_SIGNER_PRIVATE_KEY'
   | 'NEAR_STORAGE_DEPOSIT_YOCTO'
@@ -75,12 +81,14 @@ interface Attestation extends AttestationInput {
 
 interface FinalReceipt {
   readonly receipt_bundle_hash: string;
-  readonly terminal_status: 'COMPLETED' | 'FAILED_SAFE' | 'REQUOTE_REQUIRED' | 'EXPIRED';
+  readonly terminal_status:
+    'COMPLETED' | 'FAILED_SAFE' | 'REQUOTE_REQUIRED' | 'EXPIRED' | 'CANCELLED';
   readonly finalized_by: string;
   readonly finalized_at_ns: string;
 }
 
 export interface NearRegistryClient {
+  code(contractId: string): Promise<Uint8Array>;
   view(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown>;
   call(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown>;
 }
@@ -108,7 +116,29 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
   }: NearReceiptRegistryDependencies) {
     this.#environment = environment;
     this.#loadActiveFinalizedEvidence = loadActiveFinalizedEvidence;
-    this.#client = client ?? new NearApiRegistryClient(environment);
+    this.#client = client ?? createNearApiRegistryClient(environment);
+  }
+
+  async assertReady(): Promise<void> {
+    const code = await this.#client.code(this.#environment.NEAR_REGISTRY_ACCOUNT);
+    const actualWasmSha256 = `0x${createHash('sha256').update(code).digest('hex')}`;
+    if (actualWasmSha256 !== this.#environment.NEAR_REGISTRY_WASM_SHA256) {
+      throw new Error('NEAR registry code does not match the configured deployment manifest.');
+    }
+    const owner = await this.#client.view('owner_id', {});
+    if (owner !== this.#environment.NEAR_REGISTRY_OWNER_ACCOUNT) {
+      throw new Error('NEAR registry owner does not match the configured deployment manifest.');
+    }
+    const pendingOwner = await this.#client.view('pending_owner_id', {});
+    if (pendingOwner !== null) {
+      throw new Error('NEAR registry has a pending ownership transfer.');
+    }
+    const verifier = await this.#client.view('is_verifier', {
+      account_id: this.#environment.NEAR_SIGNER_ACCOUNT_ID,
+    });
+    if (verifier !== true) {
+      throw new Error('The configured NEAR signer is not an authorized registry verifier.');
+    }
   }
 
   async finalize(context: MigrationExecutionContext): Promise<Evidence> {
@@ -140,16 +170,30 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
     assertAgreementMatches(agreement, request);
 
     if (agreement.final_receipt === null) {
-      await this.#appendMissingAttestations(context.migration.migrationId, records);
+      await this.#synchronizeAttestations(context.migration.migrationId, records, true);
       await this.#client.call('finalize_agreement', {
         agreement_id: context.migration.migrationId,
         receipt_bundle_hash: receiptBundleHash,
         terminal_status: 'COMPLETED',
       });
+    } else {
+      await this.#synchronizeAttestations(context.migration.migrationId, records, false);
     }
 
+    const finalizedAgreement = await this.#getAgreement(context.migration.migrationId);
+    if (finalizedAgreement === null) throw new Error('NEAR registry agreement disappeared.');
+    assertAgreementMatches(finalizedAgreement, request);
+    if (finalizedAgreement.attestation_count !== records.length) {
+      throw new Error('NEAR registry agreement attestation count does not match durable evidence.');
+    }
+    if (finalizedAgreement.final_receipt === null) {
+      throw new Error('NEAR registry agreement was not finalized.');
+    }
     const finalReceipt = await this.#getFinalReceipt(context.migration.migrationId);
     if (finalReceipt === null) throw new Error('NEAR registry final receipt was not persisted.');
+    if (stableJson(finalizedAgreement.final_receipt) !== stableJson(finalReceipt)) {
+      throw new Error('NEAR registry receipt views do not agree.');
+    }
     assertReceiptMatches(finalReceipt, receiptBundleHash);
     return registryEvidence(context, finalReceipt, receiptBundle, this.#environment.NEAR_NETWORK);
   }
@@ -164,9 +208,10 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
     );
   }
 
-  async #appendMissingAttestations(
+  async #synchronizeAttestations(
     agreementId: string,
     records: readonly Evidence[],
+    mayAppend: boolean,
   ): Promise<void> {
     if (records.length > MAX_ATTESTATIONS) {
       throw new Error(`Receipt evidence exceeds the registry limit of ${MAX_ATTESTATIONS}.`);
@@ -175,21 +220,22 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
       records.map((record) => [record.evidenceId, attestation(record)]),
     );
     const existing = await this.#getAttestations(agreementId);
-    for (const stored of existing) {
-      const expected = inputs.get(stored.evidence_id);
-      if (expected === undefined) {
-        throw new Error(`NEAR agreement contains unexpected evidence ${stored.evidence_id}.`);
-      }
-      assertAttestationMatches(stored, expected);
-    }
+    assertStoredAttestations(existing, inputs, false);
     const existingIds = new Set(existing.map(({ evidence_id }) => evidence_id));
     for (const input of inputs.values()) {
       if (existingIds.has(input.evidence_id)) continue;
+      if (!mayAppend) {
+        throw new Error(
+          `Finalized NEAR agreement is missing durable evidence ${input.evidence_id}.`,
+        );
+      }
       await this.#client.call('append_attestation', {
         agreement_id: agreementId,
         input,
       });
     }
+    const finalized = await this.#getAttestations(agreementId);
+    assertStoredAttestations(finalized, inputs, true);
   }
 
   async #getAttestations(agreementId: string): Promise<readonly Attestation[]> {
@@ -209,11 +255,14 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
   }
 }
 
-class NearApiRegistryClient implements NearRegistryClient {
+class NearApiRegistryEndpoint implements NearRpcEndpoint {
   readonly #provider: JsonRpcProvider;
   readonly #account: Account;
 
-  constructor(private readonly environment: RegistryEnvironment) {
+  constructor(
+    private readonly environment: RegistryEnvironment,
+    rpcUrl: string,
+  ) {
     if (
       environment.NEAR_REGISTRY_ACCOUNT.length === 0 ||
       environment.NEAR_SIGNER_ACCOUNT_ID.length === 0 ||
@@ -221,11 +270,23 @@ class NearApiRegistryClient implements NearRegistryClient {
     ) {
       throw new Error('NEAR registry writes require registry and verifier signer configuration.');
     }
-    this.#provider = new JsonRpcProvider({ url: environment.NEAR_RPC_URL });
+    this.#provider = new JsonRpcProvider({ url: rpcUrl }, { retries: 1, wait: 200, backoff: 1 });
     const signer = KeyPairSigner.fromSecretKey(
       environment.NEAR_SIGNER_PRIVATE_KEY as Parameters<typeof KeyPairSigner.fromSecretKey>[0],
     );
     this.#account = new Account(environment.NEAR_SIGNER_ACCOUNT_ID, this.#provider, signer);
+  }
+
+  getNetworkId(): Promise<string> {
+    return this.#provider.getNetworkId();
+  }
+
+  async code(contractId: string): Promise<Uint8Array> {
+    const result = await this.#provider.viewContractCode({
+      contractId,
+      blockQuery: { finality: 'final' },
+    });
+    return result.code;
   }
 
   async view(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -247,6 +308,14 @@ class NearApiRegistryClient implements NearRegistryClient {
       waitUntil: 'FINAL',
     });
   }
+}
+
+function createNearApiRegistryClient(environment: RegistryEnvironment): NearRegistryClient {
+  const urls = [environment.NEAR_RPC_URL, ...environment.NEAR_RPC_FALLBACK_URLS_JSON];
+  return new NearRpcFailoverClient(
+    environment.NEAR_NETWORK,
+    urls.map((url) => new NearApiRegistryEndpoint(environment, url)),
+  );
 }
 
 function agreementRequest(
@@ -393,6 +462,30 @@ function assertAttestationMatches(actual: Attestation, expected: AttestationInpu
   }
 }
 
+function assertStoredAttestations(
+  actual: readonly Attestation[],
+  expected: ReadonlyMap<string, AttestationInput>,
+  requireComplete: boolean,
+): void {
+  const seen = new Set<string>();
+  for (const stored of actual) {
+    if (seen.has(stored.evidence_id)) {
+      throw new Error(`NEAR agreement contains duplicate evidence ${stored.evidence_id}.`);
+    }
+    seen.add(stored.evidence_id);
+    const input = expected.get(stored.evidence_id);
+    if (input === undefined) {
+      throw new Error(`NEAR agreement contains unexpected evidence ${stored.evidence_id}.`);
+    }
+    assertAttestationMatches(stored, input);
+  }
+  if (!requireComplete) return;
+  const missing = [...expected.keys()].filter((evidenceId) => !seen.has(evidenceId));
+  if (missing.length !== 0) {
+    throw new Error(`NEAR agreement did not persist durable evidence ${missing.join(', ')}.`);
+  }
+}
+
 function assertReceiptMatches(actual: FinalReceipt, receiptBundleHash: string): void {
   if (actual.receipt_bundle_hash !== receiptBundleHash || actual.terminal_status !== 'COMPLETED') {
     throw new Error('Existing NEAR final receipt conflicts with the durable receipt bundle.');
@@ -421,7 +514,11 @@ function parseFinalReceipt(value: unknown): FinalReceipt | null {
   if (value === null || value === undefined) return null;
   const record = object(value, 'final receipt');
   const terminalStatus = text(record.terminal_status, 'terminal_status');
-  if (!['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED'].includes(terminalStatus)) {
+  if (
+    !['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED', 'CANCELLED'].includes(
+      terminalStatus,
+    )
+  ) {
     throw new Error(`Invalid NEAR terminal status ${terminalStatus}.`);
   }
   return {

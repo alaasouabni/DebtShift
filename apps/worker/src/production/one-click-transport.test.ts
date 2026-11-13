@@ -1,12 +1,13 @@
 import type { MigrationExecutionContext } from '@debtshift/database';
 import { providerQuoteSchema } from '@debtshift/domain';
-import type { OneClickStatusObservation } from '@debtshift/intents';
+import { OneClickRequestError, type OneClickStatusObservation } from '@debtshift/intents';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   OneClickTransportExecutionPort,
   type OneClickObservationStore,
 } from './one-click-transport.js';
+import { RetryableCommandError } from '../processor.js';
 
 const MIGRATION_ID = `0x${'01'.repeat(32)}` as const;
 const QUOTE_HASH = `0x${'02'.repeat(32)}` as const;
@@ -125,6 +126,51 @@ describe('OneClickTransportExecutionPort', () => {
       },
     });
   });
+
+  it('persists and maps an undocumented provider status as fail-closed unknown custody', async () => {
+    const store = observationStore();
+    const port = new OneClickTransportExecutionPort(
+      {
+        submitDepositTransaction: vi.fn(),
+        getStatus: vi.fn(async () =>
+          providerObservation('UNKNOWN', {
+            providerStatus: 'NEW_PROVIDER_STATE',
+            rawResponse: { status: 'NEW_PROVIDER_STATE' },
+          }),
+        ),
+      },
+      store,
+    );
+
+    await expect(port.observe(context())).resolves.toMatchObject({
+      observation: { status: 'UNKNOWN' },
+    });
+    expect(store.store).toHaveBeenCalledWith(
+      'STATUS',
+      expect.objectContaining({
+        status: 'UNKNOWN',
+        providerStatus: 'NEW_PROVIDER_STATE',
+        rawResponse: { status: 'NEW_PROVIDER_STATE' },
+      }),
+    );
+  });
+
+  it('promotes exhausted retryable provider requests into durable workflow retry', async () => {
+    const port = new OneClickTransportExecutionPort(
+      {
+        submitDepositTransaction: vi.fn(),
+        getStatus: vi.fn(async () => {
+          throw new OneClickRequestError('provider token redacted', true);
+        }),
+      },
+      observationStore(),
+    );
+
+    await expect(port.observe(context())).rejects.toBeInstanceOf(RetryableCommandError);
+    await expect(port.observe(context())).rejects.toThrow(
+      'Official 1Click request exhausted its internal transport retries.',
+    );
+  });
 });
 
 function observationStore(): OneClickObservationStore & { store: ReturnType<typeof vi.fn> } {
@@ -217,6 +263,7 @@ function providerObservation(
 ): OneClickStatusObservation {
   return {
     status,
+    providerStatus: status,
     correlationId: 'status-correlation',
     depositAddress: DEPOSIT,
     depositMemo: 'debtshift-route',

@@ -24,6 +24,9 @@ import {
   createAuthorizedMigration,
   getMigrationDetails,
   getMigrationExecutionContext,
+  getSignedExecutionPlan,
+  getSignedIntent,
+  listMigrationEventsAfter,
   storeAssetCatalogVersion,
   storeProviderObservation,
 } from './migration-repository.js';
@@ -73,12 +76,24 @@ describe('authorized migration repository', () => {
       'SOURCE_POSITION_SNAPSHOT',
     ]);
     expect(details?.events).toHaveLength(1);
+    await expect(listMigrationEventsAfter(database, created.migrationId, 0)).resolves.toEqual(
+      details?.events,
+    );
+    await expect(listMigrationEventsAfter(database, created.migrationId, 1)).resolves.toEqual([]);
     expect(details?.commands).toHaveLength(1);
     expect(details?.commands[0]?.type).toBe('RESERVE_LIQUIDITY');
     const context = await getMigrationExecutionContext(database, created.migrationId);
     expect(context?.targetLendingAuthorization).toEqual({
       authorization: { kind: 'NONE' },
       encodedAuthorization: '0x',
+    });
+    await expect(getSignedIntent(database, input.signedIntent.intentHash)).resolves.toEqual({
+      walletAddress: BORROWER.toLowerCase(),
+      signedIntent: input.signedIntent,
+    });
+    await expect(getSignedExecutionPlan(database, input.signedPlan.planHash)).resolves.toEqual({
+      walletAddress: BORROWER.toLowerCase(),
+      signedPlan: input.signedPlan,
     });
     const reservation = await postgres.query<{
       status: string;

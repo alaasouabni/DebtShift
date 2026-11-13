@@ -34,24 +34,29 @@ Implementation must be understandable from this directory without relying on cha
 
 ## Document index
 
-| Document                                                                                   | Purpose                                                                                          |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| [00-product-scope.md](./00-product-scope.md)                                               | Defines the first release, boundaries, assumptions, and user-visible acceptance criteria.        |
-| [01-architecture-blueprint.md](./01-architecture-blueprint.md)                             | Defines runtime components, trust boundaries, data flow, and state ownership.                    |
-| [02-implementation-roadmap.md](./02-implementation-roadmap.md)                             | Contains the ordered milestones and task-level implementation checklist.                         |
-| [03-contracts-and-authorization-strategy.md](./03-contracts-and-authorization-strategy.md) | Defines EVM and NEAR contract responsibilities and the authorization model.                      |
-| [04-orchestration-and-data-strategy.md](./04-orchestration-and-data-strategy.md)           | Defines persistence, evidence, idempotency, state transitions, and recovery.                     |
-| [05-testing-and-verification-strategy.md](./05-testing-and-verification-strategy.md)       | Defines all test layers and release quality gates.                                               |
-| [06-environments-deployment-operations.md](./06-environments-deployment-operations.md)     | Defines sandbox, testnet, mainnet-readonly, and mainnet environments and the write switch.       |
-| [07-security-risk-register.md](./07-security-risk-register.md)                             | Tracks threats, invariants, mitigations, and blocking security risks.                            |
-| [08-progress-and-decisions.md](./08-progress-and-decisions.md)                             | Tracks milestone status, decisions, open questions, and implementation handoffs.                 |
-| [09-definition-of-done.md](./09-definition-of-done.md)                                     | Defines what must be true before the implementation is called complete.                          |
-| [10-agent-and-free-data-sources.md](./10-agent-and-free-data-sources.md)                   | Defines the agent design, local model, free data providers, precedence, caching, and fallbacks.  |
-| [11-refinancing-feasibility-model.md](./11-refinancing-feasibility-model.md)               | Defines borrowing capacity, funding shortfalls, secured resolutions, and revalidation rules.     |
-| [12-production-provider-boundaries.md](./12-production-provider-boundaries.md)             | Separates simulator fixtures from live Aave, Morpho, Chainlink, and 1Click providers.            |
-| [13-frontend-handoff.md](./13-frontend-handoff.md)                                         | Defines frontend ownership, API and signing contracts, user journeys, safety labels, and tests.  |
-| [14-submission-critical-plan.md](./14-submission-critical-plan.md)                         | Defines the two-day P0 delivery order, ownership, deferrals, safety rules, and submission gates. |
-| [15-account-handoff.md](./15-account-handoff.md)                                           | Gives the next Codex account the exact verified checkpoint, blockers, and resume commands.       |
+| Document                                                                                   | Purpose                                                                                           |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| [00-product-scope.md](./00-product-scope.md)                                               | Defines the first release, boundaries, assumptions, and user-visible acceptance criteria.         |
+| [01-architecture-blueprint.md](./01-architecture-blueprint.md)                             | Defines runtime components, trust boundaries, data flow, and state ownership.                     |
+| [02-implementation-roadmap.md](./02-implementation-roadmap.md)                             | Contains the ordered milestones and task-level implementation checklist.                          |
+| [03-contracts-and-authorization-strategy.md](./03-contracts-and-authorization-strategy.md) | Defines EVM and NEAR contract responsibilities and the authorization model.                       |
+| [04-orchestration-and-data-strategy.md](./04-orchestration-and-data-strategy.md)           | Defines persistence, evidence, idempotency, state transitions, and recovery.                      |
+| [05-testing-and-verification-strategy.md](./05-testing-and-verification-strategy.md)       | Defines all test layers and release quality gates.                                                |
+| [06-environments-deployment-operations.md](./06-environments-deployment-operations.md)     | Defines sandbox, testnet, mainnet-readonly, and mainnet environments and the write switch.        |
+| [07-security-risk-register.md](./07-security-risk-register.md)                             | Tracks threats, invariants, mitigations, and blocking security risks.                             |
+| [08-progress-and-decisions.md](./08-progress-and-decisions.md)                             | Tracks milestone status, decisions, open questions, and implementation handoffs.                  |
+| [09-definition-of-done.md](./09-definition-of-done.md)                                     | Defines what must be true before the implementation is called complete.                           |
+| [10-agent-and-free-data-sources.md](./10-agent-and-free-data-sources.md)                   | Defines the agent design, local model, free data providers, precedence, caching, and fallbacks.   |
+| [11-refinancing-feasibility-model.md](./11-refinancing-feasibility-model.md)               | Defines borrowing capacity, funding shortfalls, secured resolutions, and revalidation rules.      |
+| [12-production-provider-boundaries.md](./12-production-provider-boundaries.md)             | Separates simulator fixtures from live Aave, Morpho, Chainlink, and 1Click providers.             |
+| [13-frontend-handoff.md](./13-frontend-handoff.md)                                         | Defines frontend ownership, API and signing contracts, user journeys, safety labels, and tests.   |
+| [14-submission-critical-plan.md](./14-submission-critical-plan.md)                         | Defines the two-day P0 delivery order, ownership, deferrals, safety rules, and submission gates.  |
+| [15-account-handoff.md](./15-account-handoff.md)                                           | Gives the next Codex account the exact verified checkpoint, blockers, and resume commands.        |
+| [16-operations-runbooks.md](./16-operations-runbooks.md)                                   | Gives executable containment, recovery, backup, pause, and key-rotation procedures.               |
+| [17-sandbox-evidence-example.md](./17-sandbox-evidence-example.md)                         | Records one reproducible local migration's exact transaction, evidence, image, and safety proof.  |
+| [18-observability-deployment.md](./18-observability-deployment.md)                         | Defines trace safety, durable context propagation, dashboards, and operator verification.         |
+| [19-near-registry-deployment.md](./19-near-registry-deployment.md)                         | Defines account separation, guarded deployment, immutable manifests, and live startup checks.     |
+| [20-evm-deployment.md](./20-evm-deployment.md)                                             | Defines guarded two-chain deployment, manifest attestation, worker startup, and failure handling. |
 
 ## Work protocol
 

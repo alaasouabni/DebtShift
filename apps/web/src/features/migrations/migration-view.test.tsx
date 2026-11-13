@@ -355,10 +355,13 @@ describe('a real migration in recovery', () => {
   it('shows why recovery opened, in the backend own words', async () => {
     await renderMigration(recovery);
     // The code also appears inside the expandable evidence payloads, so the
-    // claim checked is the dedicated "Why" row in the recovery panel.
+    // claim checked is the dedicated rows of the recovery case.
     const why = screen.getByText('Why').nextElementSibling;
     expect(why?.textContent).toContain('FINALIZED_CHAIN_EVIDENCE_REORGED');
-    expect(why?.textContent).toContain('HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION');
+    const policy = screen.getByText('Policy').nextElementSibling;
+    expect(policy?.textContent).toContain('HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION');
+    // The reason is stated once, not in two panels that could drift apart.
+    expect(screen.getAllByText('Why')).toHaveLength(1);
   });
 
   it('strikes through the retracted evidence instead of hiding it', async () => {

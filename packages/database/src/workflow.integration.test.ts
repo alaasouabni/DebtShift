@@ -14,6 +14,7 @@ import {
   enqueueCommand,
   planNextCommand,
   publishPendingOutbox,
+  type OutboxEnvelope,
 } from './workflow.js';
 
 const migrationsDirectory = fileURLToPath(new URL('../migrations/', import.meta.url));
@@ -21,6 +22,7 @@ const migrationFiles = readdirSync(migrationsDirectory)
   .filter((file) => file.endsWith('.sql'))
   .sort();
 const hash = (digit: string) => `0x${digit.repeat(64)}`;
+const pairHash = (pair: string) => `0x${pair.repeat(32)}`;
 const sourceAuthorizationEvidenceId = `0x${'16'.repeat(32)}`;
 
 describe('durable workflow and transactional outbox', () => {
@@ -80,11 +82,11 @@ describe('durable workflow and transactional outbox', () => {
           'DETERMINISTIC_ENGINE_V1', 'eip155:31337', '${hash('0')}', '{}', now(),
           'FINALIZED', 'TEST', '1');
     `);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await postgres.close();
-  });
+  }, 30_000);
 
   it('enqueues one logical command and publishes it with retry state', async () => {
     const migrationId = hash('5');
@@ -139,6 +141,132 @@ describe('durable workflow and transactional outbox', () => {
       'SELECT status FROM outbox_messages',
     );
     expect(published.rows[0]?.status).toBe('PUBLISHED');
+  });
+
+  it('dead-letters a cancelled command instead of resurrecting or delivering it', async () => {
+    const migrationId = hash('5');
+    const commandId = await enqueueCommand(database, migrationId, {
+      type: 'CLOSE_SOURCE',
+      idempotencyKey: `cancelled-before-publish:${migrationId}`,
+      payload: { migrationId },
+    });
+    await postgres.exec(`
+      UPDATE commands SET status = 'CANCELLED' WHERE command_id = '${commandId}'
+    `);
+    const delivered: string[] = [];
+
+    await publishPendingOutbox(database, async (message) => {
+      delivered.push(message.commandId);
+    });
+
+    expect(delivered).not.toContain(commandId);
+    const [command, outbox] = await Promise.all([
+      postgres.query<{ status: string }>(
+        `SELECT status FROM commands WHERE command_id = '${commandId}'`,
+      ),
+      postgres.query<{ status: string; last_error: string | null }>(
+        `SELECT status, last_error FROM outbox_messages WHERE command_id = '${commandId}'`,
+      ),
+    ]);
+    expect(command.rows[0]?.status).toBe('CANCELLED');
+    expect(outbox.rows[0]).toEqual({
+      status: 'DEAD_LETTER',
+      last_error: 'Command is already terminal with status CANCELLED.',
+    });
+    await postgres.exec(`
+      DELETE FROM outbox_messages WHERE command_id = '${commandId}';
+      DELETE FROM commands WHERE command_id = '${commandId}';
+    `);
+  });
+
+  it('carries only validated W3C context through the durable outbox envelope', async () => {
+    const migrationId = hash('5');
+    const traceContext = {
+      traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      tracestate: 'debtshift=workflow',
+    } as const;
+    const commandId = await enqueueCommand(
+      database,
+      migrationId,
+      {
+        type: 'CLOSE_SOURCE',
+        idempotencyKey: `trace-context:${migrationId}`,
+        payload: { migrationId },
+      },
+      traceContext,
+    );
+    let delivered: OutboxEnvelope | undefined;
+
+    await publishPendingOutbox(database, async (message) => {
+      if (message.commandId === commandId) delivered = message;
+    });
+
+    expect(delivered).toEqual(
+      expect.objectContaining({
+        commandId,
+        traceContext,
+        payload: { commandId, migrationId, type: 'CLOSE_SOURCE' },
+      }),
+    );
+    expect(delivered?.payload).not.toHaveProperty('traceContext');
+    await postgres.exec(`
+      DELETE FROM outbox_messages WHERE command_id = '${commandId}';
+      DELETE FROM commands WHERE command_id = '${commandId}';
+    `);
+  });
+
+  it('persists provisional and confirmed evidence without advancing financial state', async () => {
+    const baseEvidence = {
+      migrationId: hash('5'),
+      type: 'LIQUIDITY_RESERVATION' as const,
+      schemaVersion: 1,
+      provider: 'LOCAL_TEST_VAULT',
+      network: 'anvil:31337',
+      normalizedPayload: { principalUnits: '100' },
+      verificationMethod: 'CONTRACT_STATE',
+      verifierVersion: '1',
+    };
+    const provisional = evidenceSchema.parse({
+      ...baseEvidence,
+      evidenceId: pairHash('ab'),
+      rawObservationHash: pairHash('ba'),
+      observedAt: '2026-11-09T01:00:00.000Z',
+      verificationState: 'PROVISIONAL',
+    });
+    const confirmed = evidenceSchema.parse({
+      ...baseEvidence,
+      evidenceId: pairHash('ac'),
+      rawObservationHash: pairHash('ca'),
+      observedAt: '2026-11-09T01:00:30.000Z',
+      verificationState: 'CONFIRMED',
+    });
+
+    await expect(advanceMigrationWithEvidence(database, provisional, 'observer')).resolves.toBe(
+      'AUTHORIZED',
+    );
+    await expect(advanceMigrationWithEvidence(database, confirmed, 'observer')).resolves.toBe(
+      'AUTHORIZED',
+    );
+
+    const [migration, reservation, observations] = await Promise.all([
+      postgres.query<{ phase: string; version: number }>(
+        `SELECT phase, version FROM migrations WHERE migration_id = '${hash('5')}'`,
+      ),
+      postgres.query<{ status: string }>(
+        `SELECT status FROM liquidity_reservations WHERE migration_id = '${hash('5')}'`,
+      ),
+      postgres.query<{ verification_state: string }>(`
+        SELECT verification_state FROM evidence
+        WHERE evidence_id IN ('${provisional.evidenceId}', '${confirmed.evidenceId}')
+        ORDER BY observed_at
+      `),
+    ]);
+    expect(migration.rows[0]).toEqual({ phase: 'AUTHORIZED', version: 0 });
+    expect(reservation.rows[0]?.status).toBe('PENDING');
+    expect(observations.rows).toEqual([
+      { verification_state: 'PROVISIONAL' },
+      { verification_state: 'CONFIRMED' },
+    ]);
   });
 
   it('advances from finalized evidence and enqueues the next command exactly once', async () => {
@@ -213,6 +341,11 @@ describe('durable workflow and transactional outbox', () => {
       normalizedPayload: {
         reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
         policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        requiresManualReview: false,
+        nextPermittedAction: 'EXECUTE_SIGNED_RECOVERY',
+        actionDeadline: '2026-11-09T01:30:00.000Z',
+        escalationOwner: 'DEBTSHIFT_WORKER',
+        escalationState: 'AUTOMATED_RECOVERY_PENDING',
         residualAssets,
       },
       observedAt: '2026-11-09T01:02:00.000Z',
@@ -231,16 +364,63 @@ describe('durable workflow and transactional outbox', () => {
       status: string;
       reason: string;
       policy: string;
+      next_permitted_action: string;
+      action_deadline: Date | string;
+      escalation_owner: string;
+      escalation_state: string;
       residual_assets: ReadonlyArray<Record<string, unknown>>;
-    }>(`SELECT status, reason, policy, residual_assets FROM recovery_cases`);
+    }>(
+      `SELECT status, reason, policy, next_permitted_action, action_deadline,
+        escalation_owner, escalation_state, residual_assets FROM recovery_cases`,
+    );
     expect(active.rows).toEqual([
       {
         status: 'OPEN',
         reason: 'DESTINATION_CAPACITY_DETERIORATED_AFTER_SOURCE_CLOSE',
         policy: 'RETURN_KNOWN_COLLATERAL_PRESERVE_SOLVER_RECEIVABLE',
+        next_permitted_action: 'EXECUTE_SIGNED_RECOVERY',
+        action_deadline: new Date('2026-11-09T01:30:00.000Z'),
+        escalation_owner: 'DEBTSHIFT_WORKER',
+        escalation_state: 'AUTOMATED_RECOVERY_PENDING',
         residual_assets: residualAssets,
       },
     ]);
+
+    const escalated = evidenceSchema.parse({
+      ...opened,
+      evidenceId: pairHash('28'),
+      rawObservationHash: pairHash('82'),
+      normalizedPayload: {
+        reason: 'AUTOMATED_RECOVERY_RETRY_BUDGET_EXHAUSTED',
+        policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+        requiresManualReview: true,
+        nextPermittedAction: 'RECONCILE_RECOVERY_EXECUTION',
+        actionDeadline: '2026-11-09T01:30:00.000Z',
+        escalationOwner: 'DEBTSHIFT_OPERATIONS',
+        escalationState: 'MANUAL_REVIEW_REQUIRED',
+        residualAssets,
+      },
+      observedAt: '2026-11-09T01:02:30.000Z',
+      verificationMethod: 'RETRY_BUDGET_AND_DURABLE_STATE_RECONCILIATION',
+    });
+    await expect(advanceMigrationWithEvidence(database, escalated, 'worker')).resolves.toBe(
+      'RECOVERY',
+    );
+    const manual = await postgres.query<{
+      policy: string;
+      next_permitted_action: string;
+      escalation_owner: string;
+      escalation_state: string;
+    }>(
+      `SELECT policy, next_permitted_action, escalation_owner, escalation_state
+       FROM recovery_cases`,
+    );
+    expect(manual.rows[0]).toEqual({
+      policy: 'MANUAL_RECOVERY_EXECUTION_RECONCILIATION',
+      next_permitted_action: 'RECONCILE_RECOVERY_EXECUTION',
+      escalation_owner: 'DEBTSHIFT_OPERATIONS',
+      escalation_state: 'MANUAL_REVIEW_REQUIRED',
+    });
 
     const completed = evidenceSchema.parse({
       ...opened,
@@ -257,10 +437,13 @@ describe('durable workflow and transactional outbox', () => {
     await expect(advanceMigrationWithEvidence(database, completed, 'worker')).resolves.toBe(
       'FAILED_SAFE',
     );
-    const resolved = await postgres.query<{ status: string; resolved_at: Date | string | null }>(
-      `SELECT status, resolved_at FROM recovery_cases`,
-    );
+    const resolved = await postgres.query<{
+      status: string;
+      escalation_state: string;
+      resolved_at: Date | string | null;
+    }>(`SELECT status, escalation_state, resolved_at FROM recovery_cases`);
     expect(resolved.rows[0]?.status).toBe('RESOLVED_FAILED_SAFE');
+    expect(resolved.rows[0]?.escalation_state).toBe('RESOLVED_FAILED_SAFE');
     expect(resolved.rows[0]?.resolved_at).not.toBeNull();
   });
 

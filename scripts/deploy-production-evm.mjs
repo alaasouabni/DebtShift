@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdir, open, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 import {
@@ -23,6 +24,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 assertDeploymentAuthorization();
 
+const workspaceRoot = resolve('.');
+const sourceCommit = cleanSourceCommit(workspaceRoot);
 const environment = requiredEnum('DEBTSHIFT_DEPLOYMENT_ENVIRONMENT', ['testnet', 'mainnet']);
 const sourceRpcUrl = requiredUrl('SOURCE_RPC_URL');
 const destinationRpcUrl = requiredUrl('DESTINATION_RPC_URL');
@@ -105,42 +108,45 @@ const marketParams = {
   lltv: rawMarketParams[4],
 };
 
-const manifest = debtShiftEvmDeploymentManifestSchema.parse(
-  await deployProductionDebtShift({
-    environment,
-    routeId,
-    routeConfigurationHash: keccak256(stringToHex(routeJson)),
-    owner,
-    executor,
-    source: {
-      publicClient: sourcePublic,
-      wallet: sourceWallet,
-      chainId: sourceChainId,
-      confirmations: sourceConfirmations,
-      pool: route.source.pool,
-      dataProvider: route.source.dataProvider,
-      aToken: reserveTokens.aToken,
-      variableDebtToken: reserveTokens.variableDebtToken,
-      collateralToken: route.source.collateralAsset.address,
-      debtToken: route.source.debtAsset.address,
-    },
-    destination: {
-      publicClient: destinationPublic,
-      wallet: destinationWallet,
-      chainId: destinationChainId,
-      confirmations: destinationConfirmations,
-      morpho: route.destination.morpho,
-      expectedMarketId: route.destination.marketId,
-      marketParams,
-    },
-  }),
-);
-
 await mkdir(dirname(outputPath), { recursive: true });
-await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, {
-  encoding: 'utf8',
-  flag: 'wx',
-});
+const manifestFile = await open(outputPath, 'wx');
+let manifest;
+try {
+  manifest = debtShiftEvmDeploymentManifestSchema.parse(
+    await deployProductionDebtShift({
+      environment,
+      routeId,
+      routeConfigurationHash: keccak256(stringToHex(JSON.stringify(route))),
+      sourceCommit,
+      owner,
+      executor,
+      source: {
+        publicClient: sourcePublic,
+        wallet: sourceWallet,
+        chainId: sourceChainId,
+        confirmations: sourceConfirmations,
+        pool: route.source.pool,
+        dataProvider: route.source.dataProvider,
+        aToken: reserveTokens.aToken,
+        variableDebtToken: reserveTokens.variableDebtToken,
+        collateralToken: route.source.collateralAsset.address,
+        debtToken: route.source.debtAsset.address,
+      },
+      destination: {
+        publicClient: destinationPublic,
+        wallet: destinationWallet,
+        chainId: destinationChainId,
+        confirmations: destinationConfirmations,
+        morpho: route.destination.morpho,
+        expectedMarketId: route.destination.marketId,
+        marketParams,
+      },
+    }),
+  );
+  await manifestFile.writeFile(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+} finally {
+  await manifestFile.close();
+}
 console.log(
   JSON.stringify({
     status: 'DEPLOYED_WITH_WORKFLOW_WRITES_DISABLED',
@@ -171,6 +177,24 @@ function assertDeploymentAuthorization() {
       'Mainnet contract deployment requires the exact out-of-band confirmation value.',
     );
   }
+}
+
+function cleanSourceCommit(workspace) {
+  const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: workspace,
+    encoding: 'utf8',
+  }).trim();
+  if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
+    throw new Error('The deployment source commit is not a full Git SHA-1.');
+  }
+  const dirty = execFileSync('git', ['status', '--porcelain'], {
+    cwd: workspace,
+    encoding: 'utf8',
+  }).trim();
+  if (dirty.length !== 0) {
+    throw new Error('EVM deployment requires a clean Git worktree.');
+  }
+  return sourceCommit;
 }
 
 function chain(id, name, rpcUrl) {

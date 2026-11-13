@@ -25,6 +25,7 @@ export interface ProductionDebtShiftDeploymentInput {
   readonly environment: 'testnet' | 'mainnet';
   readonly routeId: string;
   readonly routeConfigurationHash: Hex;
+  readonly sourceCommit: string;
   readonly owner: Address;
   readonly executor: Address;
   readonly source: {
@@ -110,6 +111,7 @@ export async function deployProductionDebtShift(
     routeId: input.routeId,
     routeConfigurationHash: input.routeConfigurationHash,
     createdAt: input.createdAt ?? new Date().toISOString(),
+    sourceCommit: input.sourceCommit,
     owner: getAddress(input.owner),
     executor: getAddress(input.executor),
     workflowWriteSwitchEnabled: false,
@@ -907,6 +909,9 @@ async function writeTracked(
 }
 
 function assertDeploymentInput(input: ProductionDebtShiftDeploymentInput): void {
+  if (!/^[0-9a-f]{40}$/.test(input.sourceCommit)) {
+    throw new Error('Production deployment requires a full lowercase Git source commit.');
+  }
   if (input.source.chainId === input.destination.chainId) {
     throw new Error('Production source and destination deployment chains must differ.');
   }

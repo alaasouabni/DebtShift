@@ -1,0 +1,14 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: DebtShift Jaeger
+    orgId: 1
+
+datasources:
+  - name: DebtShift Prometheus
+    uid: debtshift-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

@@ -120,6 +120,7 @@ runDeploymentTests('production deployment manifest and read-only verification', 
       environment: 'testnet',
       routeId: 'integration-aave-to-morpho-v1',
       routeConfigurationHash: `0x${'11'.repeat(32)}`,
+      sourceCommit: '1'.repeat(40),
       owner: owner.address,
       executor: executor.address,
       source: {

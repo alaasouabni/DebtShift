@@ -28,6 +28,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import {
   PostSourceCapacityDeteriorationError,
   PreSourceCapacityDeteriorationError,
+  PreSourceCloseFailureError,
   type ChainCanonicalityFailure,
   type FinalizedChainAction,
   type MigrationExecutionPort,
@@ -35,6 +36,25 @@ import {
 
 type LocalPublicClient = PublicClient<Transport, Chain>;
 type LocalWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
+
+class PreBroadcastSimulationError extends Error {
+  override readonly name = 'PreBroadcastSimulationError';
+
+  constructor(functionName: string, cause: unknown) {
+    super(`${functionName} failed during pre-broadcast simulation.`, { cause });
+  }
+}
+
+class FinalizedTransactionRevertError extends Error {
+  override readonly name = 'FinalizedTransactionRevertError';
+
+  constructor(
+    functionName: string,
+    readonly transactionHash: Hex,
+  ) {
+    super(`${functionName} reverted in finalized transaction ${transactionHash}.`);
+  }
+}
 
 interface LocalArtifacts {
   readonly token: FoundryArtifact;
@@ -398,6 +418,64 @@ export class DualAnvilSandboxExecutionPort implements MigrationExecutionPort {
     return action;
   }
 
+  async cancelBeforeSourceClose(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
+    this.#assertContext(context);
+    const artifacts = await this.#artifacts;
+    return this.#releaseUndrawnReservation(context, artifacts, {
+      action: 'cancelBeforeSourceClose',
+      reason: 'BORROWER_REQUESTED_CANCELLATION',
+      planHash: context.signedPlan.planHash,
+    });
+  }
+
+  async expireBeforeSourceClose(
+    context: MigrationExecutionContext,
+    reason: string,
+  ): Promise<FinalizedChainAction> {
+    this.#assertContext(context);
+    const artifacts = await this.#artifacts;
+    const plan = context.signedPlan.plan;
+    const migrationId = context.migration.migrationId as Hex;
+    const sourceClose = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_ADAPTER_ADDRESS,
+      eventTopics.sourceClosed,
+      [migrationId, addressTopic(plan.borrower)],
+      { action: 'closeSource', reconciled: true },
+    );
+    if (sourceClose !== undefined) {
+      throw new Error('An expired pre-source migration cannot release after source closure.');
+    }
+    const sourcePosition = await this.#readPosition(
+      this.#sourcePublic,
+      artifacts.sourceLending,
+      this.#environment.SOURCE_LENDING_ADDRESS,
+      plan.borrower,
+    );
+    if (
+      sourcePosition[1] === 0n ||
+      sourcePosition[0] < BigInt(plan.sourceCollateralMinUnits) ||
+      sourcePosition[1] > BigInt(plan.sourceRepaymentMaxUnits)
+    ) {
+      throw new Error('Source position changed before the expired reservation could be released.');
+    }
+    return this.#releaseUndrawnReservation(context, artifacts, {
+      action: 'expireBeforeSourceClose',
+      reason,
+      outcome: 'EXPIRED',
+      planHash: context.signedPlan.planHash,
+      deadline: plan.deadline,
+      quoteExpiresAt: context.quote.expiresAt,
+      sourcePosition: {
+        borrower: plan.borrower,
+        collateralUnits: sourcePosition[0].toString(),
+        debtUnits: sourcePosition[1].toString(),
+        disposition: 'UNCHANGED',
+      },
+    });
+  }
+
   async closeSource(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
     this.#assertContext(context);
     const artifacts = await this.#artifacts;
@@ -437,25 +515,82 @@ export class DualAnvilSandboxExecutionPort implements MigrationExecutionPort {
       this.#environment.EIP712_VERIFYING_CONTRACT,
     ).message;
 
-    return this.#writeAction(
-      this.#sourceWallet,
-      this.#sourcePublic,
-      this.#environment.SOURCE_CHAIN_ID,
-      artifacts.sourceAdapter,
-      this.#environment.SOURCE_ADAPTER_ADDRESS,
-      'closeSource',
-      [authorization, context.signedPlan.signature],
-      {
-        action: 'closeSource',
-        borrower: plan.borrower,
-        maximumDebtUnits: plan.sourceRepaymentMaxUnits,
-        minimumCollateralUnits: plan.sourceCollateralMinUnits,
-        planHash: context.signedPlan.planHash,
-        feasibilityHash: proof.feasibilityHash,
-        feasibilityTransactionHash: proof.transactionHash,
-        financingRevalidation,
-      },
-    );
+    try {
+      return await this.#writeAction(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        artifacts.sourceAdapter,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        'closeSource',
+        [authorization, context.signedPlan.signature],
+        {
+          action: 'closeSource',
+          borrower: plan.borrower,
+          maximumDebtUnits: plan.sourceRepaymentMaxUnits,
+          minimumCollateralUnits: plan.sourceCollateralMinUnits,
+          planHash: context.signedPlan.planHash,
+          feasibilityHash: proof.feasibilityHash,
+          feasibilityTransactionHash: proof.transactionHash,
+          financingRevalidation,
+        },
+      );
+    } catch (error) {
+      if (
+        !(error instanceof PreBroadcastSimulationError) &&
+        !(error instanceof FinalizedTransactionRevertError)
+      ) {
+        throw error;
+      }
+      const reconciled = await this.#eventAction(
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        eventTopics.sourceClosed,
+        [migrationId, addressTopic(plan.borrower)],
+        { action: 'closeSource', reconciled: true },
+      );
+      if (reconciled !== undefined) {
+        return withFinancingRevalidation(
+          reconciled,
+          await this.#revalidateFinancing(context, artifacts, 'AFTER_SOURCE_CLOSE'),
+        );
+      }
+      const sourcePosition = await this.#readPosition(
+        this.#sourcePublic,
+        artifacts.sourceLending,
+        this.#environment.SOURCE_LENDING_ADDRESS,
+        plan.borrower,
+      );
+      if (
+        sourcePosition[1] === 0n ||
+        sourcePosition[0] < BigInt(plan.sourceCollateralMinUnits) ||
+        sourcePosition[1] > BigInt(plan.sourceRepaymentMaxUnits)
+      ) {
+        throw new Error('Source position changed after the failed source-close attempt.', {
+          cause: error,
+        });
+      }
+      throw new PreSourceCloseFailureError(
+        await this.#releaseUndrawnReservation(context, artifacts, {
+          action: 'releaseFailedSourceClose',
+          reason: 'SOURCE_CLOSE_REVERTED_BEFORE_STATE_CHANGE',
+          outcome: 'REQUOTE_REQUIRED',
+          failureStage:
+            error instanceof PreBroadcastSimulationError
+              ? 'PRE_BROADCAST_SIMULATION'
+              : 'FINALIZED_REVERT',
+          sourcePosition: {
+            borrower: plan.borrower,
+            collateralUnits: sourcePosition[0].toString(),
+            debtUnits: sourcePosition[1].toString(),
+            disposition: 'UNCHANGED',
+          },
+          financingRevalidation,
+        }),
+        error,
+      );
+    }
   }
 
   async dispatchTransport(context: MigrationExecutionContext): Promise<FinalizedChainAction> {
@@ -1415,6 +1550,39 @@ export class DualAnvilSandboxExecutionPort implements MigrationExecutionPort {
     return this.#releasedReservationAction(context, artifacts, revalidation, action);
   }
 
+  async #releaseUndrawnReservation(
+    context: MigrationExecutionContext,
+    artifacts: LocalArtifacts,
+    payload: Record<string, unknown>,
+  ): Promise<FinalizedChainAction> {
+    const migrationId = context.migration.migrationId as Hex;
+    const existing = await this.#eventAction(
+      this.#sourcePublic,
+      this.#environment.SOURCE_CHAIN_ID,
+      this.#environment.SOURCE_VAULT_ADDRESS,
+      eventTopics.reservationReleased,
+      [migrationId],
+      { ...payload, reconciled: true },
+    );
+    const action =
+      existing ??
+      (await this.#writeAction(
+        this.#sourceWallet,
+        this.#sourcePublic,
+        this.#environment.SOURCE_CHAIN_ID,
+        artifacts.vault,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'release',
+        [migrationId],
+        payload,
+      ));
+    const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+    if (exposure.reservationStatus !== 4 || exposure.principalReceivableUnits !== 0n) {
+      throw new Error('Reservation release did not clear the undrawn source exposure.');
+    }
+    return action;
+  }
+
   async #releasedReservationAction(
     context: MigrationExecutionContext,
     artifacts: LocalArtifacts,
@@ -1787,21 +1955,25 @@ export class DualAnvilSandboxExecutionPort implements MigrationExecutionPort {
     args: readonly unknown[],
     payload: Record<string, unknown>,
   ): Promise<FinalizedChainAction> {
-    const transactionHash = await wallet.writeContract({
-      account: wallet.account,
-      chain: wallet.chain,
-      address,
-      abi: artifact.abi,
-      functionName,
-      args,
-    });
+    const simulation = await publicClient
+      .simulateContract({
+        account: wallet.account,
+        address,
+        abi: artifact.abi,
+        functionName,
+        args,
+      })
+      .catch((error: unknown) => {
+        throw new PreBroadcastSimulationError(functionName, error);
+      });
+    const transactionHash = await wallet.writeContract(simulation.request);
     const confirmations = this.#confirmationsForClient(publicClient);
     const receipt = await publicClient.waitForTransactionReceipt({
       hash: transactionHash,
       confirmations,
     });
     if (receipt.status !== 'success') {
-      throw new Error(`${functionName} reverted: ${transactionHash}`);
+      throw new FinalizedTransactionRevertError(functionName, transactionHash);
     }
     return finalizedAction(chainId, receipt, confirmations, payload);
   }

@@ -20,23 +20,29 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `b7783a0`.
+- Verified implementation checkpoint: `aa07317`; the verified documentation checkpoint is the
+  newest pushed commit containing this file.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
-## What the pending checkpoint adds
+## What the current checkpoint adds
 
-1. A complete Docker sandbox stack for chains, migrations, API, worker, web, PostgreSQL, and Redis.
-2. A checksum-pinned Node/Foundry Linux image that compiles contracts/apps and prunes development
-   dependencies before runtime.
-3. Container-addressable, interval-mined local chains with an explicit post-deployment readiness gate.
-4. A current signed smoke client that submits both lending authorizations and waits for bounded
-   asynchronous settlement.
-5. `near-api-js` 7.2.0 with the v7 registry-provider boundary and a zero-vulnerability production
-   dependency audit.
-6. Preserved production deployment manifests, guarded deployment CLI, wallet-free readiness checks,
-   and two-Anvil production deployment tests from the prior checkpoint.
+1. Source-commit-bound EVM and NEAR manifests, clean-worktree guarded deployers, independent
+   read-only readiness CLIs, and exact operator runbooks.
+2. Production workers await EVM and NEAR startup attestation before queue consumption. EVM startup
+   checks the manifest, route, addresses, canonical receipts, runtime hashes, bindings, roles, pause
+   state, and disabled write switch. NEAR startup checks code bytes/hash, owner/pending owner, and
+   verifier role.
+3. Safe NEAR RPC failover validates every configured network, fails over idempotent final-state
+   reads, never blindly rebroadcasts a write, and reconciles ambiguous results on the next durable
+   attempt.
+4. Credential-safe OpenTelemetry propagation, Prometheus metrics, Grafana/Jaeger deployment,
+   low-cardinality dashboards, and exact observability runbooks.
+5. A healthy Compose sandbox and end-to-end migration evidence with real dual-chain transactions,
+   durable ledger reconciliation, and zero unexplained imbalance.
+6. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
+   no credentialed or write-capable external action was attempted.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -45,19 +51,33 @@ RPC URLs or secrets.
 
 ## Verified evidence at handoff
 
-| Gate                                       | Result                                                                             |
-| ------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Forced workspace lint/typecheck/test/build | Pass: 40/40 tasks, zero cache replay                                               |
-| Worker suite                               | Pass: 40 tests including happy, refund, timeout, reorg, and deterioration recovery |
-| Full Docker sandbox smoke                  | Pass: migration `0x4fa3...88c8`, `SETTLED`, 17 evidence records                    |
-| Pruned production dependency audit         | Pass: zero vulnerabilities at the low-severity threshold                           |
-| `npm run check:evm`                        | Pass: 33 tests, including fuzz and three invariant suites                          |
-| `npm run check:evm-deployment`             | Pass: two-node deployment/readiness and tamper rejection                           |
-| `npm run check:near`                       | Not rerun locally: Cargo is absent on this Windows host                            |
-| `npm run check:forks`                      | Not rerun: `BASE_FORK_RPC_URL` is required                                         |
-| Credentialed 1Click dry quote              | Not run: `INTENTS_AUTH_TOKEN` is required                                          |
+| Gate                                  | Result                                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------------------------- |
+| Full `npm run check`                  | Pass: OpenAPI drift, format, scripts, lint/types, all tests, and all 11 builds         |
+| Worker suite                          | Pass: 82 tests, including adapter startup ordering and exact final registry state      |
+| Domain suite                          | Pass: 108 tests, including mode/manifest/failover schemas and all transition pairs     |
+| Database suite and migration drill    | Pass: 22 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
+| API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
+| Agent and web suites                  | Pass: 9 agent/security tests and 4 browser tests                                       |
+| `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, lint, and taxed-token rollback gates            |
+| `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                               |
+| `npm run check:live-route`            | Pass: public Base `56,863,212`, Arbitrum `523,828,471`, and 1Click catalog reads       |
+| `npm run check:one-click-spec`        | Pass: official quote, status, and deposit schema SHA-256 recorded below                |
+| Local Compose rebuild and smoke       | Pass: healthy stack; 17 evidence, 16 ledger entries, zero unexplained imbalance        |
+| NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                 |
+| GitHub quality run `43400476244`      | Pass: TypeScript, EVM, NEAR, and security for phase checkpoint `06504e3`               |
+| GitHub quality run `43402193495`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `d527bf6`                |
+| GitHub quality run `43403559848`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `e31683c`                |
+| GitHub quality run `43409003610`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `f0a807e`                |
+| GitHub quality run `43409934145`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `b7413ec`                |
+| GitHub quality run `43424094454`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for observability            |
+| GitHub quality run `43427515013`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for safe NEAR RPC failover   |
+| GitHub quality run `43430774187`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for guarded NEAR deployment  |
+| GitHub quality run `43433864649`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `aa07317`                |
+| `npm run check:forks`                 | Pass on `b7413ec` against Base block `55,600,000` using the official free RPC          |
+| Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
-The live route observation used Base block `56,649,525` and Arbitrum block `523,682,852`. The
+The live route observation used Base block `56,863,212` and Arbitrum block `523,828,471`. The
 official 1Click schema hash observed during this session was
 `9a2e676682aa6dec6905c82f1b2cc0ec72eda97964369aa51ec35eb82ccac0a3`. These are time-sensitive
 observations, not permanent authorization; rerun them before deployment or execution.
@@ -66,26 +86,24 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Push this pending checkpoint and confirm CI, especially the EVM deployment job and Linux NEAR
-   sandbox test.
-2. Supply a trusted archival `BASE_FORK_RPC_URL` and run `npm run check:forks` on this commit.
-3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
+1. Finish the reproducible public EVM testnet dependency/deployment plan and transport startup gate;
+   do not substitute a mock protocol or call simulated transport official 1Click.
+2. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
-4. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
+3. Deploy the NEAR registry to testnet and preserve account, WASM hash, transaction, verifier-role,
    storage, and sandbox/testnet evidence.
-5. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
+4. Deploy and publish the already locally verified Docker sandbox, API, worker, database/queue, and
    web UI with `NEXT_PUBLIC_API_URL` set at image build time.
-6. Deploy the public EVM testnet path if suitable Aave/Morpho test markets and funding exist; keep
-   the unavailable 1Click boundary explicitly simulated.
-7. Run the full acceptance and security gate from a clean checkout.
-8. Only after those gates, prepare external production deployment with
+5. Deploy the public EVM testnet path when the reviewed protocol dependencies, signer, RPCs, test
+   assets, and gas are available; keep only the unavailable 1Click boundary explicitly simulated.
+6. Run the full acceptance and security gate from a clean checkout.
+7. Only after those gates, prepare external production deployment with
    `MAINNET_EXECUTION_ENABLED=false`, generate real manifests, and run `npm run check:deployment`.
-9. Treat a real mainnet refinance as a separate final authorization event.
+8. Treat a real mainnet refinance as a separate final authorization event.
 
 ## Required external inputs
 
 - Git hosting/CI access for the pushed branch.
-- A trusted archival Base RPC URL for the pinned fork.
 - An official 1Click authentication token for a dry quote and later committed lifecycle.
 - NEAR testnet account/key and funded testnet signer.
 - Hosted environment credentials and PostgreSQL/Redis services.

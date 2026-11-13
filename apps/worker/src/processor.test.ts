@@ -1,5 +1,5 @@
 import type { DurableCommand, OutboxEnvelope } from '@debtshift/database';
-import type { Evidence, EvidenceType } from '@debtshift/domain';
+import type { Evidence, EvidenceType, MigrationPhase } from '@debtshift/domain';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -60,7 +60,7 @@ function persistence(overrides: Partial<CommandPersistence> = {}): CommandPersis
   return {
     begin: vi.fn(async () => command()),
     hasEvidence: vi.fn(async () => false),
-    advance: vi.fn(async () => undefined),
+    advance: vi.fn(async () => 'RESERVED' as MigrationPhase),
     complete: vi.fn(async () => undefined),
     fail: vi.fn(async () => undefined),
     ...overrides,
@@ -81,6 +81,40 @@ describe('durable command processor', () => {
     expect(store.advance).toHaveBeenCalledOnce();
     expect(store.complete).toHaveBeenCalledWith(COMMAND_ID);
     expect(store.fail).not.toHaveBeenCalled();
+  });
+
+  it('emits structured lifecycle records with command, phase, evidence, and chain context', async () => {
+    const store = persistence();
+    const record = { ...evidence('LIQUIDITY_RESERVATION'), chainId: 31_337 };
+    const log = vi.fn();
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([['RESERVE_LIQUIDITY', { execute: vi.fn(async () => [record]) }]]),
+      log,
+    );
+
+    await processor.process(envelope());
+
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'workflow_command_started',
+        migrationId: MIGRATION_ID,
+        commandId: COMMAND_ID,
+        commandType: 'RESERVE_LIQUIDITY',
+      }),
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'workflow_evidence_persisted',
+        phase: 'RESERVED',
+        evidenceType: 'LIQUIDITY_RESERVATION',
+        verificationState: 'FINALIZED',
+        chainId: '31337',
+      }),
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'workflow_command_succeeded', phase: 'RESERVED' }),
+    );
   });
 
   it('checks evidence before side effects on duplicate delivery', async () => {
@@ -108,6 +142,67 @@ describe('durable command processor', () => {
     expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, true);
   });
 
+  it('persists retry exhaustion terminally on the final queue attempt', async () => {
+    const store = persistence();
+    const error = new RetryableCommandError('RPC unavailable');
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([['RESERVE_LIQUIDITY', { execute: vi.fn(async () => Promise.reject(error)) }]]),
+    );
+
+    await expect(processor.process(envelope(), true)).resolves.toBeUndefined();
+    expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, false);
+  });
+
+  it('persists recovery evidence before terminally closing an exhausted financial command', async () => {
+    const store = persistence({ begin: vi.fn(async () => command('SETTLE_LIQUIDITY')) });
+    const error = new RetryableCommandError('Settlement confirmation unavailable');
+    const recovery = evidence('RECOVERY_OPENED');
+    const onRetryExhausted = vi.fn(async () => [recovery]);
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([
+        [
+          'SETTLE_LIQUIDITY',
+          { execute: vi.fn(async () => Promise.reject(error)), onRetryExhausted },
+        ],
+      ]),
+    );
+
+    await processor.process(envelope(), true);
+
+    expect(onRetryExhausted).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SETTLE_LIQUIDITY' }),
+      error,
+    );
+    expect(store.advance).toHaveBeenCalledWith(recovery);
+    expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, false);
+    expect(store.complete).not.toHaveBeenCalled();
+  });
+
+  it('persists manual escalation when automated recovery exhausts without treating its opening as completion', async () => {
+    const store = persistence({
+      begin: vi.fn(async () => command('EXECUTE_RECOVERY')),
+      hasEvidence: vi.fn(async (_migrationId, type) => type === 'RECOVERY_OPENED'),
+    });
+    const error = new RetryableCommandError('Recovery receipt unavailable');
+    const escalation = evidence('RECOVERY_OPENED');
+    const execute = vi.fn(async () => Promise.reject(error));
+    const onRetryExhausted = vi.fn(async () => [escalation]);
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([['EXECUTE_RECOVERY', { execute, onRetryExhausted }]]),
+    );
+
+    await processor.process(envelope(), true);
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(onRetryExhausted).toHaveBeenCalledOnce();
+    expect(store.advance).toHaveBeenCalledWith(escalation);
+    expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, false);
+    expect(store.complete).not.toHaveBeenCalled();
+  });
+
   it('fails terminally when a handler violates its evidence contract', async () => {
     const store = persistence();
     const processor = new DurableCommandProcessor(
@@ -131,4 +226,18 @@ describe('durable command processor', () => {
     expect(store.complete).toHaveBeenCalledWith(COMMAND_ID);
     expect(store.fail).not.toHaveBeenCalled();
   });
+
+  for (const commandType of ['RESERVE_LIQUIDITY', 'CLOSE_SOURCE'] as const) {
+    it(`accepts expiration as the terminal alternative for ${commandType}`, async () => {
+      const store = persistence({ begin: vi.fn(async () => command(commandType)) });
+      const execute = vi.fn(async () => [evidence('MIGRATION_EXPIRED')]);
+      const processor = new DurableCommandProcessor(store, new Map([[commandType, { execute }]]));
+
+      await processor.process(envelope());
+
+      expect(store.advance).toHaveBeenCalledOnce();
+      expect(store.complete).toHaveBeenCalledWith(COMMAND_ID);
+      expect(store.fail).not.toHaveBeenCalled();
+    });
+  }
 });
