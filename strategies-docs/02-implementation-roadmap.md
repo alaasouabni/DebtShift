@@ -347,7 +347,9 @@ workflow.
   - [x] Add and execute a checked-in forward-migration/restore-recovery drill without destructive
         reverse SQL.
 - [x] Add secret rotation and relayer-key replacement procedures.
-- [ ] Generate an SBOM and container provenance metadata.
+- [x] Generate an SBOM and container provenance metadata.
+  - [x] Publish the CycloneDX runtime SBOM as a CI artifact and emit a BuildKit provenance
+        attestation for the reproducible local image.
 
 ### Exit criteria
 
@@ -365,7 +367,8 @@ workflow.
 - [x] Add deterministic happy-path and refund demo scripts.
 - [x] Produce deployment manifests and contract-address records.
 - [x] Produce an architecture guide, API guide, threat model, and operations guide.
-- [ ] Capture expected transaction hashes and evidence examples.
+- [x] Capture expected transaction hashes and evidence examples in
+      `17-sandbox-evidence-example.md`, with explicit private-chain and simulated-transport labels.
 - [x] Run the complete acceptance suite from a clean checkout in GitHub Actions.
 - [x] Record known limitations and the mainnet-readiness backlog.
 

@@ -16,7 +16,7 @@ This file is updated throughout implementation. It is the first place to inspect
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains. |
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                                                                                              |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.                                                                                  |
-| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, structured workflow logs, recovery/key-rotation runbooks, and isolated exact restore plus forward-migration recovery drills pass. Tracing, dashboards, and broader provenance remain.                                                                                                                            |
+| M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. Tracing, dashboards, and provenance publication automation remain.                                                                       |
 | M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                                   |
 
 ## Submission-critical mode
@@ -1487,6 +1487,31 @@ operative source of truth.
   authorization) remain open; `MITIGATED` is explicitly not an audit or deployment claim.
 - GitHub Actions quality run `43403559848` passed TypeScript, EVM, NEAR, security/container, and
   SBOM jobs for final-registry-state checkpoint `e31683c`.
+
+### 2026-11-13 - Foundry toolchain and sandbox evidence made reproducible
+
+- GitHub Actions run `43404983056` exposed a formatter-only drift: CI and the documented setup used
+  Foundry `1.9.0`, while the Docker build still installed `1.5.1`. All non-EVM jobs passed in that
+  run; the EVM job stopped at `forge fmt --check` before execution tests.
+- Added `.foundry-version`, made the EVM gate fail fast on a mismatched Forge version, upgraded the
+  checksum-verified Docker toolchain to `1.9.0`, and applied the formatter result produced by that
+  exact version. The Linux release archive is pinned to upstream SHA-256
+  `8d17599b42e3139f1a9c171be3798c4ed8e743ae17b84cc3435e57bf2a51ae99`.
+- Verified the isolated official Windows `1.9.0` release archive against upstream SHA-256
+  `2b02444d46c9218fe2e6be66015265ce131fe6b7c384e33e630b00f9a0bff072`; the complete 33-test EVM
+  compiler/unit/fuzz/invariant/format gate and the two-node deployment/tamper suite pass.
+- The full repository gate passes OpenAPI drift, formatting, lint, all package type checks/tests,
+  all 75 worker tests, real dual-Anvil integrations, and all ten production builds.
+- Rebuilt the complete Compose stack without replacing its named PostgreSQL or Redis volumes. The
+  application image is
+  `sha256:9109c9619b29d319498c60de3d7c327098a2f78222171b56b66dddffa416442d`, with BuildKit
+  attestation manifest
+  `sha256:e7a95e643ac1048ee1b72bf9a4d5bfff0bffcf008ca2b0cc92ad5dcc396e7b8c`.
+- `npm run smoke:local` completed migration
+  `0x47f738fb20f8adc1733e1c12ba2ef36d69917b6d2ac42d0a6406ffc1723ac40b` at `SETTLED` with 17
+  finalized evidence records, 16 ledger entries, zero unexplained imbalance, and verified wallet
+  session, SSE, and metrics. `17-sandbox-evidence-example.md` records every evidence and transaction
+  hash and states why this is private-chain evidence rather than public execution proof.
 
 ## Work-session handoff template
 

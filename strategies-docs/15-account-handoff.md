@@ -20,20 +20,21 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `e31683c`.
+- Previous remote checkpoint before this handoff: `e689791`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. A fresh credential-free mainnet-readonly route check against public Base, Arbitrum, Chainlink,
-   Morpho, Aave, and official 1Click catalog state, with exact blocks and response hash recorded.
-2. A refreshed official 1Click OpenAPI compatibility check for quote, status, and deposit submission.
-3. Adversarial fee-on-transfer token tests proving exact-delta guards atomically reject and roll back
-   both taxed inbound pulls and taxed outbound payouts.
-4. An evidence-backed security-register reconciliation: implemented/tested risks are marked
-   `MITIGATED` without implying an audit or deployment.
+1. A repository-wide Foundry `1.9.0` pin and fail-fast version check, aligned with CI, setup docs,
+   and the checksum-verified Docker build.
+2. The exact Solidity formatting required by the pinned toolchain plus passing compiler, unit, fuzz,
+   invariant, two-node deployment, and tamper-rejection gates.
+3. A rebuilt healthy Compose stack and successful end-to-end migration smoke with zero unexplained
+   accounting imbalance.
+4. An exact sandbox evidence example containing image/provenance identifiers and all 17 evidence
+   references, including every private-chain transaction hash and its explicit scope label.
 5. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
    no credentialed or write-capable external action was attempted.
 
@@ -56,6 +57,7 @@ RPC URLs or secrets.
 | `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                               |
 | `npm run check:live-route`            | Pass: public Base `56,863,212`, Arbitrum `523,828,471`, and 1Click catalog reads       |
 | `npm run check:one-click-spec`        | Pass: official quote, status, and deposit schema SHA-256 recorded below                |
+| Local Compose rebuild and smoke       | Pass: healthy stack; 17 evidence, 16 ledger entries, zero unexplained imbalance        |
 | NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                 |
 | GitHub quality run `43400476244`      | Pass: TypeScript, EVM, NEAR, and security for phase checkpoint `06504e3`               |
 | GitHub quality run `43402193495`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `d527bf6`                |
@@ -72,8 +74,8 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Push the newest locally verified security/evidence checkpoint if needed and confirm CI,
-   especially the EVM deployment job and Linux NEAR sandbox test.
+1. Push the newest locally verified toolchain/evidence checkpoint if needed and confirm CI,
+   especially the corrected EVM formatting/deployment job and Linux NEAR sandbox test.
 2. Supply a trusted archival `BASE_FORK_RPC_URL` and run `npm run check:forks` on this commit.
 3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.

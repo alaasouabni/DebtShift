@@ -60,45 +60,45 @@ contract FeeOnTransferToken is IERC20 {
     }
 }
 
-    contract SafeTokenTest {
-        SafeTokenVm private constant VM =
-            SafeTokenVm(address(uint160(uint256(keccak256("hevm cheat code")))));
+contract SafeTokenTest {
+    SafeTokenVm private constant VM =
+        SafeTokenVm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-        SafeTokenHarness private harness;
-        FeeOnTransferToken private token;
+    SafeTokenHarness private harness;
+    FeeOnTransferToken private token;
 
-        function setUp() public {
-            harness = new SafeTokenHarness();
-            token = new FeeOnTransferToken();
-            token.mint(address(this), 1_000);
-            token.approve(address(harness), type(uint256).max);
-        }
-
-        function testRejectsAndRollsBackFeeOnTransferPull() public {
-            VM.expectRevert(
-                abi.encodeWithSelector(
-                    SafeToken.UnexpectedBalanceDelta.selector, address(token), 100, 99
-                )
-            );
-            harness.pull(IERC20(address(token)), address(this), 100);
-
-            require(token.balanceOf(address(this)) == 1_000, "sender balance changed");
-            require(token.balanceOf(address(harness)) == 0, "harness retained taxed input");
-            require(token.totalSupply() == 1_000, "fee burn was not rolled back");
-        }
-
-        function testRejectsAndRollsBackFeeOnTransferPush() public {
-            token.mint(address(harness), 100);
-
-            VM.expectRevert(
-                abi.encodeWithSelector(
-                    SafeToken.UnexpectedBalanceDelta.selector, address(token), 100, 99
-                )
-            );
-            harness.push(IERC20(address(token)), address(0xB0B), 100);
-
-            require(token.balanceOf(address(harness)) == 100, "harness balance changed");
-            require(token.balanceOf(address(0xB0B)) == 0, "recipient retained taxed output");
-            require(token.totalSupply() == 1_100, "fee burn was not rolled back");
-        }
+    function setUp() public {
+        harness = new SafeTokenHarness();
+        token = new FeeOnTransferToken();
+        token.mint(address(this), 1_000);
+        token.approve(address(harness), type(uint256).max);
     }
+
+    function testRejectsAndRollsBackFeeOnTransferPull() public {
+        VM.expectRevert(
+            abi.encodeWithSelector(
+                SafeToken.UnexpectedBalanceDelta.selector, address(token), 100, 99
+            )
+        );
+        harness.pull(IERC20(address(token)), address(this), 100);
+
+        require(token.balanceOf(address(this)) == 1_000, "sender balance changed");
+        require(token.balanceOf(address(harness)) == 0, "harness retained taxed input");
+        require(token.totalSupply() == 1_000, "fee burn was not rolled back");
+    }
+
+    function testRejectsAndRollsBackFeeOnTransferPush() public {
+        token.mint(address(harness), 100);
+
+        VM.expectRevert(
+            abi.encodeWithSelector(
+                SafeToken.UnexpectedBalanceDelta.selector, address(token), 100, 99
+            )
+        );
+        harness.push(IERC20(address(token)), address(0xB0B), 100);
+
+        require(token.balanceOf(address(harness)) == 100, "harness balance changed");
+        require(token.balanceOf(address(0xB0B)) == 0, "recipient retained taxed output");
+        require(token.totalSupply() == 1_100, "fee burn was not rolled back");
+    }
+}
