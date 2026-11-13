@@ -57,6 +57,7 @@ Implementation must be understandable from this directory without relying on cha
 | [18-observability-deployment.md](./18-observability-deployment.md)                         | Defines trace safety, durable context propagation, dashboards, and operator verification.         |
 | [19-near-registry-deployment.md](./19-near-registry-deployment.md)                         | Defines account separation, guarded deployment, immutable manifests, and live startup checks.     |
 | [20-evm-deployment.md](./20-evm-deployment.md)                                             | Defines guarded two-chain deployment, manifest attestation, worker startup, and failure handling. |
+| [21-public-testnet-morpho-deployment.md](./21-public-testnet-morpho-deployment.md)         | Defines pinned canonical Morpho testnet deployment, funded-market evidence, and startup gates.    |
 
 ## Work protocol
 

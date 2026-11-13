@@ -49,6 +49,7 @@ export const debtShiftEnvironmentSchema = z
     MARKET_DATA_PROVIDER: z.enum(['SIMULATOR', 'LIVE_READ_ONLY', 'DISABLED']).default('SIMULATOR'),
     LIVE_MARKET_CONFIG_JSON: optionalString,
     EVM_DEPLOYMENT_MANIFEST_PATH: optionalString,
+    TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH: optionalString,
     WEB_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     API_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
     WEB_PUBLIC_URL: z.url().default('http://localhost:3000'),
@@ -206,6 +207,16 @@ export const debtShiftEnvironmentSchema = z
         code: 'custom',
         message: 'Production public web and API URLs must use HTTPS for secure wallet sessions.',
         path: ['API_PUBLIC_URL'],
+      });
+    }
+    if (
+      environment.DEBTSHIFT_MODE === 'testnet' &&
+      environment.TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Funded testnet execution requires TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH.',
+        path: ['TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH'],
       });
     }
 

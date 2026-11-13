@@ -1,0 +1,40 @@
+{
+  "repository": "https://github.com/morpho-org/morpho-blue",
+  "commit": "339a885801972740eb27f51da110a4675b839d42",
+  "license": "GPL-2.0-or-later and MIT",
+  "scope": [
+    "Morpho core",
+    "AdaptiveCurveIrm",
+    "their transitive in-repository interfaces and libraries"
+  ],
+  "gitBlobIds": {
+    "LICENSE": "d8cf7d463e2a4f064a157fa994bb394d3623b9cc",
+    "LICENSE-MIT": "0bdec64de07283a501fb9e11e27932f48126c2a4",
+    "src/Morpho.sol": "ab064b646bf161b1510e2575a99412cdc2a43ebb",
+    "src/interfaces/IERC20.sol": "6d4a9062be0cd746c7e88b35bb1454fd41fec121",
+    "src/interfaces/IIrm.sol": "58b6bf2f53848e5d9fc16c778ca4c9594f562226",
+    "src/interfaces/IMorpho.sol": "80fc2cc6c84c3b235263654dc339d54ff3ddb0eb",
+    "src/interfaces/IMorphoCallbacks.sol": "9b641a715e108134e151f202e35b734a3347b906",
+    "src/interfaces/IOracle.sol": "a502a05c9f6df5793186814733a3e796f794bfe4",
+    "src/libraries/ConstantsLib.sol": "1046e6a03462fb68b78dbdcee26339c983dc00de",
+    "src/libraries/ErrorsLib.sol": "a47ab96df651e0283d06a8fa269b0f352e2b74cb",
+    "src/libraries/EventsLib.sol": "1ce6d9b08c0f10195d42d5fd0a67b5418fca757d",
+    "src/libraries/MarketParamsLib.sol": "27ac482d13421b8b1607021496b18bcbf2f4d8f1",
+    "src/libraries/MathLib.sol": "3c0afc991c3bfa9314498b43047a0675be4a9410",
+    "src/libraries/SafeTransferLib.sol": "4cd1eab4d427cb57a9a1d77ec5582f70383795e1",
+    "src/libraries/SharesMathLib.sol": "c63d937e81d5470e2d073383f45dd66c46f36a6b",
+    "src/libraries/UtilsLib.sol": "e92d313037148d63661b64f259d10ccc77ebda1e",
+    "src/libraries/periphery/MorphoBalancesLib.sol": "20dc3b96bc3c3c2a7e3758641ed2a51fafb978d0",
+    "src/libraries/periphery/MorphoLib.sol": "146434195a22f3aaa75e4b7dee5c9c0b680e8698",
+    "src/libraries/periphery/MorphoStorageLib.sol": "cae006473f366c90ffc93500ec89d6d880bc639c",
+    "src/periphery/adaptive-curve-irm/AdaptiveCurveIrm.sol": "67eaadbf44e20740b141bc70faf73be9876a21e5",
+    "src/periphery/adaptive-curve-irm/README.md": "3510423f860e18bdacc4f06a2e8f1d28717640da",
+    "src/periphery/adaptive-curve-irm/interfaces/IAdaptiveCurveIrm.sol": "7d1bbfaa8796d151ed6fdd99f6fe112c15d522fa",
+    "src/periphery/adaptive-curve-irm/libraries/AdaptiveCurveIrmLib.sol": "5c8186384baef00d1d8074876b3e0f487d18ce83",
+    "src/periphery/adaptive-curve-irm/libraries/ConstantsLib.sol": "a2c09ad8aaa70b24619f83360e0a2b918f668c07",
+    "src/periphery/adaptive-curve-irm/libraries/ErrorsLib.sol": "5cb2c632e40a342375c0c43c5067344e82e2a907",
+    "src/periphery/adaptive-curve-irm/libraries/ExpLib.sol": "e6732f544e3f30583f217fee7639e94c013636a5",
+    "src/periphery/adaptive-curve-irm/libraries/MathLib.sol": "ea8359a5611aa9e736bffc1ffdaabb107009dbd8",
+    "src/periphery/adaptive-curve-irm/libraries/UtilsLib.sol": "1eae55dd77ad24b5f691d78935ae8b4f69b49f98"
+  }
+}

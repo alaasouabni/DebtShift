@@ -16,6 +16,10 @@ a separate irreversible event: keep `MAINNET_EXECUTION_ENABLED=false` and obtain
 deployment authorization required by the current acceptance plan. A real mainnet refinance still
 requires a later exposure review, borrower signatures, and separate final authorization.
 
+The exact canonical-source, funded-market deployment and attestation procedure is defined in
+`21-public-testnet-morpho-deployment.md`. Complete its read-only readiness gate before using its
+manifested market in this runbook.
+
 ## Accounts and inputs
 
 Use a secret manager or process-level secret injection. Never place a private key, authenticated RPC

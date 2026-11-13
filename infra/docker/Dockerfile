@@ -37,6 +37,7 @@ RUN npm ci
 COPY . .
 
 RUN forge build --root contracts/evm \
+    && forge build --root contracts/morpho-testnet \
     && npm run build \
     && npm prune --omit=dev \
     && npm cache clean --force
@@ -55,6 +56,8 @@ COPY --from=build --chown=node:node /workspace/node_modules ./node_modules
 COPY --from=build --chown=node:node /workspace/apps ./apps
 COPY --from=build --chown=node:node /workspace/packages ./packages
 COPY --from=build --chown=node:node /workspace/contracts/evm/out ./contracts/evm/out
+COPY --from=build --chown=node:node /workspace/contracts/morpho-testnet/out ./contracts/morpho-testnet/out
+COPY --from=build --chown=node:node /workspace/contracts/morpho-testnet/vendor/morpho-blue ./contracts/morpho-testnet/vendor/morpho-blue
 COPY --from=build --chown=node:node /workspace/scripts/health-local-chains.mjs ./scripts/health-local-chains.mjs
 COPY --from=build /usr/local/bin/anvil /usr/local/bin/anvil
 

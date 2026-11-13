@@ -15,7 +15,7 @@ This file is updated throughout implementation. It is the first place to inspect
 | M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, asset-safe pre-source expiry/cancellation/revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                             |
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains.                                                 |
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, guarded source-bound manifests/deployment/readiness CLIs, startup code/role attestation, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, and manifest-bound EVM/NEAR startup attestation pass focused tests. Live credentialed validation remains.                                                                                                                                  |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, manifest-bound EVM/NEAR startup attestation, and pinned canonical-source Morpho testnet deployment/readiness gates pass focused tests. Live credentialed validation remains.                                                               |
 | M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, credential-safe distributed traces, provisioned operations dashboards, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. External alert delivery, operator acknowledgement, and provenance publication acceptance remain deployment gates. |
 | M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Source-commit-bound EVM and NEAR manifests, guarded clean-worktree deployment/readiness CLIs, pre-consumption runtime attestation, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                   |
 
@@ -35,14 +35,14 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Current active task
 
-- **Task:** P0.5/P0.7 - finish safe operational and recovery gates that do not require external
-  credentials, then deploy the verified full sandbox image and registry and collect public evidence.
+- **Task:** P0.7 - finish the reproducible public-testnet dependency/deployment path, then deploy the
+  verified public validation environments and collect evidence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Complete the repository and clean-stack gate for each internal checkpoint.
-  When hosting and NEAR credentials are available, deploy the hosted sandbox and NEAR testnet
-  registry, run the public testnet workflow, perform an authenticated official 1Click dry quote when
-  a token is available, then execute acceptance. The Linux NEAR CI, pinned Base fork, live route,
-  official schema, security audit, and clean Docker gates already pass.
+- **Next verification:** Push the locally verified canonical Morpho checkpoint and require the Linux
+  quality workflow, including the NEAR sandbox and image security jobs, to pass. Then revalidate
+  official Aave/testnet asset/feed addresses, obtain funded testnet signers, deploy and attest the
+  destination market, commit the exact route, deploy DebtShift EVM and NEAR contracts, and run the
+  public workflow. No external write is part of the current internal checkpoint.
 
 ## Decision log
 
@@ -358,6 +358,32 @@ This file is updated throughout implementation. It is the first place to inspect
   DebtShift manifests, verify both runtime bytecode and market parameters, and refuse external
   deployment until the route, oracle, funding, signer, RPC, gas, and recovery balances are reviewed.
 
+### ADR-025 - Isolated canonical Morpho build and chained startup attestation
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Decision:** Compile canonical Morpho core and AdaptiveCurveIrm in the isolated
+  `contracts/morpho-testnet` project using upstream's Solidity 0.8.19/Paris/via-IR/999999-run
+  settings. Vendor only the exact transitive upstream blobs at commit
+  `339a885801972740eb27f51da110a4675b839d42`, retain both licenses, and verify the complete blob
+  inventory locally and in CI. Do not alter upstream pragmas or merge this compiler domain into the
+  DebtShift 0.8.30 project.
+- **Oracle:** Deploy a testnet-only DebtShift Chainlink oracle bound immutably to the exact two
+  tokens, two feeds, maximum age, and optional L2 sequencer/grace policy. It rejects incomplete,
+  stale, future, non-positive, and unsafe sequencer observations. Mainnet continues to use the
+  allowlisted established market oracle.
+- **Funding:** The guarded deployer creates the real market, supplies an exact positive amount of a
+  real public-testnet loan token through Morpho, records the resulting supply shares, and revokes the
+  deployer allowance. It never mints assets or deploys token/feed mocks.
+- **Attestation:** A separate version-1 dependency manifest binds upstream/local source, creation
+  bytecode, constructor calldata, receipts, canonical blocks, runtime code, token/feed identities,
+  market state, liquidity, allowance revocation, and ownership. Testnet worker startup requires this
+  manifest plus the later DebtShift EVM manifest and cross-checks both against the route before queue
+  consumption.
+- **Reason:** Separate compiler domains preserve byte-for-byte upstream provenance. Chained
+  manifests prevent a valid DebtShift adapter deployment from silently pointing at an unproven
+  self-hosted protocol dependency.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                              |
@@ -372,6 +398,41 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Canonical public-testnet Morpho deployment path implemented
+
+- Added an isolated Solidity 0.8.19 project containing 28 byte-for-byte verified upstream Morpho
+  blobs at commit `339a885801972740eb27f51da110a4675b839d42`, both upstream licenses, exact Git-blob
+  provenance, and upstream-equivalent Paris/via-IR/999999-run compilation settings.
+- Added a testnet-only Chainlink oracle with token/feed scale derivation, complete-round, age,
+  future-timestamp, price, L2 sequencer, and recovery-grace validation. Pinned Foundry 1.9.0 compiled
+  25 files and all three oracle tests passed.
+- Added a guarded clean-source testnet deployer that deploys canonical Morpho/AdaptiveCurveIrm and
+  the oracle, enables one LLTV, creates the derived market, uses an exact temporary allowance,
+  supplies real testnet loan-token liquidity, revokes the allowance, transfers ownership, and writes
+  no manifest until every observed state passes. The output remains explicitly write-disabled.
+- Added a strict dependency manifest and read-only verifier covering exact creation bytecode and
+  constructor input, canonical deployment/configuration receipts, runtime hashes, token/feed code
+  and decimals, owner, IRM/LLTV, market, oracle/sequencer immutables, current price, seed shares,
+  available liquidity, and zero allowance. Tampered deployment-input provenance is rejected.
+- Testnet runtime now requires `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH` and cross-checks the
+  dependency manifest against the route and later DebtShift EVM manifest before queue consumption.
+  The production image builds/carries the canonical artifacts, source provenance, and licenses.
+- The two-Anvil deployment suites passed six tests: the existing seven-contract DebtShift
+  deployment plus canonical Morpho market deployment/readiness, deployment-input and semantic
+  configuration tamper rejection, and proof that a stale feed aborts before any deployment nonce is
+  consumed. The full repository gate passes
+  OpenAPI drift, formatting, scripts, all workspaces, 111 domain tests, 22 database tests, 85 worker
+  tests, the remaining package suites, and all 11 builds. The pinned Foundry gate passes 33
+  DebtShift Solidity tests and three canonical-Morpho-oracle tests. Rust format, eight unit tests,
+  Clippy, and the WASM build pass on Windows; the near-workspaces sandbox case remains intentionally
+  delegated to Linux CI because its installer does not support Windows.
+- A fresh production image builds both isolated Solidity projects, carries the three required
+  canonical deployment artifacts plus pinned source provenance, retains Anvil 1.9.0, and excludes
+  npm and Forge from the runtime. `npm audit --omit=dev --audit-level=high` reports zero production
+  vulnerabilities. The Linux CI and image scan remain to pass for the pushed checkpoint.
+- No public RPC write, public-testnet deployment, token transfer, 1Click request, NEAR registry
+  write, mainnet write, or real-fund movement occurred.
 
 ### 2026-11-13 - Funded public-testnet transport startup gate added
 

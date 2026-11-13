@@ -16,14 +16,22 @@ interface FoundryArtifactJson {
 
 export async function loadFoundryArtifact(contractName: string): Promise<FoundryArtifact> {
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-  const artifactPath = resolve(
-    repositoryRoot,
-    'contracts',
-    'evm',
-    'out',
-    `${contractName}.sol`,
-    `${contractName}.json`,
+  return loadFoundryArtifactAt(resolve(repositoryRoot, 'contracts', 'evm', 'out'), contractName);
+}
+
+export async function loadMorphoTestnetArtifact(contractName: string): Promise<FoundryArtifact> {
+  const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  return loadFoundryArtifactAt(
+    resolve(repositoryRoot, 'contracts', 'morpho-testnet', 'out'),
+    contractName,
   );
+}
+
+async function loadFoundryArtifactAt(
+  artifactRoot: string,
+  contractName: string,
+): Promise<FoundryArtifact> {
+  const artifactPath = resolve(artifactRoot, `${contractName}.sol`, `${contractName}.json`);
   const parsed = JSON.parse(await readFile(artifactPath, 'utf8')) as FoundryArtifactJson;
   if (!Array.isArray(parsed.abi)) {
     throw new Error(`Foundry artifact ${contractName} has no ABI.`);

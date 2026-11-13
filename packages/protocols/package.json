@@ -14,7 +14,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "eslint src",
     "test": "vitest run --dir src --passWithNoTests",
-    "test:deployment": "vitest run src/production-deployment.integration.test.ts",
+    "test:deployment": "vitest run src/production-deployment.integration.test.ts src/testnet-morpho-deployment.integration.test.ts",
     "test:fork": "vitest run src/protocol-fork.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

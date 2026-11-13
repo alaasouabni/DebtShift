@@ -13,6 +13,7 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.NEAR_NETWORK).toBe('sandbox');
     expect(environment.NEAR_RPC_FALLBACK_URLS_JSON).toEqual([]);
     expect(environment.EVM_DEPLOYMENT_MANIFEST_PATH).toBe('');
+    expect(environment.TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH).toBe('');
     expect(environment.AGENT_MODE).toBe('DETERMINISTIC');
     expect(environment.MAINNET_EXECUTION_ENABLED).toBe(false);
     expect(environment.SOURCE_FINALITY_CONFIRMATIONS).toBe(1);
@@ -103,6 +104,31 @@ describe('parseDebtShiftEnvironment', () => {
     expect(() =>
       parseDebtShiftEnvironment({ NODE_ENV: 'production', DEBTSHIFT_MODE: 'testnet' }),
     ).toThrow('Funded production execution requires EVM_DEPLOYMENT_MANIFEST_PATH');
+  });
+
+  it('requires canonical Morpho dependency evidence in funded testnet mode', () => {
+    const testnet = {
+      ...explicitExecutionConfiguration(),
+      DEBTSHIFT_MODE: 'testnet',
+      MARKET_DATA_PROVIDER: 'LIVE_READ_ONLY',
+      LIVE_MARKET_CONFIG_JSON: validLiveMarketJson(),
+      NEAR_NETWORK: 'testnet',
+      NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
+      NEAR_REGISTRY_OWNER_ACCOUNT: 'owner.testnet',
+      NEAR_REGISTRY_WASM_SHA256: `0x${'1'.repeat(64)}`,
+      NEAR_SIGNER_ACCOUNT_ID: 'verifier.testnet',
+      NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test-private-key',
+    } as const;
+
+    expect(() => parseDebtShiftEnvironment(testnet)).toThrow(
+      'Funded testnet execution requires TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH',
+    );
+    expect(() =>
+      parseDebtShiftEnvironment({
+        ...testnet,
+        TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH: '/run/debtshift/testnet-morpho.json',
+      }),
+    ).not.toThrow();
   });
 
   it('accepts a bounded, unique list of HTTPS NEAR RPC fallbacks', () => {

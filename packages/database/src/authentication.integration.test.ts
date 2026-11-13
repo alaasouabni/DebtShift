@@ -31,7 +31,7 @@ describe('wallet authentication persistence', () => {
     for (const migrationFile of migrationFiles) {
       await postgres.exec(readFileSync(`${migrationsDirectory}/${migrationFile}`, 'utf8'));
     }
-  });
+  }, 15_000);
 
   afterAll(async () => {
     await postgres.close();

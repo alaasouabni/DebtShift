@@ -7,6 +7,7 @@ import {
   hashCanonicalText,
   parseDebtShiftEvmDeploymentManifest,
   parseLiveMarketConfiguration,
+  parseTestnetMorphoDeploymentManifest,
   type DebtShiftEnvironment,
   type Evidence,
 } from '@debtshift/domain';
@@ -18,6 +19,7 @@ import {
   loadFoundryArtifact,
   readAaveReserveTokenAddresses,
   verifyProductionDebtShiftDeployment,
+  verifyTestnetMorphoDeployment,
   type FoundryArtifact,
 } from '@debtshift/protocols';
 import {
@@ -2308,6 +2310,97 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       manifest,
       sourcePublicClient: this.#sourcePublic,
       destinationPublicClient: this.#destinationPublic,
+    });
+    if (this.#environment.DEBTSHIFT_MODE === 'testnet') {
+      await this.#verifyTestnetMorphoManifest(manifest);
+    }
+  }
+
+  async #verifyTestnetMorphoManifest(
+    evmManifest: ReturnType<typeof parseDebtShiftEvmDeploymentManifest>,
+  ): Promise<void> {
+    const dependencyManifest = parseTestnetMorphoDeploymentManifest(
+      await readFile(resolve(this.#environment.TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH), 'utf8'),
+    );
+    if (
+      dependencyManifest.chainId !== this.#environment.DESTINATION_CHAIN_ID ||
+      BigInt(dependencyManifest.deploymentBlockNumber) >
+        BigInt(evmManifest.destination.deploymentBlockNumber)
+    ) {
+      throw new Error('Testnet Morpho dependency manifest chain or deployment bound is invalid.');
+    }
+    assertAddressBindings([
+      [
+        dependencyManifest.contracts.morpho.address,
+        evmManifest.destination.protocol.morpho,
+        'testnet canonical Morpho deployment',
+      ],
+      [
+        dependencyManifest.contracts.oracle.address,
+        evmManifest.destination.protocol.oracle,
+        'testnet Morpho oracle',
+      ],
+      [
+        dependencyManifest.contracts.irm.address,
+        evmManifest.destination.protocol.irm,
+        'testnet Morpho IRM',
+      ],
+      [
+        dependencyManifest.tokens.collateral.address,
+        evmManifest.destination.collateralToken,
+        'testnet Morpho collateral token',
+      ],
+      [
+        dependencyManifest.tokens.loan.address,
+        evmManifest.destination.debtToken,
+        'testnet Morpho loan token',
+      ],
+    ]);
+    if (
+      dependencyManifest.market.id.toLowerCase() !==
+        evmManifest.destination.protocol.marketId.toLowerCase() ||
+      dependencyManifest.market.lltv !== evmManifest.destination.protocol.lltv
+    ) {
+      throw new Error('Testnet Morpho market ID or LLTV does not match the EVM deployment.');
+    }
+    const configuredFeeds = new Set(
+      this.#configuration.destination.morphoOracleFeeds.map(({ address }) =>
+        getAddress(address).toLowerCase(),
+      ),
+    );
+    const manifestedFeeds = new Set([
+      dependencyManifest.feeds.collateral.address.toLowerCase(),
+      dependencyManifest.feeds.loan.address.toLowerCase(),
+    ]);
+    if (
+      configuredFeeds.size !== manifestedFeeds.size ||
+      [...manifestedFeeds].some((address) => !configuredFeeds.has(address))
+    ) {
+      throw new Error('Testnet Morpho Chainlink feeds do not match the allowlisted route.');
+    }
+    const maximumOracleAge = BigInt(dependencyManifest.feeds.maxPriceAgeSeconds);
+    if (
+      this.#configuration.destination.morphoOracleFeeds.some(
+        ({ maximumAgeSeconds }) => maximumOracleAge > BigInt(maximumAgeSeconds),
+      )
+    ) {
+      throw new Error('Testnet Morpho onchain oracle freshness is weaker than route policy.');
+    }
+    const configuredSequencer = this.#configuration.destination.sequencerUptimeFeed;
+    const manifestedSequencer = dependencyManifest.feeds.sequencerUptime;
+    if (
+      (configuredSequencer === undefined) !== (manifestedSequencer === null) ||
+      (configuredSequencer !== undefined &&
+        manifestedSequencer !== null &&
+        (!isAddressEqual(configuredSequencer.address, manifestedSequencer.address) ||
+          configuredSequencer.recoveryGraceSeconds.toString() !==
+            dependencyManifest.feeds.sequencerGracePeriodSeconds))
+    ) {
+      throw new Error('Testnet Morpho sequencer safety configuration does not match the route.');
+    }
+    await verifyTestnetMorphoDeployment({
+      manifest: dependencyManifest,
+      publicClient: this.#destinationPublic,
     });
   }
 

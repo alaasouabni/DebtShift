@@ -163,6 +163,16 @@ executor/operator role, pause state, plan-domain link, and disabled onchain writ
 unreadable, stale, reorged, tampered, or mismatched manifest stops startup. Exact EVM deployment and
 readiness procedures are in `20-evm-deployment.md`.
 
+Public `testnet` additionally requires `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH`. This separate
+manifest attests the DebtShift-operated Morpho Blue dependency: the pinned canonical upstream
+source and compiler inputs, Morpho/IRM/oracle deployment transactions and runtime code, real token
+and Chainlink feed identities, market creation, seed liquidity, ownership transfer, and disabled
+workflow-write state. The worker verifies that evidence independently and requires its exact
+contracts, market parameters, oracle policy, assets, chain, source commit, and deployment order to
+match the later DebtShift EVM manifest before consuming work. This does not label the deployment as
+an official Morpho public testnet; `21-public-testnet-morpho-deployment.md` defines the representation
+boundary and guarded procedure.
+
 The NEAR registry manifest is versioned separately from the two-chain EVM manifest. It records the
 source commit, registry/deployer/owner/verifier accounts, local WASM SHA-256, deployed NEAR code
 hash, final deployment/initialization transaction and block evidence, initialized storage, and a
