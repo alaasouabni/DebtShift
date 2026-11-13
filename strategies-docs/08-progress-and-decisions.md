@@ -1258,11 +1258,11 @@ operative source of truth.
 - Added migration `0012_closed_black_bird.sql` for the append-only PostgreSQL enum change. The
   isolated recovery drill applied all 13 migrations, rolled back a failed candidate, restored the
   pre-change state, and proved idempotent reapplication without touching the source database.
-- The complete 17-scenario contract-backed workflow suite passes. EVM compilation/tests/invariants
+- The complete 18-scenario contract-backed workflow suite passes. EVM compilation/tests/invariants
   and deployment checks pass; Rust 1.95 format, 8 workspace tests, strict Clippy, and the NEAR
   sandbox integration test pass in isolated Linux containers.
 - The final repository gate passes deterministic OpenAPI/SDK regeneration, formatting, lint, type
-  checks, all package tests (including 21 database, 24 API, and 67 worker tests), and all ten
+  checks, all package tests (including 21 database, 24 API, and 68 worker tests), and all ten
   production builds. The aggregate run also verifies the bounded 30-second cold migration setup
   across all 13 migrations.
 - GitHub Actions quality run `43388863063` passed its TypeScript, EVM, NEAR, security, container,
@@ -1300,6 +1300,22 @@ operative source of truth.
   source-close evidence exists, vault status is released with zero receivable/reserved-undrawn
   balance, and the durable workflow terminates `EXPIRED`.
 - All 17 durable two-chain scenarios and all 67 worker tests pass after the change.
+- GitHub Actions quality run `43392652909` passed TypeScript, EVM, NEAR, security/container scanning,
+  and SBOM generation for checkpoint `71325d5`.
+
+### 2026-11-13 - Duplicate-delivery interruption proof completed
+
+- Added a real two-Anvil happy-path chaos scenario that reconstructs the processor before every
+  command, retains the same durable message through retryable transport polling, and redelivers each
+  message after completion to model worker restart and at-least-once queue delivery.
+- The test proves each of the six irreversible financial evidence types appears exactly once with a
+  distinct finalized transaction, duplicate delivery does not increment the completed command's
+  logical attempt, and the source/target positions settle to the single-execution values.
+- Together with the authenticated API execute-deduplication test, transactional outbox publish
+  failure/recovery test, stale-running-command recovery, database uniqueness constraints, and direct
+  replay reconciliation of every EVM action, this closes the worker/API/queue interruption duplicate
+  asset-movement acceptance item. Redis remains non-authoritative delivery infrastructure.
+- All 18 durable two-chain scenarios and all 68 worker tests pass after the change.
 
 ## Work-session handoff template
 

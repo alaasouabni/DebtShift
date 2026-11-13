@@ -64,7 +64,9 @@ DebtShift’s first implementation is complete only when every mandatory item be
       inventing a terminal provider state.
 - [x] Simulated source receipt disappearance and destination block replacement append retractions,
       halt the next financial action, re-derive recovery state, and require manual reconciliation.
-- [ ] Worker/API/Redis interruption does not duplicate asset movement.
+- [x] Worker/API/Redis interruption does not duplicate asset movement: API execution deduplicates,
+      PostgreSQL reconstructs failed outbox/stale-command delivery, and restart-every-command plus
+      duplicate-message E2E proves one finalized transaction per irreversible action.
 
 ## Contract safety
 

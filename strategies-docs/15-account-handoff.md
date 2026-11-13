@@ -20,22 +20,23 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `f3cfb89`.
+- Previous remote checkpoint before this handoff: `71325d5`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. A deterministic pre-source deadline and transport-quote expiry guard shared by reservation and
-   source-close command handlers.
-2. Expiry before reservation produces terminal evidence without a chain write or asset movement.
-3. Expiry after reservation proves there is no source-close event and that the source position is
-   still within signed bounds, releases the undrawn allocation onchain, and terminates `EXPIRED`.
-4. A real two-Anvil scenario proving the source position remains 10 WETH / 10,000 USDC, no false
-   source-close evidence is recorded, and vault receivable/reserved-undrawn balances are zero.
-5. Processor evidence contracts and handler tests for both `RESERVE_LIQUIDITY` and `CLOSE_SOURCE`
-   expiration alternatives.
+1. A real two-Anvil interruption scenario that reconstructs the worker processor before every
+   command and redelivers every completed durable queue message.
+2. Exact proof that six irreversible financial evidence types retain one distinct finalized
+   transaction each and completed-command attempt counts do not change on redelivery.
+3. Final source and target lending positions matching a single successful execution after all
+   restarts/replays.
+4. A reconciled evidence set combining the new worker test with API execute deduplication,
+   transactional outbox publish recovery, stale-command recovery, and direct EVM action replay.
+5. Closure of risk-register items R-07 and R-14 and the interruption acceptance checkbox without
+   treating Redis as a financial source of truth.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -47,13 +48,13 @@ RPC URLs or secrets.
 | Gate                                  | Result                                                                                     |
 | ------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Full `npm run check`                  | Pass: OpenAPI drift, format, lint, types, all tests, and all ten production builds         |
-| Worker suite                          | Pass: 67 tests, including 17 durable workflows and asset-safe pre-source expiry            |
+| Worker suite                          | Pass: 68 tests, including 18 durable workflows and duplicate-delivery interruption proof   |
 | Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified     |
 | API suite                             | Pass: 24 tests, including owner-scoped artifacts, cancellation race rejection, and OpenAPI |
 | `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                      |
 | `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                                   |
 | NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                     |
-| GitHub quality run `43391247803`      | Pass for source-revert checkpoint `f3cfb89`                                                |
+| GitHub quality run `43392652909`      | Pass for pre-source expiry checkpoint `71325d5`                                            |
 | `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push     |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                                  |
 

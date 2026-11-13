@@ -179,6 +179,59 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
     );
   }, 60_000);
 
+  it('restarts between commands and ignores duplicate queue delivery without duplicate asset movement', async () => {
+    await withWorkflow(
+      'SUCCESS',
+      async ({ database, deployment, source, destination, createProcessor }) => {
+        const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+        await runWithDuplicateDeliveries(database, createProcessor, migrationId, 'SETTLED');
+        const details = await getMigrationDetails(database, migrationId);
+        const irreversibleEvidence = [
+          'LIQUIDITY_RESERVATION',
+          'SOURCE_CLOSE',
+          'TRANSPORT_ORIGIN',
+          'TRANSPORT_DESTINATION',
+          'TARGET_POSITION',
+          'LIQUIDITY_SETTLEMENT',
+        ] as const;
+
+        expect(details?.migration.phase).toBe('SETTLED');
+        for (const type of irreversibleEvidence) {
+          expect(details?.evidence.filter((record) => record.type === type)).toHaveLength(1);
+        }
+        const transactionHashes = irreversibleEvidence.map(
+          (type) => details?.evidence.find((record) => record.type === type)?.transactionHash,
+        );
+        expect(transactionHashes.every((hash) => hash !== null && hash !== undefined)).toBe(true);
+        expect(new Set(transactionHashes).size).toBe(irreversibleEvidence.length);
+        expect(details?.commands.filter(({ status }) => status === 'SUCCEEDED')).toHaveLength(
+          irreversibleEvidence.length,
+        );
+
+        const [sourceArtifact, targetArtifact] = await Promise.all([
+          loadFoundryArtifact('MockSourceLending'),
+          loadFoundryArtifact('MockTargetLending'),
+        ]);
+        const [sourcePosition, targetPosition] = await Promise.all([
+          source.publicClient.readContract({
+            address: deployment.source.lending,
+            abi: sourceArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+          destination.publicClient.readContract({
+            address: deployment.destination.lending,
+            abi: targetArtifact.abi,
+            functionName: 'positions',
+            args: [deployment.borrower],
+          }),
+        ]);
+        expect(sourcePosition).toEqual([0n, 0n]);
+        expect(targetPosition).toEqual([9_900_000_000_000_000_000n, 10_050_000_000n]);
+      },
+    );
+  }, 60_000);
+
   it('opens exact manual recovery when settlement exhausts its retry budget after payout', async () => {
     await withWorkflow('SUCCESS', async ({ database, deployment, source, createProcessor }) => {
       const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
@@ -1398,4 +1451,47 @@ async function runUntil(
     }
   }
   throw new Error(`Workflow did not reach ${terminalPhase} within the command budget.`);
+}
+
+async function runWithDuplicateDeliveries(
+  database: DebtShiftDatabase,
+  createProcessor: () => DurableCommandProcessor,
+  migrationId: string,
+  terminalPhase: MigrationPhase,
+): Promise<void> {
+  let active: OutboxEnvelope | undefined;
+  for (let iteration = 0; iteration < 20; iteration += 1) {
+    const details = await getMigrationDetails(database, migrationId);
+    if (details?.migration.phase === terminalPhase) return;
+
+    if (active === undefined) {
+      const ready: OutboxEnvelope[] = [];
+      await publishPendingOutbox(database, async (message) => {
+        ready.push(message);
+      });
+      active = ready.shift();
+      if (active === undefined) throw new Error('Workflow has no ready durable command.');
+    }
+
+    try {
+      await createProcessor().process(active);
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== 'RetryableCommandError') throw error;
+      continue;
+    }
+    const completed = await getMigrationDetails(database, migrationId);
+    const attemptBeforeDuplicate = completed?.commands.find(
+      ({ commandId }) => commandId === active?.commandId,
+    )?.logicalAttempt;
+    if (attemptBeforeDuplicate === undefined) {
+      throw new Error('Completed durable command is missing before duplicate delivery.');
+    }
+    await createProcessor().process(active);
+    const replayed = await getMigrationDetails(database, migrationId);
+    expect(
+      replayed?.commands.find(({ commandId }) => commandId === active?.commandId)?.logicalAttempt,
+    ).toBe(attemptBeforeDuplicate);
+    active = undefined;
+  }
+  throw new Error(`Workflow did not reach ${terminalPhase} during duplicate delivery testing.`);
 }
