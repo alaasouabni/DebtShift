@@ -1469,6 +1469,25 @@ operative source of truth.
   external requirement to deploy the registry and preserve a matching NEAR testnet receipt remains
   open until funded testnet credentials are available.
 
+### 2026-11-13 - Live read-only route and security register refreshed
+
+- `npm run check:live-route` passed against Base block `56,863,212` and Arbitrum block
+  `523,828,471`. Aave reserve identities and bytecode, Morpho market identity/LLTV/liquidity,
+  Chainlink observations, and the official 1Click asset catalog all matched the configured route.
+- The catalog observation hash was
+  `0xb30cbab56df469112e819e6ae10e9b56ee803fe83777e3963516ec060e468c6d` at
+  `2026-11-13T09:43:39.642Z`. This is time-sensitive read-only evidence, not transaction authority.
+- The official 1Click OpenAPI compatibility check passed for quote, status, and deposit-submission
+  schemas at SHA-256 `9a2e676682aa6dec6905c82f1b2cc0ec72eda97964369aa51ec35eb82ccac0a3`.
+- Added adversarial fee-on-transfer token tests. Exact-delta guards reject and atomically roll back
+  both taxed pulls and taxed payouts; the complete EVM compiler, unit, fuzz, invariant, and format
+  gate passes.
+- Reconciled every risk-register status against implemented controls and passing evidence. Only
+  R-16 (external secret-manager/relayer rotation drill) and R-21 (final mainnet exposure review and
+  authorization) remain open; `MITIGATED` is explicitly not an audit or deployment claim.
+- GitHub Actions quality run `43403559848` passed TypeScript, EVM, NEAR, security/container, and
+  SBOM jobs for final-registry-state checkpoint `e31683c`.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

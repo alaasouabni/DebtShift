@@ -329,8 +329,9 @@ workflow.
 
 ### Tasks
 
-- [ ] Complete the security test matrix and risk-register evidence.
-- [ ] Run static analysis and dependency vulnerability checks.
+- [x] Complete the implementation security test matrix and reconcile risk-register evidence;
+      deployment secret rotation and final mainnet authorization remain explicit external gates.
+- [x] Run static analysis and dependency vulnerability checks.
 - [ ] Add structured logs, traces, and Prometheus metrics.
   - [x] Add phase/command/evidence/chain structured workflow logs and low-cardinality Prometheus
         metrics backed by authoritative PostgreSQL state.
@@ -360,13 +361,13 @@ workflow.
 
 ### Tasks
 
-- [ ] Add one-command environment setup.
-- [ ] Add deterministic happy-path and refund demo scripts.
-- [ ] Produce deployment manifests and contract-address records.
-- [ ] Produce an architecture guide, API guide, threat model, and operations guide.
+- [x] Add one-command environment setup.
+- [x] Add deterministic happy-path and refund demo scripts.
+- [x] Produce deployment manifests and contract-address records.
+- [x] Produce an architecture guide, API guide, threat model, and operations guide.
 - [ ] Capture expected transaction hashes and evidence examples.
-- [ ] Run the complete acceptance suite from a clean checkout.
-- [ ] Record known limitations and the mainnet-readiness backlog.
+- [x] Run the complete acceptance suite from a clean checkout in GitHub Actions.
+- [x] Record known limitations and the mainnet-readiness backlog.
 
 ### Exit criteria
 

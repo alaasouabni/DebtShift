@@ -20,23 +20,22 @@ before changing code.
 ## Git checkpoint
 
 - Branch: `main`.
-- Previous remote checkpoint before this handoff: `d527bf6`.
+- Previous remote checkpoint before this handoff: `e31683c`.
 - Resume from the newest pushed commit containing this file.
 - Confirm with `git status --short --branch` and `git log -1 --oneline` before work.
 - Preserve any new contributor changes; do not reset or overwrite a dirty worktree.
 
 ## What the pending checkpoint adds
 
-1. Exact-set verification of every durable attestation after it is written to the NEAR registry and
-   before the agreement may be finalized.
-2. The same immutable attestation verification on replay of an already-finalized agreement, with no
-   attempt to repair or write after finalization.
-3. Independent final-block agreement and receipt readbacks whose signed bindings, count, receipt
-   views, terminal status, and locally recomputed bundle hash must agree.
-4. Adversarial coverage proving an acknowledged-but-absent attestation and an incomplete immutable
-   final agreement cannot emit `NEAR_RECEIPT` or advance the workflow to `COMPLETED`.
-5. Closure of the code-level completion/registry gate while preserving the separate external NEAR
-   testnet deployment and receipt requirement as open.
+1. A fresh credential-free mainnet-readonly route check against public Base, Arbitrum, Chainlink,
+   Morpho, Aave, and official 1Click catalog state, with exact blocks and response hash recorded.
+2. A refreshed official 1Click OpenAPI compatibility check for quote, status, and deposit submission.
+3. Adversarial fee-on-transfer token tests proving exact-delta guards atomically reject and roll back
+   both taxed inbound pulls and taxed outbound payouts.
+4. An evidence-backed security-register reconciliation: implemented/tested risks are marked
+   `MITIGATED` without implying an audit or deployment.
+5. R-16 external secret-manager/relayer rotation and R-21 final mainnet authorization remain open;
+   no credentialed or write-capable external action was attempted.
 
 The production deployer installs DebtShift contracts around existing Aave V3 and Morpho Blue
 deployments. It never deploys mock tokens, mock lending markets, borrower positions, or liquidity.
@@ -53,15 +52,18 @@ RPC URLs or secrets.
 | Database suite and migration drill    | Pass: 21 tests; all 13 migrations, rollback, restore, and idempotent recovery verified |
 | API suite                             | Pass: 25 tests, including a credential-flow architecture boundary                      |
 | Agent and web suites                  | Pass: 9 agent/security tests and 4 browser tests                                       |
-| `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, and lint gates                                  |
+| `npm run check:evm`                   | Pass: compiler, unit, fuzz, invariant, lint, and taxed-token rollback gates            |
 | `npm run check:evm-deployment`        | Pass: two-node deployment/readiness and tamper rejection                               |
+| `npm run check:live-route`            | Pass: public Base `56,863,212`, Arbitrum `523,828,471`, and 1Click catalog reads       |
+| `npm run check:one-click-spec`        | Pass: official quote, status, and deposit schema SHA-256 recorded below                |
 | NEAR format/test/clippy/sandbox gates | Pass in isolated Rust 1.95 Linux containers; host Cargo remains absent                 |
 | GitHub quality run `43400476244`      | Pass: TypeScript, EVM, NEAR, and security for phase checkpoint `06504e3`               |
 | GitHub quality run `43402193495`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `d527bf6`                |
+| GitHub quality run `43403559848`      | Pass: TypeScript, EVM, NEAR, security/container, and SBOM for `e31683c`                |
 | `npm run check:forks`                 | Pass on checkpoint `7ce52a3` against Base block `55,600,000`; rerun after current push |
 | Credentialed 1Click dry quote         | Not run: `INTENTS_AUTH_TOKEN` is required                                              |
 
-The live route observation used Base block `56,649,525` and Arbitrum block `523,682,852`. The
+The live route observation used Base block `56,863,212` and Arbitrum block `523,828,471`. The
 official 1Click schema hash observed during this session was
 `9a2e676682aa6dec6905c82f1b2cc0ec72eda97964369aa51ec35eb82ccac0a3`. These are time-sensitive
 observations, not permanent authorization; rerun them before deployment or execution.
@@ -70,8 +72,8 @@ observations, not permanent authorization; rerun them before deployment or execu
 
 Work in this order:
 
-1. Push the newest locally verified NEAR final-state checkpoint if needed and confirm CI, especially
-   the EVM deployment job and Linux NEAR sandbox test.
+1. Push the newest locally verified security/evidence checkpoint if needed and confirm CI,
+   especially the EVM deployment job and Linux NEAR sandbox test.
 2. Supply a trusted archival `BASE_FORK_RPC_URL` and run `npm run check:forks` on this commit.
 3. Obtain a 1Click auth token and run the credentialed dry quote only; do not commit the token or
    submit a deposit.
