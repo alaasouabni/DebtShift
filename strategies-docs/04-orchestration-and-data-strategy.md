@@ -207,9 +207,16 @@ For each migration:
 
 ### Target opens but provider payout fails
 
-- Keep borrowed proceeds in settlement escrow.
-- Retry the exact payout idempotently.
-- Prevent residual release until the obligation is reconciled.
+- The P0 destination adapter makes target opening and the exact solver payout one transaction. A
+  payout failure therefore reverts the target open and leaves delivered collateral in the
+  migration escrow; a lost RPC response is reconciled from the atomic destination receipt.
+- Retry the same signed target/payout command idempotently within the bounded queue budget.
+- If that budget is exhausted, terminally persist the command and open manual target/payout
+  reconciliation with the last verified collateral custody, exact solver receivable, and locked
+  recovery reserve. Do not schedule an automatic recovery action against uncertain custody.
+- If the atomic target/payout receipt finalized but source-vault settlement cannot be confirmed,
+  retry the exact settlement idempotently. Exhaustion blocks `SETTLED` and records the finalized
+  target/payout receipt, exact unsettled receivable, and locked reserve in manual recovery.
 
 ### Worker, Redis, or RPC outage
 

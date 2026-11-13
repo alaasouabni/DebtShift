@@ -44,7 +44,11 @@ import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
-import { createWorkflowHandlers, PostgresWorkflowContextStore } from './handlers.js';
+import {
+  createWorkflowHandlers,
+  PostgresWorkflowContextStore,
+  type MigrationExecutionPort,
+} from './handlers.js';
 import { DualAnvilSandboxExecutionPort } from './simulator/dual-anvil-execution.js';
 import { DurableCommandProcessor, PostgresCommandPersistence } from './processor.js';
 import {
@@ -171,6 +175,52 @@ describe.skipIf(!ANVIL_AVAILABLE)('durable dual-chain workflow', () => {
         expect(targetPosition).toEqual([9_900_000_000_000_000_000n, 10_050_000_000n]);
       },
     );
+  }, 60_000);
+
+  it('opens exact manual recovery when settlement exhausts its retry budget after payout', async () => {
+    await withWorkflow('SUCCESS', async ({ database, deployment, source, createProcessor }) => {
+      const migrationId = await createMigration(database, deployment, source, 'SUCCESS');
+      await runUntil(database, createProcessor, migrationId, 'TARGET_OPEN');
+      const messages: OutboxEnvelope[] = [];
+      await publishPendingOutbox(database, async (message) => {
+        messages.push(message);
+      });
+      expect(messages).toHaveLength(1);
+      const settlementMessage = messages[0];
+      if (settlementMessage === undefined) throw new Error('Settlement command was not published.');
+      const processor = createProcessor({
+        settleLiquidity: async () => {
+          throw new Error('injected source settlement outage');
+        },
+      });
+
+      await processor.process(settlementMessage, true);
+
+      const details = await getMigrationDetails(database, migrationId);
+      expect(details?.migration.phase).toBe('RECOVERY');
+      expect(details?.commands.find(({ type }) => type === 'SETTLE_LIQUIDITY')).toEqual(
+        expect.objectContaining({ status: 'FAILED_TERMINAL' }),
+      );
+      expect(details?.recoveryCases[0]).toEqual(
+        expect.objectContaining({
+          status: 'OPEN',
+          reason: 'SETTLEMENT_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_SETTLEMENT_RECONCILIATION',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'SOURCE_VAULT_RECEIVABLE',
+              totalClaimUnits: '10050000000',
+            }),
+            expect.objectContaining({
+              kind: 'TARGET_POSITION',
+              solverPayoutUnits: '10050000000',
+            }),
+          ]),
+        }),
+      );
+      expect(details?.commands.some(({ type }) => type === 'EXECUTE_RECOVERY')).toBe(false);
+      expect(details?.ledger).toHaveLength(0);
+    });
   }, 60_000);
 
   it('derives recovery from refund evidence and terminates failed-safe with full collateral', async () => {
@@ -633,7 +683,9 @@ interface WorkflowFixture {
   readonly deployment: LocalDebtShiftDeployment;
   readonly source: LocalAnvilChain;
   readonly destination: LocalAnvilChain;
-  readonly createProcessor: () => DurableCommandProcessor;
+  readonly createProcessor: (
+    overrides?: Partial<MigrationExecutionPort>,
+  ) => DurableCommandProcessor;
   readonly expireTransport: () => void;
 }
 
@@ -673,18 +725,22 @@ async function withWorkflow(
       DESTINATION_ESCROW_ADDRESS: deployment.destination.escrow,
       DESTINATION_ADAPTER_ADDRESS: deployment.destination.adapter,
     });
-    const createProcessor = () => {
+    const createProcessor = (overrides: Partial<MigrationExecutionPort> = {}) => {
       const simulator = new DeterministicTransportSimulator({
         outcome: outcome === 'REFUNDED' ? 'REFUNDED' : 'SUCCESS',
         feeBps: 100,
         processingPolls: outcome === 'TIMEOUT' ? 100 : 1,
         now: () => Date.now() + transportClockOffsetMs,
       });
+      const execution = withExecutionOverrides(
+        new DualAnvilSandboxExecutionPort(environment),
+        overrides,
+      );
       return new DurableCommandProcessor(
         new PostgresCommandPersistence(database),
         createWorkflowHandlers({
           store: new PostgresWorkflowContextStore(database),
-          execution: new DualAnvilSandboxExecutionPort(environment),
+          execution,
           transport: new SimulatedTransportExecutionPort(simulator),
           registry: new PendingSandboxRegistryPort(),
           evidenceProviders: sandboxEvidenceProviders,
@@ -705,6 +761,27 @@ async function withWorkflow(
     await postgres.close();
     await Promise.all([source.stop(), destination.stop()]);
   }
+}
+
+function withExecutionOverrides(
+  base: MigrationExecutionPort,
+  overrides: Partial<MigrationExecutionPort>,
+): MigrationExecutionPort {
+  return {
+    verifyCanonicalEvidence:
+      overrides.verifyCanonicalEvidence ?? ((records) => base.verifyCanonicalEvidence(records)),
+    reserve: overrides.reserve ?? ((context) => base.reserve(context)),
+    closeSource: overrides.closeSource ?? ((context) => base.closeSource(context)),
+    dispatchTransport:
+      overrides.dispatchTransport ?? ((context) => base.dispatchTransport(context)),
+    deliverDestination:
+      overrides.deliverDestination ??
+      ((context, observation) => base.deliverDestination(context, observation)),
+    openTarget: overrides.openTarget ?? ((context) => base.openTarget(context)),
+    settleLiquidity: overrides.settleLiquidity ?? ((context) => base.settleLiquidity(context)),
+    executeRecovery:
+      overrides.executeRecovery ?? ((context, reason) => base.executeRecovery(context, reason)),
+  };
 }
 
 async function createMigration(

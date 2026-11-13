@@ -159,6 +159,14 @@ Durable workflow retries are bounded by `WORKFLOW_COMMAND_MAX_ATTEMPTS` and expo
 limits never extend a signed execution deadline; the transport handler transitions unresolved
 custody to explicit recovery when that deadline is crossed.
 
+The worker passes BullMQ's current-attempt position into the durable command processor. A retryable
+failure on the configured final attempt is persisted as `FAILED_TERMINAL` rather than being left
+stranded as `FAILED_RETRYABLE`. Transport, atomic target/payout, and post-payout settlement commands
+also append a manual `RECOVERY_OPENED` record with exact durable custody, reserve, receivable, and
+supporting-evidence references where applicable. Manual-review recovery does not enqueue an unsafe
+automatic recovery command. Other exhausted commands become immediately visible through the
+terminal-command alert.
+
 ## Required alerts
 
 - Liquidity reservation below commitment.

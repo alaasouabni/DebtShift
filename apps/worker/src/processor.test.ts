@@ -108,6 +108,44 @@ describe('durable command processor', () => {
     expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, true);
   });
 
+  it('persists retry exhaustion terminally on the final queue attempt', async () => {
+    const store = persistence();
+    const error = new RetryableCommandError('RPC unavailable');
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([['RESERVE_LIQUIDITY', { execute: vi.fn(async () => Promise.reject(error)) }]]),
+    );
+
+    await expect(processor.process(envelope(), true)).resolves.toBeUndefined();
+    expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, false);
+  });
+
+  it('persists recovery evidence before terminally closing an exhausted financial command', async () => {
+    const store = persistence({ begin: vi.fn(async () => command('SETTLE_LIQUIDITY')) });
+    const error = new RetryableCommandError('Settlement confirmation unavailable');
+    const recovery = evidence('RECOVERY_OPENED');
+    const onRetryExhausted = vi.fn(async () => [recovery]);
+    const processor = new DurableCommandProcessor(
+      store,
+      new Map([
+        [
+          'SETTLE_LIQUIDITY',
+          { execute: vi.fn(async () => Promise.reject(error)), onRetryExhausted },
+        ],
+      ]),
+    );
+
+    await processor.process(envelope(), true);
+
+    expect(onRetryExhausted).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SETTLE_LIQUIDITY' }),
+      error,
+    );
+    expect(store.advance).toHaveBeenCalledWith(recovery);
+    expect(store.fail).toHaveBeenCalledWith(COMMAND_ID, error, false);
+    expect(store.complete).not.toHaveBeenCalled();
+  });
+
   it('fails terminally when a handler violates its evidence contract', async () => {
     const store = persistence();
     const processor = new DurableCommandProcessor(

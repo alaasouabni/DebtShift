@@ -180,6 +180,9 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Add destination balance and receipt reconciliation.
 - [x] Add retry budgets and deadline-aware scheduling.
 - [ ] Add each recovery policy and operator escalation state.
+  - [x] Persist final queue-attempt exhaustion terminally; transport exhaustion opens manual custody
+        reconciliation, atomic target/payout exhaustion opens manual target reconciliation, and
+        post-payout settlement exhaustion opens exact manual receivable/reserve reconciliation.
 - [x] Persist recovery cases atomically with opening evidence, exact residual custody/receivable
       claims, phase changes, and failed-safe resolution.
 - [x] Add pre-source-close price and liquidity deterioration handling that releases unused capacity,

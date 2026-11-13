@@ -48,8 +48,10 @@ DebtShift’s first implementation is complete only when every mandatory item be
         safe-capacity/shortfall evidence.
 - [x] Capacity deterioration after source close never creates an unsafe loan and opens a recovery case
       with collateral custody and solver exposure recorded.
-- [ ] Failed provider payout preserves proceeds and retries idempotently.
-- [ ] Failure to repay the solver after collateral delivery blocks `SETTLED` and preserves exact
+- [x] Failed atomic target/payout execution preserves destination collateral, reconciles a possibly
+      successful transaction from chain evidence, and retries idempotently; exhaustion opens manual
+      recovery with exact custody, receivable, and reserve state.
+- [x] Failure to repay the solver after collateral delivery blocks `SETTLED` and preserves exact
       proceeds, receivable, and recovery evidence.
 - [x] Unknown provider status stops advancement and opens a durable critical alert without
       inventing a terminal provider state.

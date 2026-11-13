@@ -174,8 +174,10 @@ The following cases are mandatory at unit, integration, and E2E levels where app
     market capacity is sufficient.
 11. **Missing or unconfirmed supplementary funding:** pending transactions, wrong assets, wrong chains,
     wrong escrows, expired deposits, and wallet-balance claims do not count as confirmed funding.
-12. **Failure to repay after collateral delivery:** proceeds remain isolated, exact payout retry is
-    idempotent, `SETTLED` is blocked, and the solver receivable and custody are visible.
+12. **Failure to repay after collateral delivery:** the atomic target/payout receipt remains
+    finalized, source settlement retry is idempotent, `SETTLED` is blocked, and the exact solver
+    receivable, payout, target position, and recovery reserve are persisted in manual recovery. The
+    dual-Anvil/PostgreSQL suite exercises this on the final queue attempt.
 13. **Incomplete cross-chain migration recovery:** refund, ambiguous custody, target-open failure, and
     capacity deterioration preserve balanced evidence and terminate only under a signed recovery
     outcome.

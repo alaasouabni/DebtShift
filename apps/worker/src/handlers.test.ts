@@ -174,6 +174,48 @@ describe('simulated workflow handlers', () => {
     expect(store.updates[0]).toEqual(expect.objectContaining({ providerState: 'UNKNOWN' }));
   });
 
+  it('opens exact manual custody recovery when transport dispatch exhausts retries', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      dispatchTransport: vi.fn(async () => {
+        throw new Error('origin RPC unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const dispatchHandler = getHandler(handlers, 'DISPATCH_TRANSPORT');
+
+    await expect(dispatchHandler.execute(command('DISPATCH_TRANSPORT'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (dispatchHandler.onRetryExhausted === undefined) {
+      throw new Error('Dispatch handler is missing retry-exhaustion recovery.');
+    }
+    const records = await dispatchHandler.onRetryExhausted(
+      command('DISPATCH_TRANSPORT'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records[0]?.normalizedPayload).toEqual(
+      expect.objectContaining({
+        reason: 'TRANSPORT_DISPATCH_RETRY_BUDGET_EXHAUSTED',
+        policy: 'MANUAL_CUSTODY_RECONCILIATION',
+        requiresManualReview: true,
+        residualAssets: expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'TRANSPORT_COLLATERAL',
+            amountUnits: '9900000000000000000',
+          }),
+          expect.objectContaining({
+            kind: 'SOLVER_RECEIVABLE',
+            totalClaimUnits: '10050000000',
+          }),
+        ]),
+      }),
+    );
+  });
+
   it('moves unknown provider custody into recovery after the signed deadline', async () => {
     const simulator = new DeterministicTransportSimulator({
       processingPolls: 0,
@@ -225,6 +267,101 @@ describe('simulated workflow handlers', () => {
       unexplainedImbalanceUnits: '0',
     });
     expect(ledger.entries.map((entry) => entry.componentCode)).toContain('RECOVERY_RESERVE_REFUND');
+  });
+
+  it('retries an unfinalized atomic target payout and opens exact manual recovery at exhaustion', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      openTarget: vi.fn(async () => {
+        throw new Error('destination RPC unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const targetHandler = getHandler(handlers, 'OPEN_TARGET');
+
+    await expect(targetHandler.execute(command('OPEN_TARGET'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (targetHandler.onRetryExhausted === undefined) {
+      throw new Error('Target handler is missing retry-exhaustion recovery.');
+    }
+    const records = await targetHandler.onRetryExhausted(
+      command('OPEN_TARGET'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        type: 'RECOVERY_OPENED',
+        verificationMethod: 'RETRY_BUDGET_AND_DURABLE_STATE_RECONCILIATION',
+        normalizedPayload: expect.objectContaining({
+          reason: 'TARGET_OPEN_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_TARGET_AND_PAYOUT_RECONCILIATION',
+          requiresManualReview: true,
+          targetAndPayoutState: 'UNCONFIRMED',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'DESTINATION_COLLATERAL',
+              amountUnits: '9890100000000000000',
+            }),
+            expect.objectContaining({
+              kind: 'SOLVER_RECEIVABLE',
+              totalClaimUnits: '10050000000',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('retries source settlement and preserves exact payout and receivable state at exhaustion', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = settlementStore(await buildContext(simulator, true));
+    const execution: MigrationExecutionPort = {
+      ...fakeExecution(),
+      settleLiquidity: vi.fn(async () => {
+        throw new Error('source settlement receipt unavailable');
+      }),
+    };
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+    const settlementHandler = getHandler(handlers, 'SETTLE_LIQUIDITY');
+
+    await expect(settlementHandler.execute(command('SETTLE_LIQUIDITY'))).rejects.toBeInstanceOf(
+      RetryableCommandError,
+    );
+    if (settlementHandler.onRetryExhausted === undefined) {
+      throw new Error('Settlement handler is missing retry-exhaustion recovery.');
+    }
+    const records = await settlementHandler.onRetryExhausted(
+      command('SETTLE_LIQUIDITY'),
+      new RetryableCommandError('retry budget exhausted'),
+    );
+
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        type: 'RECOVERY_OPENED',
+        normalizedPayload: expect.objectContaining({
+          reason: 'SETTLEMENT_RETRY_BUDGET_EXHAUSTED',
+          policy: 'MANUAL_SETTLEMENT_RECONCILIATION',
+          requiresManualReview: true,
+          payoutReceiver: '0x4000000000000000000000000000000000000004',
+          residualAssets: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'SOURCE_VAULT_RECEIVABLE',
+              totalClaimUnits: '10050000000',
+            }),
+            expect.objectContaining({
+              kind: 'TARGET_POSITION',
+              debtUnits: '10050000000',
+              solverPayoutUnits: '10050000000',
+            }),
+          ]),
+        }),
+      }),
+    );
   });
 
   it('halts the next side effect and emits append-only retractions for orphaned evidence', async () => {
@@ -510,7 +647,9 @@ function settlementStore(context: MigrationExecutionContext): MemoryContextStore
       recoveryReserveProvider: recoveryProvider,
       recoveryReserveUnits: '10100000000',
     }),
-    finalizedEvidence('SOURCE_CLOSE', 2, {}),
+    finalizedEvidence('SOURCE_CLOSE', 2, {
+      financingRevalidation: settlementFinancingRevalidation(),
+    }),
     finalizedEvidence('TRANSPORT_ORIGIN', 3, {
       amountInUnits: context.quote.amountInUnits,
     }),
@@ -520,9 +659,28 @@ function settlementStore(context: MigrationExecutionContext): MemoryContextStore
       { amountOutUnits: '9890100000000000000' },
       31_338,
     ),
-    finalizedEvidence('TARGET_POSITION', 5, { collateralUnits: '9890100000000000000' }, 31_338),
+    finalizedEvidence(
+      'TARGET_POSITION',
+      5,
+      {
+        collateralUnits: '9890100000000000000',
+        financingRevalidation: settlementFinancingRevalidation(),
+      },
+      31_338,
+    ),
   );
   return store;
+}
+
+function settlementFinancingRevalidation(): Record<string, unknown> {
+  return {
+    observedAt: '2026-11-09T00:00:00.000Z',
+    solverPrincipalUnits: '10000000000',
+    solverFeeUnits: '50000000',
+    capitalizedCostUnits: '0',
+    requiredDestinationBorrowUnits: '10050000000',
+    confirmedExternalFundingUnits: '0',
+  };
 }
 
 function finalizedEvidence(
@@ -560,14 +718,7 @@ function settlementAction(): FinalizedChainAction {
       recoveryReserveProvider: '0x4000000000000000000000000000000000000004',
       recoveryReserveMaximumUnits: '10100000000',
       repaymentUnits: '10050000000',
-      financingRevalidation: {
-        observedAt: '2026-11-09T00:00:00.000Z',
-        solverPrincipalUnits: '10000000000',
-        solverFeeUnits: '50000000',
-        capitalizedCostUnits: '0',
-        requiredDestinationBorrowUnits: '10050000000',
-        confirmedExternalFundingUnits: '0',
-      },
+      financingRevalidation: settlementFinancingRevalidation(),
     },
   };
 }

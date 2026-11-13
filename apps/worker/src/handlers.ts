@@ -213,149 +213,239 @@ export function createWorkflowHandlers({
     ],
     [
       'DISPATCH_TRANSPORT',
-      handler(store, execution, async (context) => {
-        const action = await execution.dispatchTransport(context);
-        const binding = await transport.bindOrigin(context, action.transactionHash);
-        await store.updateTransport(context.migration.migrationId, {
-          providerState: 'PROCESSING',
-          providerReference: binding.providerReference,
-          originTransactionHash: action.transactionHash,
-          observationCount: binding.observationCount,
-        });
-        return [
-          chainEvidence(
+      handler(
+        store,
+        execution,
+        async (context) => {
+          try {
+            const action = await execution.dispatchTransport(context);
+            const binding = await transport.bindOrigin(context, action.transactionHash);
+            await store.updateTransport(context.migration.migrationId, {
+              providerState: 'PROCESSING',
+              providerReference: binding.providerReference,
+              originTransactionHash: action.transactionHash,
+              observationCount: binding.observationCount,
+            });
+            return [
+              chainEvidence(
+                context.migration.migrationId,
+                'TRANSPORT_ORIGIN',
+                transport.provider,
+                action,
+              ),
+            ];
+          } catch (error) {
+            if (error instanceof RetryableCommandError) throw error;
+            throw new RetryableCommandError(
+              'Transport dispatch or provider binding did not finalize; source custody must be rechecked.',
+            );
+          }
+        },
+        true,
+        async (context) => {
+          const activeEvidence = await store.listActiveFinalizedChainEvidence(
             context.migration.migrationId,
-            'TRANSPORT_ORIGIN',
-            transport.provider,
-            action,
-          ),
-        ];
-      }),
+          );
+          return [
+            transportDispatchRetryBudgetRecoveryEvidence(
+              context,
+              evidenceProviders.recovery,
+              activeEvidence,
+            ),
+          ];
+        },
+      ),
     ],
     [
       'VERIFY_DESTINATION',
-      handler(store, execution, async (context) => {
-        const { observation, observationCount } = await transport.observe(context);
-        await store.updateTransport(context.migration.migrationId, {
-          providerState: observation.status,
-          providerReference: observation.providerReference,
-          observationCount,
-          ...(observation.destinationTransactionHash === undefined
-            ? {}
-            : { destinationTransactionHash: observation.destinationTransactionHash }),
-          ...(observation.refundTransactionHash === undefined
-            ? {}
-            : { refundTransactionHash: observation.refundTransactionHash }),
-          observedOutputUnits: observation.observedAmountOutUnits,
-        });
+      handler(
+        store,
+        execution,
+        async (context) => {
+          const { observation, observationCount } = await transport.observe(context);
+          await store.updateTransport(context.migration.migrationId, {
+            providerState: observation.status,
+            providerReference: observation.providerReference,
+            observationCount,
+            ...(observation.destinationTransactionHash === undefined
+              ? {}
+              : { destinationTransactionHash: observation.destinationTransactionHash }),
+            ...(observation.refundTransactionHash === undefined
+              ? {}
+              : { refundTransactionHash: observation.refundTransactionHash }),
+            observedOutputUnits: observation.observedAmountOutUnits,
+          });
 
-        if (observation.status === 'AWAITING_DEPOSIT' || observation.status === 'PROCESSING') {
-          if (isPastExecutionDeadline(context, observation.observedAt)) {
+          if (observation.status === 'AWAITING_DEPOSIT' || observation.status === 'PROCESSING') {
+            if (isPastExecutionDeadline(context, observation.observedAt)) {
+              return [
+                expirationEvidence(context, observation, 'TRANSPORT_DEADLINE_EXCEEDED'),
+                recoveryEvidence(context, observation, 'TRANSPORT_DEADLINE_EXCEEDED'),
+              ];
+            }
+            throw new RetryableCommandError(`Transport remains ${observation.status}.`);
+          }
+          if (observation.status === 'SUCCESS') {
+            const verification = verifyTransportDelivery(context.quote, observation);
+            if (!verification.valid) {
+              return [recoveryEvidence(context, observation, verification.failures.join(','))];
+            }
+            const action = await execution.deliverDestination(context, observation);
             return [
-              expirationEvidence(context, observation, 'TRANSPORT_DEADLINE_EXCEEDED'),
-              recoveryEvidence(context, observation, 'TRANSPORT_DEADLINE_EXCEEDED'),
+              chainEvidence(
+                context.migration.migrationId,
+                'TRANSPORT_DESTINATION',
+                observation.provider,
+                action,
+                observation,
+              ),
             ];
           }
-          throw new RetryableCommandError(`Transport remains ${observation.status}.`);
-        }
-        if (observation.status === 'SUCCESS') {
-          const verification = verifyTransportDelivery(context.quote, observation);
-          if (!verification.valid) {
-            return [recoveryEvidence(context, observation, verification.failures.join(','))];
+          if (observation.status === 'REFUNDED') {
+            const verification = verifyTransportRefund(context.quote, observation);
+            if (!verification.valid) {
+              throw new RetryableCommandError(
+                `Refund evidence is not independently valid: ${verification.failures.join(',')}`,
+              );
+            }
+            return [recoveryEvidence(context, observation, 'TRANSPORT_REFUNDED')];
           }
-          const action = await execution.deliverDestination(context, observation);
+          if (
+            observation.status === 'INCOMPLETE_DEPOSIT' ||
+            observation.status === 'FAILED_KNOWN_CUSTODY'
+          ) {
+            return [recoveryEvidence(context, observation, observation.status)];
+          }
+          if (isPastExecutionDeadline(context, observation.observedAt)) {
+            return [
+              expirationEvidence(context, observation, 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED'),
+              recoveryEvidence(context, observation, 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED'),
+            ];
+          }
+          throw new RetryableCommandError(`Transport custody is ambiguous: ${observation.status}.`);
+        },
+        true,
+        async (context) => {
+          const activeEvidence = await store.listActiveFinalizedChainEvidence(
+            context.migration.migrationId,
+          );
           return [
-            chainEvidence(
-              context.migration.migrationId,
-              'TRANSPORT_DESTINATION',
-              observation.provider,
-              action,
-              observation,
+            transportObservationRetryBudgetRecoveryEvidence(
+              context,
+              evidenceProviders.recovery,
+              activeEvidence,
             ),
           ];
-        }
-        if (observation.status === 'REFUNDED') {
-          const verification = verifyTransportRefund(context.quote, observation);
-          if (!verification.valid) {
-            throw new RetryableCommandError(
-              `Refund evidence is not independently valid: ${verification.failures.join(',')}`,
-            );
-          }
-          return [recoveryEvidence(context, observation, 'TRANSPORT_REFUNDED')];
-        }
-        if (
-          observation.status === 'INCOMPLETE_DEPOSIT' ||
-          observation.status === 'FAILED_KNOWN_CUSTODY'
-        ) {
-          return [recoveryEvidence(context, observation, observation.status)];
-        }
-        if (isPastExecutionDeadline(context, observation.observedAt)) {
-          return [
-            expirationEvidence(context, observation, 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED'),
-            recoveryEvidence(context, observation, 'AMBIGUOUS_CUSTODY_DEADLINE_EXCEEDED'),
-          ];
-        }
-        throw new RetryableCommandError(`Transport custody is ambiguous: ${observation.status}.`);
-      }),
+        },
+      ),
     ],
     [
       'OPEN_TARGET',
-      handler(store, execution, async (context) => {
-        let action: FinalizedChainAction;
-        try {
-          action = await execution.openTarget(context);
-        } catch (error) {
-          if (!(error instanceof PostSourceCapacityDeteriorationError)) throw error;
+      handler(
+        store,
+        execution,
+        async (context) => {
+          try {
+            const action = await execution.openTarget(context);
+            return [
+              chainEvidence(
+                context.migration.migrationId,
+                'FINANCING_REVALIDATION',
+                evidenceProviders.financing,
+                action,
+              ),
+              chainEvidence(
+                context.migration.migrationId,
+                'TARGET_POSITION',
+                evidenceProviders.target,
+                action,
+              ),
+            ];
+          } catch (error) {
+            if (error instanceof PostSourceCapacityDeteriorationError) {
+              return [
+                chainEvidence(
+                  context.migration.migrationId,
+                  'FINANCING_REVALIDATION',
+                  evidenceProviders.financing,
+                  error.action,
+                ),
+                capacityDeteriorationRecoveryEvidence(context, error.action),
+              ];
+            }
+            throw new RetryableCommandError(
+              'Target opening or its atomic solver payout did not finalize; custody must be rechecked.',
+            );
+          }
+        },
+        true,
+        async (context) => {
+          const activeEvidence = await store.listActiveFinalizedChainEvidence(
+            context.migration.migrationId,
+          );
           return [
-            chainEvidence(
-              context.migration.migrationId,
-              'FINANCING_REVALIDATION',
-              evidenceProviders.financing,
-              error.action,
+            targetOpenRetryBudgetRecoveryEvidence(
+              context,
+              evidenceProviders.recovery,
+              activeEvidence,
             ),
-            capacityDeteriorationRecoveryEvidence(context, error.action),
           ];
-        }
-        return [
-          chainEvidence(
-            context.migration.migrationId,
-            'FINANCING_REVALIDATION',
-            evidenceProviders.financing,
-            action,
-          ),
-          chainEvidence(
-            context.migration.migrationId,
-            'TARGET_POSITION',
-            evidenceProviders.target,
-            action,
-          ),
-        ];
-      }),
+        },
+      ),
     ],
     [
       'SETTLE_LIQUIDITY',
-      handler(store, execution, async (context) => {
-        const action = await execution.settleLiquidity(context);
-        const activeEvidence = await store.listActiveFinalizedChainEvidence(
-          context.migration.migrationId,
-        );
-        const ledger = buildSettlementLedger(context, action, activeEvidence);
-        return [
-          chainEvidence(
+      handler(
+        store,
+        execution,
+        async (context) => {
+          try {
+            const action = await execution.settleLiquidity(context);
+            const activeEvidence = await store.listActiveFinalizedChainEvidence(
+              context.migration.migrationId,
+            );
+            const ledger = buildSettlementLedger(context, action, activeEvidence);
+            return [
+              chainEvidence(
+                context.migration.migrationId,
+                'FINANCING_REVALIDATION',
+                evidenceProviders.financing,
+                action,
+              ),
+              chainEvidence(
+                context.migration.migrationId,
+                'LIQUIDITY_SETTLEMENT',
+                evidenceProviders.liquidity,
+                action,
+              ),
+              ledgerEvidence(
+                context.migration.migrationId,
+                evidenceProviders.ledger,
+                action,
+                ledger,
+              ),
+            ];
+          } catch (error) {
+            if (error instanceof RetryableCommandError) throw error;
+            throw new RetryableCommandError(
+              'Solver settlement did not finalize; the exact receivable must be reconciled before completion.',
+            );
+          }
+        },
+        true,
+        async (context) => {
+          const activeEvidence = await store.listActiveFinalizedChainEvidence(
             context.migration.migrationId,
-            'FINANCING_REVALIDATION',
-            evidenceProviders.financing,
-            action,
-          ),
-          chainEvidence(
-            context.migration.migrationId,
-            'LIQUIDITY_SETTLEMENT',
-            evidenceProviders.liquidity,
-            action,
-          ),
-          ledgerEvidence(context.migration.migrationId, evidenceProviders.ledger, action, ledger),
-        ];
-      }),
+          );
+          return [
+            settlementRetryBudgetRecoveryEvidence(
+              context,
+              evidenceProviders.recovery,
+              activeEvidence,
+            ),
+          ];
+        },
+      ),
     ],
     [
       'FINALIZE_NEAR_RECEIPT',
@@ -385,6 +475,10 @@ function handler(
   execution: MigrationExecutionPort,
   execute: (context: MigrationExecutionContext) => Promise<readonly Evidence[]>,
   checkCanonicality = true,
+  onRetryExhausted?: (
+    context: MigrationExecutionContext,
+    error: RetryableCommandError,
+  ) => Promise<readonly Evidence[]>,
 ): CommandHandler {
   return {
     execute: async (command: DurableCommand) => {
@@ -398,6 +492,12 @@ function handler(
       }
       return execute(context);
     },
+    ...(onRetryExhausted === undefined
+      ? {}
+      : {
+          onRetryExhausted: async (command: DurableCommand, error: RetryableCommandError) =>
+            onRetryExhausted(await store.get(command.migrationId), error),
+        }),
   };
 }
 
@@ -1019,6 +1119,243 @@ function capacityDeteriorationRecoveryEvidence(
     observedAt: new Date().toISOString(),
     verificationState: 'FINALIZED',
     verificationMethod: 'FAILED_FEASIBILITY_RECEIPT_AND_RECOVERY_POLICY',
+    verifierVersion: 'debtshift-worker-v1',
+  });
+}
+
+interface SourceExposureState {
+  readonly reservation: FinalizedTransactionEvidence;
+  readonly sourceClose: FinalizedTransactionEvidence;
+  readonly principal: bigint;
+  readonly fee: bigint;
+  readonly reserveUnits: bigint;
+  readonly reserveProvider: string;
+}
+
+function sourceExposureState(records: readonly Evidence[]): SourceExposureState {
+  const reservation = requiredEvidence(records, 'LIQUIDITY_RESERVATION');
+  const sourceClose = requiredEvidence(records, 'SOURCE_CLOSE');
+  const financing = requiredRecord(
+    sourceClose.normalizedPayload.financingRevalidation,
+    'source-close financing revalidation',
+  );
+  return {
+    reservation,
+    sourceClose,
+    principal: unsignedPayloadBigInt(financing, 'solverPrincipalUnits', true),
+    fee: unsignedPayloadBigInt(financing, 'solverFeeUnits'),
+    reserveUnits: unsignedPayloadBigInt(
+      reservation.normalizedPayload,
+      'recoveryReserveUnits',
+      true,
+    ),
+    reserveProvider: requiredPayloadText(reservation.normalizedPayload, 'recoveryReserveProvider'),
+  };
+}
+
+function sourceExposureResidualAssets(
+  context: MigrationExecutionContext,
+  exposure: SourceExposureState,
+): readonly Record<string, unknown>[] {
+  return [
+    {
+      kind: 'SOLVER_RECEIVABLE',
+      chainId: context.signedPlan.plan.sourceDebtAsset.chainId,
+      token: context.signedPlan.plan.sourceDebtAsset.address,
+      principalUnits: exposure.principal.toString(),
+      feeUnits: exposure.fee.toString(),
+      totalClaimUnits: (exposure.principal + exposure.fee).toString(),
+      disposition: 'UNSETTLED_EXPLICIT_CLAIM',
+    },
+    {
+      kind: 'RECOVERY_RESERVE',
+      chainId: context.signedPlan.plan.sourceDebtAsset.chainId,
+      token: context.signedPlan.plan.sourceDebtAsset.address,
+      provider: exposure.reserveProvider,
+      lockedUnits: exposure.reserveUnits.toString(),
+      disposition: 'LOCKED_PENDING_MANUAL_RECONCILIATION',
+    },
+  ];
+}
+
+function transportDispatchRetryBudgetRecoveryEvidence(
+  context: MigrationExecutionContext,
+  provider: string,
+  records: readonly Evidence[],
+): Evidence {
+  const exposure = sourceExposureState(records);
+  return retryBudgetRecoveryEvidence(
+    context,
+    provider,
+    'TRANSPORT_DISPATCH_RETRY_BUDGET_EXHAUSTED',
+    'MANUAL_CUSTODY_RECONCILIATION',
+    [
+      {
+        kind: 'TRANSPORT_COLLATERAL',
+        chainId: context.quote.inputAsset.chainId,
+        token: context.quote.inputAsset.address,
+        amountUnits: context.quote.amountInUnits,
+        intendedDepositAddress: context.quote.depositAddress,
+        refundReceiver: context.quote.refundReceiver,
+        custodyState: 'ORIGIN_DISPATCH_UNCONFIRMED',
+        disposition: 'DIRECT_PROVIDER_AND_CHAIN_RECONCILIATION_REQUIRED',
+      },
+      ...sourceExposureResidualAssets(context, exposure),
+    ],
+    [exposure.reservation.evidenceId, exposure.sourceClose.evidenceId],
+    {
+      transportProvider: context.quote.provider,
+      transportQuoteHash: context.quote.quoteHash,
+    },
+  );
+}
+
+function transportObservationRetryBudgetRecoveryEvidence(
+  context: MigrationExecutionContext,
+  provider: string,
+  records: readonly Evidence[],
+): Evidence {
+  const exposure = sourceExposureState(records);
+  const origin = requiredEvidence(records, 'TRANSPORT_ORIGIN');
+  return retryBudgetRecoveryEvidence(
+    context,
+    provider,
+    'TRANSPORT_RETRY_BUDGET_EXHAUSTED',
+    'MANUAL_CUSTODY_RECONCILIATION',
+    [
+      {
+        kind: 'TRANSPORT_CUSTODY',
+        provider: context.transportLeg.provider,
+        providerState: context.transportLeg.providerState,
+        providerReference: context.transportLeg.providerReference,
+        inputUnits: context.transportLeg.inputUnits,
+        observedOutputUnits: context.transportLeg.observedOutputUnits,
+        originTransactionHash: context.transportLeg.originTransactionHash,
+        disposition: 'DIRECT_PROVIDER_AND_CHAIN_RECONCILIATION_REQUIRED',
+      },
+      ...sourceExposureResidualAssets(context, exposure),
+    ],
+    [exposure.reservation.evidenceId, exposure.sourceClose.evidenceId, origin.evidenceId],
+  );
+}
+
+function targetOpenRetryBudgetRecoveryEvidence(
+  context: MigrationExecutionContext,
+  provider: string,
+  records: readonly Evidence[],
+): Evidence {
+  const exposure = sourceExposureState(records);
+  const destination = requiredEvidence(records, 'TRANSPORT_DESTINATION');
+  const collateral = unsignedPayloadBigInt(destination.normalizedPayload, 'amountOutUnits', true);
+  return retryBudgetRecoveryEvidence(
+    context,
+    provider,
+    'TARGET_OPEN_RETRY_BUDGET_EXHAUSTED',
+    'MANUAL_TARGET_AND_PAYOUT_RECONCILIATION',
+    [
+      {
+        kind: 'DESTINATION_COLLATERAL',
+        chainId: context.signedPlan.plan.destinationCollateralAsset.chainId,
+        token: context.signedPlan.plan.destinationCollateralAsset.address,
+        amountUnits: collateral.toString(),
+        lastVerifiedCustody: context.signedPlan.plan.destinationReceiver,
+        disposition: 'DIRECT_CHAIN_RECONCILIATION_REQUIRED',
+      },
+      ...sourceExposureResidualAssets(context, exposure),
+    ],
+    [exposure.reservation.evidenceId, exposure.sourceClose.evidenceId, destination.evidenceId],
+    {
+      targetAndPayoutState: 'UNCONFIRMED',
+      atomicityRule:
+        'TARGET_OPEN_AND_SOLVER_PAYOUT_SHARE_ONE_DESTINATION_TRANSACTION_OR_REVERT_TOGETHER',
+    },
+  );
+}
+
+function settlementRetryBudgetRecoveryEvidence(
+  context: MigrationExecutionContext,
+  provider: string,
+  records: readonly Evidence[],
+): Evidence {
+  const exposure = sourceExposureState(records);
+  const target = requiredEvidence(records, 'TARGET_POSITION');
+  const financing = requiredRecord(
+    target.normalizedPayload.financingRevalidation,
+    'target financing revalidation',
+  );
+  const principal = unsignedPayloadBigInt(financing, 'solverPrincipalUnits', true);
+  const fee = unsignedPayloadBigInt(financing, 'solverFeeUnits');
+  if (principal !== exposure.principal || fee !== exposure.fee) {
+    throw new Error('Finalized target payout differs from the source solver receivable.');
+  }
+  const destinationBorrow = unsignedPayloadBigInt(
+    financing,
+    'requiredDestinationBorrowUnits',
+    true,
+  );
+  const targetCollateral = unsignedPayloadBigInt(target.normalizedPayload, 'collateralUnits', true);
+  return retryBudgetRecoveryEvidence(
+    context,
+    provider,
+    'SETTLEMENT_RETRY_BUDGET_EXHAUSTED',
+    'MANUAL_SETTLEMENT_RECONCILIATION',
+    [
+      ...sourceExposureResidualAssets(context, exposure).map((asset) =>
+        asset.kind === 'SOLVER_RECEIVABLE' ? { ...asset, kind: 'SOURCE_VAULT_RECEIVABLE' } : asset,
+      ),
+      {
+        kind: 'TARGET_POSITION',
+        chainId: context.signedPlan.plan.targetMarket.chainId,
+        market: context.signedPlan.plan.targetMarket.deployment,
+        collateralUnits: targetCollateral.toString(),
+        debtUnits: destinationBorrow.toString(),
+        solverPayoutUnits: (principal + fee).toString(),
+        disposition: 'FINALIZED_ATOMIC_TARGET_AND_PAYOUT_RECEIPT',
+      },
+    ],
+    [exposure.reservation.evidenceId, exposure.sourceClose.evidenceId, target.evidenceId],
+    {
+      payoutReceiver: context.signedPlan.plan.payoutReceiver,
+      payoutAsset: context.signedPlan.plan.payoutAsset,
+      targetTransactionHash: target.transactionHash,
+    },
+  );
+}
+
+function retryBudgetRecoveryEvidence(
+  context: MigrationExecutionContext,
+  provider: string,
+  reason: string,
+  policy: string,
+  residualAssets: readonly Record<string, unknown>[],
+  supportingEvidenceIds: readonly string[],
+  details: Record<string, unknown> = {},
+): Evidence {
+  const payload = {
+    reason,
+    policy,
+    requiresManualReview: true,
+    failedCommandRetryBudget: 'EXHAUSTED',
+    supportingEvidenceIds: [...supportingEvidenceIds].sort(),
+    residualAssets,
+    ...details,
+  };
+  const evidenceId = hashCanonicalText(
+    `debtshift.evidence.v1:${context.migration.migrationId}:RECOVERY_OPENED:${reason}`,
+  );
+  return evidenceSchema.parse({
+    evidenceId,
+    migrationId: context.migration.migrationId,
+    type: 'RECOVERY_OPENED',
+    schemaVersion: 1,
+    provider,
+    network: 'debtshift:workflow',
+    providerReference: evidenceId,
+    rawObservationHash: hashCanonicalText(canonicalJson(payload)),
+    normalizedPayload: payload,
+    observedAt: new Date().toISOString(),
+    verificationState: 'FINALIZED',
+    verificationMethod: 'RETRY_BUDGET_AND_DURABLE_STATE_RECONCILIATION',
     verifierVersion: 'debtshift-worker-v1',
   });
 }

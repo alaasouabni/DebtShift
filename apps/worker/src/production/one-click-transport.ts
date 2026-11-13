@@ -1,6 +1,7 @@
 import { storeProviderObservation, type DebtShiftDatabase } from '@debtshift/database';
 import { bytes32Schema, type TransportProvider } from '@debtshift/domain';
 import {
+  OneClickRequestError,
   type OneClickCommittedClient,
   type OneClickStatusObservation,
   type TransportObservation,
@@ -8,6 +9,7 @@ import {
 import type { Hex } from 'viem';
 
 import type { TransportExecutionPort } from '../handlers.js';
+import { RetryableCommandError } from '../processor.js';
 
 type OneClickCommittedTransportClient = Pick<
   OneClickCommittedClient,
@@ -60,13 +62,15 @@ export class OneClickTransportExecutionPort implements TransportExecutionPort {
   ): Promise<{ readonly providerReference: string; readonly observationCount: number }> {
     assertCommittedOneClickQuote(context.quote);
     const depositAddress = requireDepositAddress(context.quote.depositAddress);
-    const observation = await this.client.submitDepositTransaction({
-      transactionHash: originTransactionHash,
-      depositAddress,
-      ...(context.quote.depositMemo === undefined
-        ? {}
-        : { depositMemo: context.quote.depositMemo }),
-    });
+    const observation = await retryableProviderRequest(() =>
+      this.client.submitDepositTransaction({
+        transactionHash: originTransactionHash,
+        depositAddress,
+        ...(context.quote.depositMemo === undefined
+          ? {}
+          : { depositMemo: context.quote.depositMemo }),
+      }),
+    );
     if (
       observation.originTransactionHashes.length > 0 &&
       !observation.originTransactionHashes.includes(originTransactionHash)
@@ -92,15 +96,27 @@ export class OneClickTransportExecutionPort implements TransportExecutionPort {
     ) {
       throw new Error('Stored 1Click provider reference does not match the committed quote.');
     }
-    const providerObservation = await this.client.getStatus(
-      depositAddress,
-      context.quote.depositMemo,
+    const providerObservation = await retryableProviderRequest(() =>
+      this.client.getStatus(depositAddress, context.quote.depositMemo),
     );
     await this.observations.store('STATUS', providerObservation);
     return {
       observation: mapTransportObservation(context, providerObservation),
       observationCount: context.transportLeg.observationCount + 1,
     };
+  }
+}
+
+async function retryableProviderRequest<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (error instanceof OneClickRequestError && error.retryable) {
+      throw new RetryableCommandError(
+        'Official 1Click request exhausted its internal transport retries.',
+      );
+    }
+    throw error;
   }
 }
 

@@ -2,7 +2,12 @@ import type { OutboxEnvelope } from '@debtshift/database';
 import type { Queue } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
 
-import { BullCommandPublisher, commandJobOptions, commandRetryDelay } from './queue.js';
+import {
+  BullCommandPublisher,
+  commandJobOptions,
+  commandRetryDelay,
+  isFinalCommandAttempt,
+} from './queue.js';
 
 describe('durable command queue policy', () => {
   it('publishes every command with the configured bounded exponential retry budget', async () => {
@@ -59,5 +64,14 @@ describe('durable command queue policy', () => {
     expect(commandRetryDelay(policy, 6)).toBe(16_000);
     expect(commandRetryDelay(policy, 7)).toBe(30_000);
     expect(commandRetryDelay(policy, 25)).toBe(30_000);
+  });
+
+  it('marks exactly the configured last attempt for terminal persistence', () => {
+    const policy = { maximumAttempts: 3, retryDelayMs: 500, maximumRetryDelayMs: 30_000 };
+    expect(isFinalCommandAttempt(policy, 0)).toBe(false);
+    expect(isFinalCommandAttempt(policy, 1)).toBe(false);
+    expect(isFinalCommandAttempt(policy, 2)).toBe(true);
+    expect(isFinalCommandAttempt(policy, 3)).toBe(true);
+    expect(() => isFinalCommandAttempt(policy, -1)).toThrow('nonnegative integer');
   });
 });

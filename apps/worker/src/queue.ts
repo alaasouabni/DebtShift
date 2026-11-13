@@ -66,6 +66,17 @@ export function commandRetryDelay(policy: CommandQueuePolicy, attemptsMade: numb
   return Math.min(policy.maximumRetryDelayMs, policy.retryDelayMs * 2 ** (attemptsMade - 1));
 }
 
+export function isFinalCommandAttempt(
+  policy: CommandQueuePolicy,
+  attemptsMadeBeforeCurrent: number,
+): boolean {
+  commandJobOptions(policy);
+  if (!Number.isInteger(attemptsMadeBeforeCurrent) || attemptsMadeBeforeCurrent < 0) {
+    throw new Error('Command attempts made must be a nonnegative integer.');
+  }
+  return attemptsMadeBeforeCurrent + 1 >= policy.maximumAttempts;
+}
+
 export function createCommandQueue(connection: ConnectionOptions): Queue<OutboxEnvelope> {
   return new Queue<OutboxEnvelope>(COMMAND_QUEUE_NAME, { connection });
 }
@@ -78,7 +89,7 @@ export function createCommandWorker(
   commandJobOptions(policy);
   return new Worker<OutboxEnvelope>(
     COMMAND_QUEUE_NAME,
-    async (job) => processor.process(job.data),
+    async (job) => processor.process(job.data, isFinalCommandAttempt(policy, job.attemptsMade)),
     {
       connection,
       concurrency: 4,

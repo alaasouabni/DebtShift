@@ -15,6 +15,10 @@ export class RetryableCommandError extends Error {
 
 export interface CommandHandler {
   execute(command: DurableCommand): Promise<readonly Evidence[]>;
+  onRetryExhausted?(
+    command: DurableCommand,
+    error: RetryableCommandError,
+  ): Promise<readonly Evidence[]>;
 }
 
 export interface CommandPersistence {
@@ -66,12 +70,18 @@ export class DurableCommandProcessor {
     private readonly handlers: ReadonlyMap<string, CommandHandler>,
   ) {}
 
-  async process(message: OutboxEnvelope): Promise<void> {
+  async process(message: OutboxEnvelope, finalAttempt = false): Promise<void> {
     const command = await this.persistence.begin(message.commandId);
     if (command === undefined) return;
     const expectedEvidence = expectedEvidenceByCommand[command.type];
     if (expectedEvidence === undefined) {
       const error = new Error(`No evidence contract is defined for ${command.type}.`);
+      await this.persistence.fail(command.commandId, error, false);
+      return;
+    }
+    const handler = this.handlers.get(command.type);
+    if (handler === undefined) {
+      const error = new Error(`No command handler registered for ${command.type}.`);
       await this.persistence.fail(command.commandId, error, false);
       return;
     }
@@ -83,15 +93,27 @@ export class DurableCommandProcessor {
         return;
       }
 
-      const handler = this.handlers.get(command.type);
-      if (handler === undefined)
-        throw new Error(`No command handler registered for ${command.type}.`);
       const producedEvidence = await handler.execute(command);
       this.assertEvidenceContract(command, expectedEvidence, producedEvidence);
       for (const record of producedEvidence) await this.persistence.advance(record);
       await this.persistence.complete(command.commandId);
     } catch (error) {
       const retryable = error instanceof RetryableCommandError;
+      if (retryable && finalAttempt) {
+        try {
+          const exhaustedEvidence =
+            (await handler.onRetryExhausted?.(command, error)) ?? ([] as const);
+          if (exhaustedEvidence.length > 0) {
+            this.assertEvidenceContract(command, expectedEvidence, exhaustedEvidence);
+            for (const record of exhaustedEvidence) await this.persistence.advance(record);
+          }
+        } catch (exhaustionError) {
+          await this.persistence.fail(command.commandId, error, false);
+          throw exhaustionError;
+        }
+        await this.persistence.fail(command.commandId, error, false);
+        return;
+      }
       await this.persistence.fail(command.commandId, error, retryable);
       if (retryable) throw error;
     }
