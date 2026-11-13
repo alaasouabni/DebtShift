@@ -22,7 +22,11 @@ import { initializeTracing } from '@debtshift/observability';
 import { Logger } from '@nestjs/common';
 import type { ConnectionOptions } from 'bullmq';
 
-import { composeWorkflowHandlers, type WorkflowAdapterSet } from './composition.js';
+import {
+  assertWorkflowAdaptersReady,
+  composeWorkflowHandlers,
+  type WorkflowAdapterSet,
+} from './composition.js';
 import { PostgresWorkflowContextStore } from './handlers.js';
 import { ProductionEvmExecutionPort } from './production/evm-execution.js';
 import { NearReceiptRegistryPort } from './production/near-receipt-registry.js';
@@ -64,7 +68,7 @@ async function bootstrap(): Promise<void> {
     } as const;
     const publisher = new BullCommandPublisher(queue, commandQueuePolicy);
     const modeAdapters = createModeAdapters(environment, databaseClient.db);
-    await modeAdapters.adapters?.registry.assertReady?.();
+    await assertWorkflowAdaptersReady(modeAdapters.adapters);
     const handlers = composeWorkflowHandlers({
       environment,
       store: new PostgresWorkflowContextStore(databaseClient.db),

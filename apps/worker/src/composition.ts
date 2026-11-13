@@ -30,6 +30,12 @@ export interface WorkflowCompositionInput {
   readonly adapters?: WorkflowAdapterSet;
 }
 
+export async function assertWorkflowAdaptersReady(adapters?: WorkflowAdapterSet): Promise<void> {
+  if (adapters === undefined) return;
+  await adapters.execution.assertReady?.();
+  await adapters.registry.assertReady?.();
+}
+
 /**
  * The only composition boundary for funded workflow handlers. A mode mismatch is
  * fatal, and read-only/disabled mainnet runtimes never construct write adapters.

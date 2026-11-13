@@ -29,6 +29,11 @@ describe('DebtShift EVM deployment manifest', () => {
       ),
     ).toThrow('Source and destination deployment chains must differ.');
     expect(() => parseDebtShiftEvmDeploymentManifest('{}')).toThrow();
+    expect(() =>
+      parseDebtShiftEvmDeploymentManifest(
+        JSON.stringify({ ...validManifest(), sourceCommit: 'working-tree' }),
+      ),
+    ).toThrow();
   });
 });
 
@@ -99,6 +104,7 @@ function validManifest() {
     routeId: 'base-aave-v3-weth-usdc-to-arbitrum-morpho-blue-weth-usdc-v1',
     routeConfigurationHash: `0x${'1'.repeat(64)}`,
     createdAt: '2026-11-12T21:00:00.000Z',
+    sourceCommit: '1'.repeat(40),
     owner: '0x1000000000000000000000000000000000000001',
     executor: '0x1000000000000000000000000000000000000002',
     workflowWriteSwitchEnabled: false,

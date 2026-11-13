@@ -1,7 +1,11 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
 import type { MigrationExecutionContext } from '@debtshift/database';
 import {
   getExecutionPlanTypedData,
   hashCanonicalText,
+  parseDebtShiftEvmDeploymentManifest,
   parseLiveMarketConfiguration,
   type DebtShiftEnvironment,
   type Evidence,
@@ -13,6 +17,7 @@ import {
   MorphoBlueReadAdapter,
   loadFoundryArtifact,
   readAaveReserveTokenAddresses,
+  verifyProductionDebtShiftDeployment,
   type FoundryArtifact,
 } from '@debtshift/protocols';
 import {
@@ -291,6 +296,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     );
     this.#artifacts = loadProductionArtifacts();
     this.#ready = this.#verifyDeploymentBindings();
+  }
+
+  async assertReady(): Promise<void> {
+    await this.#ready;
   }
 
   async verifyCanonicalEvidence(
@@ -2182,6 +2191,124 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
         'Vault, escrow, or destination plan-domain allowlists are not execution-ready.',
       );
     }
+    await this.#verifyDeploymentManifest();
+  }
+
+  async #verifyDeploymentManifest(): Promise<void> {
+    if (this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH.length === 0) return;
+    const manifest = parseDebtShiftEvmDeploymentManifest(
+      await readFile(resolve(this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH), 'utf8'),
+    );
+    if (manifest.environment !== this.#environment.DEBTSHIFT_MODE) {
+      throw new Error('EVM deployment manifest environment does not match the runtime mode.');
+    }
+    if (
+      manifest.source.chainId !== this.#environment.SOURCE_CHAIN_ID ||
+      manifest.destination.chainId !== this.#environment.DESTINATION_CHAIN_ID
+    ) {
+      throw new Error('EVM deployment manifest chain IDs do not match runtime configuration.');
+    }
+    if (
+      BigInt(manifest.source.deploymentBlockNumber) !==
+        BigInt(this.#environment.SOURCE_DEPLOYMENT_BLOCK_NUMBER) ||
+      BigInt(manifest.destination.deploymentBlockNumber) !==
+        BigInt(this.#environment.DESTINATION_DEPLOYMENT_BLOCK_NUMBER)
+    ) {
+      throw new Error('EVM deployment manifest block bounds do not match runtime configuration.');
+    }
+    if (
+      manifest.routeConfigurationHash !==
+      keccak256(stringToHex(JSON.stringify(this.#configuration)))
+    ) {
+      throw new Error('EVM deployment manifest route hash does not match runtime configuration.');
+    }
+    assertAddressBindings([
+      [manifest.executor, this.#environment.EXECUTOR_ADDRESS, 'manifest executor'],
+      [manifest.source.protocol.pool, this.#configuration.source.pool, 'manifest Aave pool'],
+      [
+        manifest.source.protocol.dataProvider,
+        this.#configuration.source.dataProvider,
+        'manifest Aave data provider',
+      ],
+      [
+        manifest.source.collateralToken,
+        this.#environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
+        'manifest source collateral',
+      ],
+      [
+        manifest.source.debtToken,
+        this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+        'manifest source debt',
+      ],
+      [
+        manifest.source.contracts.liquidityVault.address,
+        this.#environment.SOURCE_VAULT_ADDRESS,
+        'manifest source vault',
+      ],
+      [
+        manifest.source.contracts.migrationEscrow.address,
+        this.#environment.SOURCE_ESCROW_ADDRESS,
+        'manifest source escrow',
+      ],
+      [
+        manifest.source.contracts.sourceLending.address,
+        this.#environment.SOURCE_LENDING_ADDRESS,
+        'manifest source lending',
+      ],
+      [
+        manifest.source.contracts.sourceAdapter.address,
+        this.#environment.SOURCE_ADAPTER_ADDRESS,
+        'manifest source adapter',
+      ],
+      [
+        manifest.destination.protocol.morpho,
+        this.#configuration.destination.morpho,
+        'manifest Morpho deployment',
+      ],
+      [
+        manifest.destination.protocol.oracle,
+        this.#configuration.destination.morphoOracle,
+        'manifest Morpho oracle',
+      ],
+      [
+        manifest.destination.collateralToken,
+        this.#environment.DESTINATION_COLLATERAL_TOKEN_ADDRESS,
+        'manifest destination collateral',
+      ],
+      [
+        manifest.destination.debtToken,
+        this.#environment.DESTINATION_DEBT_TOKEN_ADDRESS,
+        'manifest destination debt',
+      ],
+      [
+        manifest.destination.contracts.migrationEscrow.address,
+        this.#environment.DESTINATION_ESCROW_ADDRESS,
+        'manifest destination escrow',
+      ],
+      [
+        manifest.destination.contracts.targetLending.address,
+        this.#environment.DESTINATION_LENDING_ADDRESS,
+        'manifest destination lending',
+      ],
+      [
+        manifest.destination.contracts.destinationAdapter.address,
+        this.#environment.DESTINATION_ADAPTER_ADDRESS,
+        'manifest destination adapter',
+      ],
+    ]);
+    if (
+      manifest.destination.protocol.marketId.toLowerCase() !==
+      this.#configuration.destination.marketId.toLowerCase()
+    ) {
+      throw new Error(
+        'EVM deployment manifest Morpho market does not match runtime configuration.',
+      );
+    }
+    await verifyProductionDebtShiftDeployment({
+      manifest,
+      sourcePublicClient: this.#sourcePublic,
+      destinationPublicClient: this.#destinationPublic,
+    });
   }
 
   async #verifiedTokenDelivery(

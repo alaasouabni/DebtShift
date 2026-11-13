@@ -8,6 +8,7 @@ x-sandbox-environment: &sandbox-environment
   DEBTSHIFT_MODE: sandbox
   MARKET_DATA_PROVIDER: SIMULATOR
   LIVE_MARKET_CONFIG_JSON: ''
+  EVM_DEPLOYMENT_MANIFEST_PATH: ''
   API_PORT: 3001
   API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
   WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-http://localhost:3000}

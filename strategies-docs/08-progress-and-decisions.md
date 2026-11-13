@@ -15,9 +15,9 @@ This file is updated throughout implementation. It is the first place to inspect
 | M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, asset-safe pre-source expiry/cancellation/revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                             |
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains.                                                 |
 | M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, guarded source-bound manifests/deployment/readiness CLIs, startup code/role attestation, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.                                                                                                                             |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, and manifest-bound EVM/NEAR startup attestation pass focused tests. Live credentialed validation remains.                                                                                                                                  |
 | M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, credential-safe distributed traces, provisioned operations dashboards, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. External alert delivery, operator acknowledgement, and provenance publication acceptance remain deployment gates. |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned EVM and NEAR deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                                                                      |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Source-commit-bound EVM and NEAR manifests, guarded clean-worktree deployment/readiness CLIs, pre-consumption runtime attestation, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                   |
 
 ## Submission-critical mode
 
@@ -345,6 +345,36 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - EVM deployment provenance and worker startup attestation implemented
+
+- Extended the strict two-chain EVM manifest with the full lowercase Git source commit. The guarded
+  deployer now rejects a dirty worktree, hashes the schema-normalized route rather than its JSON
+  whitespace, and reserves a new manifest path before its first contract deployment so an existing
+  record cannot be discovered only after gas has been spent.
+- Production funded `testnet` and write-enabled `mainnet` configuration now require
+  `EVM_DEPLOYMENT_MANIFEST_PATH`. Before creating a queue consumer, the worker waits for both the EVM
+  and NEAR adapters to attest readiness.
+- EVM startup compares the manifest mode, chain IDs, deployment block bounds, normalized route hash,
+  protocol/token/market identities, executor, and all seven DebtShift addresses to runtime
+  configuration. It then runs the independent verifier over canonical deployment/configuration
+  receipts and block hashes, runtime code hashes, immutable bindings, roles, pause state,
+  plan-domain links, and the disabled onchain workflow switch.
+- Added the executable `20-evm-deployment.md` operator procedure covering account separation,
+  preflight, exact inputs, deployment, read-only readiness, manifest-to-runtime mapping, worker
+  startup, partial-deployment containment, and release evidence. An empty reserved manifest is
+  explicitly treated as an interrupted attempt, never as proof that no transaction was mined.
+- The complete repository gate passes OpenAPI drift, formatting, script syntax/readiness tests,
+  lint, all 11 workspace type checks, 108 domain tests, 82 worker tests, 22 database tests, all other
+  package tests, and all 11 production builds. The two-Anvil deployment/readiness gate passes both
+  canonical receipt/code/role verification and runtime-code tamper rejection; Compose parses and the
+  production npm audit reports zero vulnerabilities. An existing PGlite forward-migration test
+  exceeded Vitest's generic five-second budget by 29 ms under the first parallel run, so its
+  integration-test budget is now explicit at 15 seconds; the focused and complete reruns pass.
+- The local Solidity umbrella command stopped before execution because the host has Forge `1.5.1`
+  while the repository correctly requires `1.9.0`; the unchanged contract gate remains enforced
+  with the pinned toolchain in CI. No external transaction was signed or broadcast, and mainnet
+  execution remained disabled.
 
 ### 2026-11-13 - Guarded NEAR deployment and startup attestation implemented
 

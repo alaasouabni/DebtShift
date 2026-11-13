@@ -80,6 +80,7 @@ export class PreSourceCloseFailureError extends Error {
 }
 
 export interface MigrationExecutionPort {
+  assertReady?(): Promise<void>;
   verifyCanonicalEvidence(
     records: readonly Evidence[],
   ): Promise<readonly ChainCanonicalityFailure[]>;

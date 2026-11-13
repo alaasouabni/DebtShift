@@ -48,6 +48,7 @@ export const debtShiftEnvironmentSchema = z
       .default('sandbox'),
     MARKET_DATA_PROVIDER: z.enum(['SIMULATOR', 'LIVE_READ_ONLY', 'DISABLED']).default('SIMULATOR'),
     LIVE_MARKET_CONFIG_JSON: optionalString,
+    EVM_DEPLOYMENT_MANIFEST_PATH: optionalString,
     WEB_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     API_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
     WEB_PUBLIC_URL: z.url().default('http://localhost:3000'),
@@ -331,6 +332,18 @@ export const debtShiftEnvironmentSchema = z
         code: 'custom',
         message: 'Funded testnet or mainnet execution requires EXECUTOR_PRIVATE_KEY.',
         path: ['EXECUTOR_PRIVATE_KEY'],
+      });
+    }
+    if (
+      environment.NODE_ENV === 'production' &&
+      (environment.DEBTSHIFT_MODE === 'testnet' ||
+        (environment.DEBTSHIFT_MODE === 'mainnet' && environment.MAINNET_EXECUTION_ENABLED)) &&
+      environment.EVM_DEPLOYMENT_MANIFEST_PATH.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Funded production execution requires EVM_DEPLOYMENT_MANIFEST_PATH.',
+        path: ['EVM_DEPLOYMENT_MANIFEST_PATH'],
       });
     }
 

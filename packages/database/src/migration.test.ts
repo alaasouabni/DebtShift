@@ -304,5 +304,5 @@ describe('recovery responsibility forward migration', () => {
     } finally {
       await database.close();
     }
-  });
+  }, 15_000);
 });

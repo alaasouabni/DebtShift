@@ -144,7 +144,24 @@ Every contract deployment produces a versioned manifest containing:
 - Source commit.
 - Deployment timestamp.
 
-Applications refuse to start if required manifest entries or chain IDs disagree with runtime configuration.
+Applications refuse to start if required manifest entries, route bindings, or chain IDs disagree
+with runtime configuration.
+
+The guarded EVM deployer refuses a dirty worktree, records the full source commit, validates both
+RPC chain IDs and the configured Aave reserve and Morpho market before broadcasting, deploys only
+DebtShift contracts around those existing protocols, and leaves all workflow write switches
+disabled. It reserves a new manifest path before the first deployment transaction so an existing
+record can never be overwritten after funds have been spent. The route hash is derived from the
+schema-normalized configuration rather than JSON whitespace.
+
+Funded production `testnet` and write-enabled `mainnet` workers require
+`EVM_DEPLOYMENT_MANIFEST_PATH`. Before queue consumption, the worker compares the manifest's mode,
+chain IDs, deployment block bounds, normalized route hash, protocol/token/market identities, and all
+seven DebtShift contract addresses to runtime configuration. It then independently verifies every
+canonical deployment/configuration receipt, runtime code hash, immutable protocol binding, owner,
+executor/operator role, pause state, plan-domain link, and disabled onchain write switch. A missing,
+unreadable, stale, reorged, tampered, or mismatched manifest stops startup. Exact EVM deployment and
+readiness procedures are in `20-evm-deployment.md`.
 
 The NEAR registry manifest is versioned separately from the two-chain EVM manifest. It records the
 source commit, registry/deployer/owner/verifier accounts, local WASM SHA-256, deployed NEAR code

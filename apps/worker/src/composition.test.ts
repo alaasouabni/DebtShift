@@ -12,7 +12,11 @@ import {
 import type { TransportObservation } from '@debtshift/intents';
 import { describe, expect, it, vi } from 'vitest';
 
-import { composeWorkflowHandlers, type WorkflowAdapterSet } from './composition.js';
+import {
+  assertWorkflowAdaptersReady,
+  composeWorkflowHandlers,
+  type WorkflowAdapterSet,
+} from './composition.js';
 import type {
   FinalizedChainAction,
   MigrationExecutionPort,
@@ -21,6 +25,22 @@ import type {
 } from './handlers.js';
 
 describe('composeWorkflowHandlers', () => {
+  it('awaits execution and registry startup attestation before command consumption', async () => {
+    const adapters = fakeAdapters('testnet', 'DEBTSHIFT_SIMULATOR');
+    const executionReady = vi.fn(async () => {});
+    const registryReady = vi.fn(async () => {});
+    adapters.execution.assertReady = executionReady;
+    adapters.registry.assertReady = registryReady;
+
+    await assertWorkflowAdaptersReady(adapters);
+
+    expect(executionReady).toHaveBeenCalledOnce();
+    expect(registryReady).toHaveBeenCalledOnce();
+    expect(executionReady.mock.invocationCallOrder[0]).toBeLessThan(
+      registryReady.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+  });
+
   it('requires an explicitly sandbox-bound adapter set', () => {
     const environment = parseDebtShiftEnvironment({});
 

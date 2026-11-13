@@ -12,6 +12,7 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.INTENTS_MODE).toBe('simulated');
     expect(environment.NEAR_NETWORK).toBe('sandbox');
     expect(environment.NEAR_RPC_FALLBACK_URLS_JSON).toEqual([]);
+    expect(environment.EVM_DEPLOYMENT_MANIFEST_PATH).toBe('');
     expect(environment.AGENT_MODE).toBe('DETERMINISTIC');
     expect(environment.MAINNET_EXECUTION_ENABLED).toBe(false);
     expect(environment.SOURCE_FINALITY_CONFIRMATIONS).toBe(1);
@@ -96,6 +97,12 @@ describe('parseDebtShiftEnvironment', () => {
         NEAR_NETWORK: 'testnet',
       }),
     ).toThrow('Testnet mode requires onchain market reads and the NEAR testnet registry.');
+  });
+
+  it('requires an EVM deployment manifest before funded production execution', () => {
+    expect(() =>
+      parseDebtShiftEnvironment({ NODE_ENV: 'production', DEBTSHIFT_MODE: 'testnet' }),
+    ).toThrow('Funded production execution requires EVM_DEPLOYMENT_MANIFEST_PATH');
   });
 
   it('accepts a bounded, unique list of HTTPS NEAR RPC fallbacks', () => {

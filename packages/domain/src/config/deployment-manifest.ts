@@ -8,6 +8,10 @@ import {
 } from '../primitives.js';
 
 const unsignedIntegerTextSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
+const sourceCommitSchema = z
+  .string()
+  .regex(/^[0-9a-fA-F]{40}$/)
+  .transform((value) => value.toLowerCase());
 
 export const deployedContractRecordSchema = z
   .object({
@@ -90,6 +94,7 @@ export const debtShiftEvmDeploymentManifestSchema = z
     routeId: canonicalTextSchema,
     routeConfigurationHash: bytes32Schema,
     createdAt: z.iso.datetime(),
+    sourceCommit: sourceCommitSchema,
     owner: evmAddressSchema,
     executor: evmAddressSchema,
     workflowWriteSwitchEnabled: z.literal(false),
@@ -123,10 +128,6 @@ export const debtShiftEvmDeploymentManifestSchema = z
 
 export type DebtShiftEvmDeploymentManifest = z.infer<typeof debtShiftEvmDeploymentManifestSchema>;
 
-const sourceCommitSchema = z
-  .string()
-  .regex(/^[0-9a-fA-F]{40}$/)
-  .transform((value) => value.toLowerCase());
 const nearCryptoHashSchema = z
   .string()
   .regex(/^[1-9A-HJ-NP-Za-km-z]{32,64}$/, 'Expected a base58-encoded NEAR hash.');
