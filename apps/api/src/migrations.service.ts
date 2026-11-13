@@ -5,6 +5,7 @@ import {
   getProviderQuote,
   getMigrationDetails,
   listEnabledMarkets,
+  listMigrationEventsAfter,
   listWalletPositions,
 } from '@debtshift/database';
 import {
@@ -24,9 +25,17 @@ import {
   verifySignedExecutionPlan,
   verifySignedRefinanceIntent,
 } from '@debtshift/domain';
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  type MessageEvent,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { compareRoutes } from '@debtshift/optimizer';
+import { concatMap, from, mergeMap, timer, type Observable } from 'rxjs';
 import { createPublicClient, http, isAddressEqual, type Address, type Hex } from 'viem';
 import { z } from 'zod';
 
@@ -192,6 +201,51 @@ export class MigrationsService {
     const result = await getMigrationDetails(this.database.db, migrationId);
     if (result === undefined) throw new NotFoundException('Migration not found.');
     return result;
+  }
+
+  async streamMigrationEvents(
+    migrationId: string,
+    initialAfterSequence: number,
+  ): Promise<Observable<MessageEvent>> {
+    await this.getMigration(migrationId);
+    let cursor = initialAfterSequence;
+    let emptyPolls = 0;
+
+    return timer(0, 1_000).pipe(
+      concatMap(async () => {
+        const events = await listMigrationEventsAfter(this.database.db, migrationId, cursor);
+        if (events.length > 0) {
+          cursor = events.at(-1)?.sequence ?? cursor;
+          emptyPolls = 0;
+          return events.map((event): MessageEvent => ({
+            type: 'migration',
+            id: event.sequence.toString(),
+            retry: 1_500,
+            data: {
+              migrationId,
+              sequence: event.sequence,
+              type: event.type,
+              phase: event.phase,
+              observedAt: event.observedAt,
+              payloadHash: event.payloadHash,
+            },
+          }));
+        }
+
+        const shouldEmitKeepalive = emptyPolls === 0 || emptyPolls >= 14;
+        emptyPolls = shouldEmitKeepalive ? 1 : emptyPolls + 1;
+        return shouldEmitKeepalive
+          ? [
+              {
+                type: 'keepalive',
+                retry: 1_500,
+                data: { migrationId, cursor, observedAt: new Date().toISOString() },
+              } satisfies MessageEvent,
+            ]
+          : [];
+      }),
+      mergeMap((events) => from(events)),
+    );
   }
 
   listPositions(walletAddress: string) {

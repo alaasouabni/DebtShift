@@ -29,7 +29,7 @@ DebtShift’s first implementation is complete only when every mandatory item be
 - [x] Test funding principal and fee reconcile.
 - [x] Residual assets return to the authorized borrower receiver.
 - [ ] Final evidence hash is registered on NEAR testnet and matches the application.
-- [ ] Timeline, evidence, ledger, and recovery information survive reload and worker restart.
+- [x] Timeline, evidence, ledger, and recovery information survive reload and worker restart.
 
 ## Failure behavior
 

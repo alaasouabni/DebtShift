@@ -222,15 +222,15 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [ ] Implement wallet challenge/session authentication.
 - [ ] Complete OpenAPI schemas and generated client types.
 - [ ] Complete positions, markets, quotes, intents, plans, execute, cancel, events, and evidence endpoints.
-- [ ] Implement SSE reconnect and cursor recovery.
-- [ ] Build source position and risk views.
-- [ ] Build route comparison and economic explanation views.
-- [ ] Display financing classifications, maximum safe capacity, confirmed external funding, required
+- [x] Implement SSE reconnect and cursor recovery.
+- [x] Build source position and risk views.
+- [x] Build route comparison and economic explanation views.
+- [x] Display financing classifications, maximum safe capacity, confirmed external funding, required
       destination borrowing, exact shortfall, resolution status, and checkpoint provenance.
-- [ ] Build the exact authorization review and signing flow.
-- [ ] Build the migration timeline with provider and verified states separated.
-- [ ] Build evidence, ledger, residual asset, and recovery views.
-- [ ] Add accessible error handling and responsive layouts.
+- [x] Build the exact authorization review and signing flow.
+- [x] Build the migration timeline with provider and verified states separated.
+- [x] Build evidence, ledger, residual asset, and recovery views.
+- [x] Add accessible error handling and responsive layouts.
 
 ### Exit criteria
 

@@ -24,6 +24,7 @@ import {
   createAuthorizedMigration,
   getMigrationDetails,
   getMigrationExecutionContext,
+  listMigrationEventsAfter,
   storeAssetCatalogVersion,
   storeProviderObservation,
 } from './migration-repository.js';
@@ -73,6 +74,10 @@ describe('authorized migration repository', () => {
       'SOURCE_POSITION_SNAPSHOT',
     ]);
     expect(details?.events).toHaveLength(1);
+    await expect(listMigrationEventsAfter(database, created.migrationId, 0)).resolves.toEqual(
+      details?.events,
+    );
+    await expect(listMigrationEventsAfter(database, created.migrationId, 1)).resolves.toEqual([]);
     expect(details?.commands).toHaveLength(1);
     expect(details?.commands[0]?.type).toBe('RESERVE_LIQUIDITY');
     const context = await getMigrationExecutionContext(database, created.migrationId);

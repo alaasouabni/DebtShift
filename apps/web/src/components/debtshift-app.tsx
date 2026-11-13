@@ -16,6 +16,13 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createWalletClient, custom, type Address, type EIP1193Provider, type Hex } from 'viem';
 
+import {
+  latestMigrationEventSequence,
+  migrationIdFromSearch,
+  migrationStreamUrl,
+  migrationUrl,
+} from './migration-client';
+
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/v1';
 const terminalPhases = new Set(['COMPLETED', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED']);
 const warningPhases = new Set(['RECOVERY', 'FAILED_SAFE', 'REQUOTE_REQUIRED', 'EXPIRED']);
@@ -141,6 +148,52 @@ interface MigrationEvidence {
   readonly verificationState: string;
 }
 
+interface MigrationEvent {
+  readonly eventId: string;
+  readonly sequence: number;
+  readonly type: string;
+  readonly phase: string;
+  readonly actor: string;
+  readonly payloadHash: string;
+  readonly observedAt: string;
+}
+
+interface MigrationLedgerEntry {
+  readonly entryId: string;
+  readonly sequence: number;
+  readonly componentCode: string;
+  readonly componentId: string;
+  readonly evidenceId: string;
+  readonly basis: string;
+  readonly chainId: string;
+  readonly token: string;
+  readonly amountUnits: string;
+  readonly debitParty: string;
+  readonly creditParty: string;
+  readonly category: string;
+  readonly transactionReference: string | null;
+}
+
+interface MigrationReservation {
+  readonly reservationId: string;
+  readonly chainId: string;
+  readonly asset: string;
+  readonly principalUnits: string;
+  readonly feeCapUnits: string;
+  readonly status: string;
+  readonly expiresAt: string;
+}
+
+interface MigrationRecoveryCase {
+  readonly recoveryId: string;
+  readonly policy: string;
+  readonly status: string;
+  readonly reason: string;
+  readonly residualAssets: readonly Record<string, unknown>[];
+  readonly openedAt: string;
+  readonly resolvedAt: string | null;
+}
+
 interface MigrationDetails {
   readonly migration: {
     readonly migrationId: string;
@@ -148,15 +201,20 @@ interface MigrationDetails {
     readonly updatedAt: string;
   };
   readonly evidence: readonly MigrationEvidence[];
+  readonly events: readonly MigrationEvent[];
   readonly commands: readonly {
     readonly commandId: string;
     readonly type: string;
     readonly status: string;
     readonly lastError: string | null;
   }[];
+  readonly ledger: readonly MigrationLedgerEntry[];
+  readonly reservations: readonly MigrationReservation[];
+  readonly recoveryCases: readonly MigrationRecoveryCase[];
 }
 
 type BusyAction = 'connect' | 'prepare' | 'authorize' | 'explain' | null;
+type StreamStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'complete';
 
 export function DebtShiftApp() {
   const [account, setAccount] = useState<Address>();
@@ -166,6 +224,7 @@ export function DebtShiftApp() {
   const [prepared, setPrepared] = useState<PreparedMigration>();
   const [migrationId, setMigrationId] = useState<string>();
   const [migration, setMigration] = useState<MigrationDetails>();
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
   const [busy, setBusy] = useState<BusyAction>(null);
   const [error, setError] = useState<string>();
   const [explanationMode, setExplanationMode] = useState<ExplanationMode>('DETERMINISTIC');
@@ -182,21 +241,63 @@ export function DebtShiftApp() {
   }, []);
 
   useEffect(() => {
-    if (migrationId === undefined) return;
-    let mounted = true;
-    const poll = async () => {
+    const restoredMigrationId = migrationIdFromSearch(window.location.search);
+    if (restoredMigrationId !== undefined) setMigrationId(restoredMigrationId);
+  }, []);
+
+  useEffect(() => {
+    if (migrationId === undefined) {
+      setStreamStatus('idle');
+      return;
+    }
+    let disposed = false;
+    let eventSource: EventSource | undefined;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const connect = async () => {
+      setStreamStatus('connecting');
       try {
         const details = await loadMigration(migrationId);
-        if (!mounted || terminalPhases.has(details.migration.phase)) return;
-      } catch (pollError) {
-        if (mounted) setError(messageOf(pollError));
+        if (disposed) return;
+        setError(undefined);
+        if (terminalPhases.has(details.migration.phase)) {
+          setStreamStatus('complete');
+          return;
+        }
+        const cursor = latestMigrationEventSequence(details.events);
+        eventSource = new EventSource(migrationStreamUrl(apiBase, migrationId, cursor));
+        eventSource.onopen = () => {
+          if (!disposed) setStreamStatus('live');
+        };
+        eventSource.addEventListener('migration', (event) => {
+          if (disposed) return;
+          const update = parseStreamUpdate(event);
+          void loadMigration(migrationId).catch((streamError: unknown) => {
+            if (!disposed) setError(messageOf(streamError));
+          });
+          if (update !== undefined && terminalPhases.has(update.phase)) {
+            eventSource?.close();
+            setStreamStatus('complete');
+          }
+        });
+        eventSource.addEventListener('keepalive', () => {
+          if (!disposed) setStreamStatus('live');
+        });
+        eventSource.onerror = () => {
+          if (!disposed) setStreamStatus('reconnecting');
+        };
+      } catch (streamError) {
+        if (!disposed) {
+          setStreamStatus('reconnecting');
+          setError(messageOf(streamError));
+          retryTimer = setTimeout(() => void connect(), 1_500);
+        }
       }
     };
-    void poll();
-    const timer = setInterval(() => void poll(), 1_500);
+    void connect();
     return () => {
-      mounted = false;
-      clearInterval(timer);
+      disposed = true;
+      eventSource?.close();
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, [loadMigration, migrationId]);
 
@@ -223,6 +324,7 @@ export function DebtShiftApp() {
       setPrepared(undefined);
       setMigration(undefined);
       setMigrationId(undefined);
+      window.history.replaceState({}, '', migrationUrl(window.location.href));
     } catch (connectError) {
       setError(messageOf(connectError));
     } finally {
@@ -338,6 +440,7 @@ export function DebtShiftApp() {
           targetAuthorization,
         }),
       });
+      window.history.replaceState({}, '', migrationUrl(window.location.href, result.migrationId));
       setMigrationId(result.migrationId);
       await loadMigration(result.migrationId);
     } catch (authorizationError) {
@@ -358,6 +461,7 @@ export function DebtShiftApp() {
   }, [prepared]);
   const comparison = routeAnalysis?.analysis.analyses[0]?.comparison;
   const explained = routeAnalysis?.explanations[0]?.result;
+  const displayedMode = prepared?.execution.mode ?? 'sandbox';
 
   return (
     <main>
@@ -367,7 +471,10 @@ export function DebtShiftApp() {
           <span>DebtShift</span>
         </a>
         <div className="environment">
-          <span className="statusDot" /> Simulator / test funds
+          <span className="statusDot" /> {displayedMode.replaceAll('-', ' ')} /{' '}
+          {prepared?.execution.fundedExecutionEnabled === false
+            ? 'writes disabled'
+            : 'bounded writes'}
         </div>
       </nav>
 
@@ -393,8 +500,14 @@ export function DebtShiftApp() {
         </div>
         <div className="boundary" role="note">
           <strong>Safe demonstration boundary</strong>
-          <span>Test assets only</span>
-          <span>DebtShift simulator—not 1Click testnet</span>
+          <span>
+            {displayedMode === 'sandbox' ? 'Test assets only' : 'Mode-enforced execution'}
+          </span>
+          <span>
+            {prepared?.execution.simulatedTransport === false
+              ? 'Official 1Click transport'
+              : 'External transport boundary simulated'}
+          </span>
           <span>Two explicit wallet signatures</span>
         </div>
       </section>
@@ -651,6 +764,24 @@ export function DebtShiftApp() {
                   <Metric label="Maximum fee" value={`${economics.maximumFee} sUSDC`} />
                   <Metric label="Deadline" value={formatTime(prepared.plan.deadline)} compact />
                 </dl>
+                <details className="authorizationReview">
+                  <summary>Review exact signed boundaries</summary>
+                  <dl>
+                    <HashTerm label="Intent" value={prepared.intentHash} />
+                    <HashTerm label="Execution plan" value={prepared.planHash} />
+                    <HashTerm label="Transport quote" value={prepared.quote.quoteHash} />
+                    <HashTerm
+                      label="Destination receiver"
+                      value={prepared.plan.destinationReceiver}
+                    />
+                    <HashTerm
+                      label="Refund receiver"
+                      value={prepared.plan.transportRefundReceiver}
+                    />
+                    <HashTerm label="Solver payout" value={prepared.plan.payoutReceiver} />
+                    <HashTerm label="Nonce" value={prepared.plan.nonce} />
+                  </dl>
+                </details>
                 <div className="simulationWarning">{prepared.execution.warning}</div>
                 {migrationId === undefined && (
                   <button
@@ -681,8 +812,13 @@ export function DebtShiftApp() {
             {migration ? (
               <>
                 <div className="migrationIdentity">
-                  <span>{migration.migration.phase.replaceAll('_', ' ')}</span>
-                  <code>{shortHash(migration.migration.migrationId)}</code>
+                  <div>
+                    <span>{migration.migration.phase.replaceAll('_', ' ')}</span>
+                    <small>{streamStatusLabel(streamStatus)}</small>
+                  </div>
+                  <code title={migration.migration.migrationId}>
+                    {shortHash(migration.migration.migrationId)}
+                  </code>
                 </div>
                 <ol className="timeline">
                   {migration.evidence.map((record) => (
@@ -690,9 +826,10 @@ export function DebtShiftApp() {
                       <span className="evidenceDot" />
                       <div>
                         <strong>{labelEvidence(record.type)}</strong>
-                        <small>
-                          {record.provider} · {record.verificationState}
-                        </small>
+                        <div className="evidenceStates">
+                          <span>Provider: {record.provider}</span>
+                          <span>Verified: {record.verificationState}</span>
+                        </div>
                         {record.transactionHash && <code>{shortHash(record.transactionHash)}</code>}
                       </div>
                     </li>
@@ -712,6 +849,66 @@ export function DebtShiftApp() {
             )}
           </section>
         </div>
+
+        <section className="assurancePanel" aria-labelledby="assurance-title">
+          <header className="assuranceHeader">
+            <div>
+              <p className="sectionLabel">Financing and durable records</p>
+              <h3 id="assurance-title">Know what funds the route—and what actually moved.</h3>
+            </div>
+            <p>
+              Provider claims never determine completion. Only verified evidence, balanced ledger
+              entries, and the evidence-derived phase do.
+            </p>
+          </header>
+          <div className="assuranceGrid">
+            <article className="assuranceCard">
+              <div className="recordHeading">
+                <span>Funding checkpoint</span>
+                <strong>{prepared ? 'Signed and bounded' : 'Awaiting route'}</strong>
+              </div>
+              {prepared ? (
+                <FinancingCheckpoint financing={prepared.plan.financing} />
+              ) : (
+                <EmptyState>
+                  Prepare the exact route to inspect capacity, funding, costs, and provenance.
+                </EmptyState>
+              )}
+            </article>
+
+            <article className="assuranceCard">
+              <div className="recordHeading">
+                <span>Reservation and ledger</span>
+                <strong>{migration ? `${migration.ledger.length} entries` : 'Not started'}</strong>
+              </div>
+              {migration ? (
+                <AccountingRecords migration={migration} financing={prepared?.plan.financing} />
+              ) : (
+                <EmptyState>
+                  Exact principal, fees, custody movements, and residuals appear after execution.
+                </EmptyState>
+              )}
+            </article>
+
+            <article className="assuranceCard">
+              <div className="recordHeading">
+                <span>Audit and recovery</span>
+                <strong>
+                  {migration?.recoveryCases.some((recovery) => recovery.status === 'OPEN')
+                    ? 'Recovery open'
+                    : 'No open recovery'}
+                </strong>
+              </div>
+              {migration ? (
+                <AuditAndRecoveryRecords migration={migration} />
+              ) : (
+                <EmptyState>
+                  Durable phase events and any residual custody claim remain available after reload.
+                </EmptyState>
+              )}
+            </article>
+          </div>
+        </section>
       </section>
 
       <footer>
@@ -719,6 +916,156 @@ export function DebtShiftApp() {
         <span>Deterministic policy · evidence before state</span>
       </footer>
     </main>
+  );
+}
+
+function FinancingCheckpoint({ financing }: { readonly financing: ExecutionPlan['financing'] }) {
+  const decimals = financing.settlementAsset.decimals;
+  const symbol = financing.settlementAsset.symbol ?? 'settlement units';
+  const resolved = financing.fundingShortfallUnits === '0';
+  return (
+    <>
+      <div className={`resolutionStatus ${resolved ? '' : 'blocked'}`}>
+        <span>{resolved ? 'Zero-shortfall proof passed' : 'Execution blocked by shortfall'}</span>
+        <strong>
+          {formatUnits(financing.fundingShortfallUnits, decimals)} {symbol} shortfall
+        </strong>
+      </div>
+      <dl className="checkpointMetrics">
+        <Metric
+          label="Solver principal"
+          value={`${formatUnits(financing.solverPrincipalUnits, decimals)} ${symbol}`}
+        />
+        <Metric
+          label="Maximum safe capacity"
+          value={`${formatUnits(financing.maximumSafeBorrowingCapacityUnits, decimals)} ${symbol}`}
+        />
+        <Metric
+          label="Confirmed external funding"
+          value={`${formatUnits(financing.confirmedExternalFundingUnits, decimals)} ${symbol}`}
+        />
+        <Metric
+          label="Required destination borrow"
+          value={`${formatUnits(financing.requiredDestinationBorrowUnits, decimals)} ${symbol}`}
+        />
+      </dl>
+      <div className="costSummary">
+        <span>
+          {financing.costs.length} classified cost{financing.costs.length === 1 ? '' : 's'} ·{' '}
+          {financing.externalFunding.length} finalized external funding record
+          {financing.externalFunding.length === 1 ? '' : 's'}
+        </span>
+        <ul>
+          {financing.costs.map((cost) => (
+            <li key={cost.componentId}>
+              <span>{humanize(cost.kind)}</span>
+              <strong>{humanize(cost.financingClass)}</strong>
+              <code>
+                {formatUnits(cost.settlementAmountUnits, decimals)} {symbol}
+              </code>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="checkpointProvenance">
+        <span>Evaluated {formatDateTime(financing.evaluatedAt)}</span>
+        <span>Valid until {formatTime(financing.validUntil)}</span>
+        <code title={financing.capacityEvidenceHash}>
+          Capacity {shortHash(financing.capacityEvidenceHash)}
+        </code>
+      </div>
+    </>
+  );
+}
+
+function AccountingRecords({
+  migration,
+  financing,
+}: {
+  readonly migration: MigrationDetails;
+  readonly financing: ExecutionPlan['financing'] | undefined;
+}) {
+  const reservation = migration.reservations.at(-1);
+  return (
+    <>
+      {reservation && (
+        <div className="reservationSummary">
+          <span>{humanize(reservation.status)} reservation</span>
+          <strong>
+            {formatRecordAmount(reservation.principalUnits, reservation.asset, financing)} principal
+          </strong>
+          <small>
+            Fee cap {formatRecordAmount(reservation.feeCapUnits, reservation.asset, financing)} ·
+            chain {reservation.chainId}
+          </small>
+        </div>
+      )}
+      {migration.ledger.length > 0 ? (
+        <ol className="recordList ledgerList">
+          {migration.ledger.slice(-8).map((entry) => (
+            <li key={entry.entryId}>
+              <div>
+                <strong>{humanize(entry.category)}</strong>
+                <span>
+                  {humanize(entry.debitParty)} → {humanize(entry.creditParty)}
+                </span>
+              </div>
+              <code title={`${entry.amountUnits} base units`}>
+                {formatRecordAmount(entry.amountUnits, entry.token, financing)}
+              </code>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="recordNotice">
+          No asset movement is represented before verified ledger evidence.
+        </p>
+      )}
+      {migration.ledger.length > 8 && (
+        <small className="recordFootnote">
+          Showing the latest 8 of {migration.ledger.length} immutable entries.
+        </small>
+      )}
+    </>
+  );
+}
+
+function AuditAndRecoveryRecords({ migration }: { readonly migration: MigrationDetails }) {
+  return (
+    <>
+      {migration.recoveryCases.map((recovery) => (
+        <div className="recoverySummary" key={recovery.recoveryId}>
+          <span>{humanize(recovery.status)}</span>
+          <strong>{humanize(recovery.policy)}</strong>
+          <p>{recovery.reason}</p>
+          <ul>
+            {recovery.residualAssets.map((asset, index) => (
+              <li key={`${recovery.recoveryId}-${index}`}>{describeResidualAsset(asset)}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <ol className="recordList auditList">
+        {migration.events.slice(-8).map((event) => (
+          <li key={event.eventId}>
+            <div>
+              <strong>
+                #{event.sequence} {humanize(event.type)}
+              </strong>
+              <span>
+                {humanize(event.phase)} · {formatDateTime(event.observedAt)}
+              </span>
+            </div>
+            <code title={event.payloadHash}>{shortHash(event.payloadHash)}</code>
+          </li>
+        ))}
+      </ol>
+      {migration.events.length > 8 && (
+        <small className="recordFootnote">
+          Showing the latest 8 of {migration.events.length} hash-bound audit events.
+        </small>
+      )}
+    </>
   );
 }
 
@@ -805,6 +1152,17 @@ function Metric({
   );
 }
 
+function HashTerm({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>
+        <code title={value}>{value.startsWith('0x') ? shortHash(value) : value}</code>
+      </dd>
+    </div>
+  );
+}
+
 function explanationRequest(input: {
   readonly mode: ExplanationMode;
   readonly remoteProvider: RemoteProvider;
@@ -863,6 +1221,69 @@ function getInjectedProvider(): EIP1193Provider {
   const ethereum = (window as Window & { ethereum?: EIP1193Provider }).ethereum;
   if (ethereum === undefined) throw new Error('Install an EIP-1193 wallet to continue.');
   return ethereum;
+}
+
+function parseStreamUpdate(event: Event): { readonly phase: string } | undefined {
+  try {
+    const data = (event as MessageEvent<string>).data;
+    if (typeof data !== 'string') return undefined;
+    const parsed = JSON.parse(data) as unknown;
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !('phase' in parsed) ||
+      typeof parsed.phase !== 'string'
+    ) {
+      return undefined;
+    }
+    return { phase: parsed.phase };
+  } catch {
+    return undefined;
+  }
+}
+
+function streamStatusLabel(status: StreamStatus): string {
+  const labels: Record<StreamStatus, string> = {
+    idle: 'Live updates idle',
+    connecting: 'Connecting to durable event stream',
+    live: 'Live · cursor recovery enabled',
+    reconnecting: 'Reconnecting from last durable event',
+    complete: 'Terminal phase · history preserved',
+  };
+  return labels[status];
+}
+
+function formatRecordAmount(
+  amountUnits: string,
+  token: string,
+  financing?: ExecutionPlan['financing'],
+): string {
+  if (
+    financing !== undefined &&
+    token.toLowerCase() === financing.settlementAsset.address.toLowerCase()
+  ) {
+    return `${formatUnits(amountUnits, financing.settlementAsset.decimals)} ${financing.settlementAsset.symbol ?? 'units'}`;
+  }
+  return `${BigInt(amountUnits).toLocaleString()} base units · ${shortAddress(token)}`;
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  }).format(date);
+}
+
+function describeResidualAsset(asset: Record<string, unknown>): string {
+  const values = Object.entries(asset)
+    .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
+    .slice(0, 4)
+    .map(([key, value]) => `${humanize(key)}: ${String(value)}`);
+  return values.length > 0
+    ? values.join(' · ')
+    : 'Residual asset details are hash-bound in evidence.';
 }
 
 function formatUnits(value: string, decimals: number): string {

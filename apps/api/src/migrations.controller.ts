@@ -1,5 +1,18 @@
-import { Body, Controller, Get, Inject, Param, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Sse,
+  type MessageEvent,
+} from '@nestjs/common';
+import { ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
+import type { Observable } from 'rxjs';
 
 import { MigrationsService } from './migrations.service.js';
 import { PreparationService } from './preparation.service.js';
@@ -54,9 +67,44 @@ export class MigrationsController {
     return (await this.migrations.getMigration(migrationId)).events;
   }
 
+  @Sse('migrations/:migrationId/stream')
+  @ApiOperation({ summary: 'Stream cursor-resumable authoritative migration events' })
+  @ApiProduces('text/event-stream')
+  streamEvents(
+    @Param('migrationId') migrationId: string,
+    @Query('after') after: string | undefined,
+    @Headers('last-event-id') lastEventId: string | undefined,
+  ): Promise<Observable<MessageEvent>> {
+    return this.migrations.streamMigrationEvents(
+      migrationId,
+      parseMigrationEventCursor(after, lastEventId),
+    );
+  }
+
   @Get('migrations/:migrationId/evidence')
   @ApiOperation({ summary: 'Read normalized migration evidence' })
   async getEvidence(@Param('migrationId') migrationId: string) {
     return (await this.migrations.getMigration(migrationId)).evidence;
   }
+}
+
+export function parseMigrationEventCursor(
+  queryCursor: string | undefined,
+  lastEventId: string | undefined,
+): number {
+  const values = [queryCursor, lastEventId].filter(
+    (value): value is string => value !== undefined && value.length > 0,
+  );
+  if (values.length === 0) return 0;
+  const parsed = values.map((value) => {
+    if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+      throw new BadRequestException('Migration event cursor must be a non-negative integer.');
+    }
+    const cursor = Number(value);
+    if (!Number.isSafeInteger(cursor) || cursor > 2_147_483_647) {
+      throw new BadRequestException('Migration event cursor is outside the supported range.');
+    }
+    return cursor;
+  });
+  return Math.max(...parsed);
 }

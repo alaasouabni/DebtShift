@@ -18,7 +18,7 @@ import {
   type SignedExecutionPlan,
   type SignedRefinanceIntent,
 } from '@debtshift/domain';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gt } from 'drizzle-orm';
 
 import type { DebtShiftDatabase } from './client.js';
 import {
@@ -361,6 +361,26 @@ export async function getMigrationDetails(database: DebtShiftDatabase, migration
     reservations: storedReservations,
     recoveryCases: storedRecoveryCases,
   };
+}
+
+export async function listMigrationEventsAfter(
+  database: DebtShiftDatabase,
+  migrationId: string,
+  afterSequence: number,
+  limit = 100,
+) {
+  if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+    throw new Error('Migration event cursor must be a non-negative safe integer.');
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error('Migration event page size must be an integer from 1 through 500.');
+  }
+  return database
+    .select()
+    .from(auditEvents)
+    .where(and(eq(auditEvents.migrationId, migrationId), gt(auditEvents.sequence, afterSequence)))
+    .orderBy(asc(auditEvents.sequence))
+    .limit(limit);
 }
 
 export async function listWalletPositions(database: DebtShiftDatabase, walletAddress: string) {

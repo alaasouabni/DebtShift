@@ -688,6 +688,45 @@ button:disabled {
   line-height: 1.5;
 }
 
+.authorizationReview {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.authorizationReview summary {
+  padding: 14px 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.authorizationReview dl {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0 0 15px;
+}
+
+.authorizationReview dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.authorizationReview dt,
+.authorizationReview dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.authorizationReview dd {
+  color: var(--ink);
+}
+
 .migrationIdentity {
   display: flex;
   justify-content: space-between;
@@ -699,6 +738,16 @@ button:disabled {
   color: white;
   background: var(--ink);
   font-size: 12px;
+}
+
+.migrationIdentity > div {
+  display: grid;
+  gap: 4px;
+}
+
+.migrationIdentity small {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 9px;
 }
 
 code {
@@ -761,6 +810,260 @@ code {
   line-height: 1.5;
 }
 
+.evidenceStates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.assurancePanel {
+  margin-top: 28px;
+  padding: 30px;
+  border: 1px solid var(--ink);
+  border-radius: 10px;
+  background: var(--panel-light);
+  box-shadow: var(--shadow);
+}
+
+.assuranceHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 40px;
+  align-items: end;
+  margin-bottom: 26px;
+}
+
+.assuranceHeader .sectionLabel {
+  margin-bottom: 10px;
+}
+
+.assuranceHeader h3 {
+  max-width: 690px;
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: clamp(28px, 3.5vw, 44px);
+  font-weight: 400;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+}
+
+.assuranceHeader > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.assuranceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.assuranceCard {
+  min-width: 0;
+  padding: 22px;
+  border-right: 1px solid var(--line);
+  background: white;
+}
+
+.assuranceCard:last-child {
+  border-right: 0;
+}
+
+.recordHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.recordHeading span,
+.recordHeading strong {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.recordHeading span {
+  color: var(--muted);
+}
+
+.resolutionStatus,
+.reservationSummary,
+.recoverySummary {
+  display: grid;
+  gap: 5px;
+  padding: 13px 14px;
+  border-left: 3px solid var(--green);
+  background: rgba(201, 255, 87, 0.17);
+}
+
+.resolutionStatus.blocked,
+.recoverySummary {
+  border-color: var(--red);
+  background: #f8e9e4;
+}
+
+.resolutionStatus span,
+.reservationSummary span,
+.recoverySummary span {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.resolutionStatus strong,
+.reservationSummary strong,
+.recoverySummary strong {
+  font-size: 12px;
+}
+
+.checkpointMetrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 18px 0 0;
+}
+
+.checkpointMetrics .metric {
+  padding: 11px 0;
+}
+
+.checkpointMetrics .metric:nth-child(odd) {
+  padding-right: 10px;
+}
+
+.checkpointMetrics .metric:nth-child(even) {
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
+.checkpointMetrics .metric dt,
+.checkpointMetrics .metric dd {
+  font-size: 9px;
+}
+
+.checkpointMetrics .metric dd {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  line-height: 1.45;
+}
+
+.costSummary,
+.checkpointProvenance {
+  margin-top: 16px;
+}
+
+.costSummary > span,
+.checkpointProvenance span,
+.checkpointProvenance code,
+.recordFootnote {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.costSummary ul,
+.recordList,
+.recoverySummary ul {
+  display: grid;
+  gap: 0;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.costSummary li,
+.recordList li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 9px;
+}
+
+.costSummary li strong {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.costSummary li code {
+  grid-column: 1 / -1;
+}
+
+.checkpointProvenance {
+  display: grid;
+  gap: 4px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.reservationSummary {
+  margin-bottom: 12px;
+}
+
+.reservationSummary small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.recordList li > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.recordList li strong {
+  font-size: 10px;
+}
+
+.recordList li span,
+.recordList li code,
+.recordNotice,
+.recoverySummary p,
+.recoverySummary li {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.recordList li code {
+  max-width: 130px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recordNotice {
+  padding: 14px 0;
+}
+
+.recordFootnote {
+  display: block;
+  margin-top: 10px;
+}
+
+.recoverySummary {
+  margin-bottom: 12px;
+}
+
+.recoverySummary p {
+  margin: 5px 0;
+}
+
+.recoverySummary ul {
+  gap: 5px;
+}
+
 main > footer {
   display: flex;
   justify-content: space-between;
@@ -789,6 +1092,19 @@ main > footer {
     min-height: 380px;
     border-top: 1px solid var(--line);
   }
+
+  .assuranceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .assuranceCard {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .assuranceCard:last-child {
+    border-bottom: 0;
+  }
 }
 
 @media (max-width: 720px) {
@@ -815,6 +1131,7 @@ main > footer {
   }
 
   .analysisHeader,
+  .assuranceHeader,
   .routeCards,
   .fieldGrid {
     grid-template-columns: 1fr;
@@ -825,6 +1142,10 @@ main > footer {
   }
 
   .analysisPanel {
+    padding: 22px;
+  }
+
+  .assurancePanel {
     padding: 22px;
   }
 
