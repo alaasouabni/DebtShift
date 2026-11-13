@@ -35,6 +35,12 @@ export const evmAddressSchema = z
   .refine((value) => isAddress(value, { strict: false }), 'Expected a valid EVM address.')
   .transform((value) => getAddress(value)) as z.ZodType<Address>;
 
+export const nearAccountIdSchema = z
+  .string()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/, 'Expected a canonical lowercase NEAR account ID.');
+
 export const hexSchema = z
   .string()
   .refine(

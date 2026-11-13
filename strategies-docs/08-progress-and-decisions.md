@@ -14,10 +14,10 @@ This file is updated throughout implementation. It is the first place to inspect
 | M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                                                                                                                                                   |
 | M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, asset-safe pre-source expiry/cancellation/revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                             |
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains.                                                 |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                                                                                                         |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, guarded source-bound manifests/deployment/readiness CLIs, startup code/role attestation, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                |
 | M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, and production EVM deployment/readiness verification pass focused tests. Live credentialed validation remains.                                                                                                                             |
 | M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, credential-safe distributed traces, provisioned operations dashboards, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. External alert delivery, operator acknowledgement, and provenance publication acceptance remain deployment gates. |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                                                                                   |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Versioned EVM and NEAR deployment manifests, guarded deployment/readiness CLIs, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                                                                      |
 
 ## Submission-critical mode
 
@@ -345,6 +345,39 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Guarded NEAR deployment and startup attestation implemented
+
+- Added a strict version-1 NEAR manifest for testnet/mainnet registry deployments. It binds the
+  network, exact source commit, distinct registry/owner/verifier identities, artifact SHA-256,
+  deployed NEAR code hash, final transaction/block evidence, initialized storage, timestamp, and a
+  disabled workflow-write switch; malformed, mismatched, duplicate, or drifted records fail schema
+  validation.
+- Added `npm run deploy:near`. It requires a clean Git worktree, explicit deployment approval,
+  public HTTPS RPC/network agreement, an existing registry account, a full-access deployment key,
+  a configurable balance floor, existing distinct owner/verifier accounts, and empty deployed code.
+  It refuses upgrades, sends deployment plus initialization as one finality-waited action batch,
+  re-reads final code/roles/storage, and writes the manifest with exclusive-create semantics.
+- Added `npm run check:near-deployment`. It keeps mainnet execution disabled and verifies every
+  configured RPC against the manifest's network, contract bytes, SHA-256, NEAR code hash, owner,
+  pending-owner state, exact verifier set, storage floor, and initialization height, then verifies
+  the final deployment transaction through the primary endpoint.
+- Added an executable deterministic readiness test covering the healthy two-provider path and
+  wrong-network, code-drift, pending-owner, and failed-transaction rejection. Script syntax and the
+  test are part of the repository-wide `npm run check` gate.
+- Hosted sandbox, testnet, and write-enabled mainnet configurations now require the manifest's
+  registry account, owner, and WASM SHA-256 together with the verifier account/key. Before creating
+  a queue worker, startup hashes final contract bytes and checks the owner, absence of a pending
+  transfer, and signer verifier role through the safe failover client.
+- The full repository gate passed OpenAPI drift, formatting, script checks, all 11 lint/typecheck
+  workspaces, 107 domain tests, 81 worker tests, all other package tests, and all 11 production
+  builds. Compose configuration also parses with the new values. The preceding safe-failover commit
+  passed GitHub quality run `43427515013`, including TypeScript, EVM/deployment/demo, Linux NEAR
+  sandbox, dependency/secret/container scans, and SBOM generation.
+- The public testnet deployment checkbox remains open: no funded registry/deployer/verifier
+  credentials are present, no NEAR transaction was signed or broadcast, and mainnet execution
+  remained disabled. The complete operator procedure and evidence requirements are in
+  `19-near-registry-deployment.md`.
 
 ### 2026-11-13 - Safe NEAR testnet RPC failover completed
 

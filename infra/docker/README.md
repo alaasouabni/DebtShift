@@ -35,6 +35,8 @@ terminal NEAR receipt or advances to `COMPLETED`. A hosted sandbox must set all 
 - `NEAR_RPC_FALLBACK_URLS_JSON` set to an ordered JSON array of zero to four independently operated,
   explicitly approved testnet RPC endpoints
 - `NEAR_REGISTRY_ACCOUNT`
+- `NEAR_REGISTRY_OWNER_ACCOUNT` set to the owner recorded in the verified deployment manifest
+- `NEAR_REGISTRY_WASM_SHA256` set to the `0x`-prefixed artifact hash recorded in that manifest
 - `NEAR_SIGNER_ACCOUNT_ID`
 - `NEAR_SIGNER_PRIVATE_KEY`
 

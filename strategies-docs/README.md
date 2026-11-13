@@ -55,6 +55,7 @@ Implementation must be understandable from this directory without relying on cha
 | [16-operations-runbooks.md](./16-operations-runbooks.md)                                   | Gives executable containment, recovery, backup, pause, and key-rotation procedures.              |
 | [17-sandbox-evidence-example.md](./17-sandbox-evidence-example.md)                         | Records one reproducible local migration's exact transaction, evidence, image, and safety proof. |
 | [18-observability-deployment.md](./18-observability-deployment.md)                         | Defines trace safety, durable context propagation, dashboards, and operator verification.        |
+| [19-near-registry-deployment.md](./19-near-registry-deployment.md)                         | Defines account separation, guarded deployment, immutable manifests, and live startup checks.    |
 
 ## Work protocol
 

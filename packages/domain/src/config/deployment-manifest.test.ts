@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseDebtShiftEvmDeploymentManifest } from './deployment-manifest.js';
+import {
+  parseDebtShiftEvmDeploymentManifest,
+  parseDebtShiftNearDeploymentManifest,
+} from './deployment-manifest.js';
 
 describe('DebtShift EVM deployment manifest', () => {
   it('parses an explicit write-disabled two-chain deployment record', () => {
@@ -26,6 +29,52 @@ describe('DebtShift EVM deployment manifest', () => {
       ),
     ).toThrow('Source and destination deployment chains must differ.');
     expect(() => parseDebtShiftEvmDeploymentManifest('{}')).toThrow();
+  });
+});
+
+describe('DebtShift NEAR deployment manifest', () => {
+  it('parses a source-bound, write-disabled registry deployment', () => {
+    const parsed = parseDebtShiftNearDeploymentManifest(JSON.stringify(validNearManifest()));
+
+    expect(parsed.network).toBe('testnet');
+    expect(parsed.wasmSha256).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(parsed.verifierAccounts).toEqual(['verifier.debtshift.testnet']);
+    expect(parsed.workflowWriteSwitchEnabled).toBe(false);
+  });
+
+  it('rejects a network mismatch, duplicate verifiers, and transaction account drift', () => {
+    expect(() =>
+      parseDebtShiftNearDeploymentManifest(
+        JSON.stringify({ ...validNearManifest(), network: 'mainnet' }),
+      ),
+    ).toThrow('NEAR deployment environment and network must match');
+    expect(() =>
+      parseDebtShiftNearDeploymentManifest(
+        JSON.stringify({
+          ...validNearManifest(),
+          verifierAccounts: ['verifier.debtshift.testnet', 'verifier.debtshift.testnet'],
+        }),
+      ),
+    ).toThrow('NEAR deployment verifier accounts must be unique');
+    expect(() =>
+      parseDebtShiftNearDeploymentManifest(
+        JSON.stringify({
+          ...validNearManifest(),
+          deploymentTransaction: {
+            ...validNearManifest().deploymentTransaction,
+            receiverAccount: 'different.testnet',
+          },
+        }),
+      ),
+    ).toThrow('NEAR deployment transactions must bind the deployer and registry accounts');
+    expect(() =>
+      parseDebtShiftNearDeploymentManifest(
+        JSON.stringify({
+          ...validNearManifest(),
+          ownerAccount: 'verifier.debtshift.testnet',
+        }),
+      ),
+    ).toThrow('NEAR registry, owner, and verifier identities must be distinct');
   });
 });
 
@@ -117,5 +166,33 @@ function validManifest() {
       },
       configurationTransactions: [configurationTransaction('set destination roles', 'b')],
     },
+  } as const;
+}
+
+function validNearManifest() {
+  const transaction = (seed: string) => ({
+    transactionHash: seed.repeat(44),
+    signerAccount: 'registry.debtshift.testnet',
+    receiverAccount: 'registry.debtshift.testnet',
+    blockHeight: '277500000',
+    blockHash: seed.repeat(44),
+  });
+  return {
+    schemaVersion: 1,
+    environment: 'testnet',
+    network: 'testnet',
+    createdAt: '2026-11-13T13:00:00.000Z',
+    sourceCommit: '1'.repeat(40),
+    registryAccount: 'registry.debtshift.testnet',
+    deployerAccount: 'registry.debtshift.testnet',
+    ownerAccount: 'owner.debtshift.testnet',
+    verifierAccounts: ['verifier.debtshift.testnet'],
+    artifact: 'contracts/near/target/near/debtshift_registry/debtshift_registry.wasm',
+    wasmSha256: `0x${'2'.repeat(64)}`,
+    deployedCodeHash: '3'.repeat(44),
+    deploymentTransaction: transaction('4'),
+    initializationTransaction: transaction('5'),
+    initialStorageUsage: '123456',
+    workflowWriteSwitchEnabled: false,
   } as const;
 }

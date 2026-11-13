@@ -146,6 +146,19 @@ Every contract deployment produces a versioned manifest containing:
 
 Applications refuse to start if required manifest entries or chain IDs disagree with runtime configuration.
 
+The NEAR registry manifest is versioned separately from the two-chain EVM manifest. It records the
+source commit, registry/deployer/owner/verifier accounts, local WASM SHA-256, deployed NEAR code
+hash, final deployment/initialization transaction and block evidence, initialized storage, and a
+disabled workflow-write flag. The guarded deployer refuses a dirty worktree, wrong network,
+unfunded/uncontrolled account, or any account that already has code; it deploys and initializes in
+one finality-waited action batch and creates the manifest only after final code and role readback.
+
+Hosted sandbox, testnet, and write-enabled mainnet workers require the manifest's registry account,
+owner, and WASM SHA-256 in runtime configuration. Before queue consumption, the worker verifies
+final code bytes, owner, absent pending ownership transfer, and verifier membership through the
+network-validated failover client. Exact deployment and readiness commands are in
+`19-near-registry-deployment.md`.
+
 ## CI stages
 
 1. Install pinned toolchains and dependencies.

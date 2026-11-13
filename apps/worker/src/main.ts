@@ -63,10 +63,12 @@ async function bootstrap(): Promise<void> {
       maximumRetryDelayMs: environment.WORKFLOW_COMMAND_RETRY_MAX_DELAY_MS,
     } as const;
     const publisher = new BullCommandPublisher(queue, commandQueuePolicy);
+    const modeAdapters = createModeAdapters(environment, databaseClient.db);
+    await modeAdapters.adapters?.registry.assertReady?.();
     const handlers = composeWorkflowHandlers({
       environment,
       store: new PostgresWorkflowContextStore(databaseClient.db),
-      ...createModeAdapters(environment, databaseClient.db),
+      ...modeAdapters,
     });
     const processor = new DurableCommandProcessor(
       new PostgresCommandPersistence(databaseClient.db),
@@ -252,6 +254,8 @@ function nearRegistry(
 function hasNearRegistryConfiguration(environment: DebtShiftEnvironment): boolean {
   return (
     environment.NEAR_REGISTRY_ACCOUNT.length !== 0 &&
+    environment.NEAR_REGISTRY_OWNER_ACCOUNT.length !== 0 &&
+    environment.NEAR_REGISTRY_WASM_SHA256.length !== 0 &&
     environment.NEAR_SIGNER_ACCOUNT_ID.length !== 0 &&
     environment.NEAR_SIGNER_PRIVATE_KEY.length !== 0
   );

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { evmAddressSchema } from '../primitives.js';
+import { bytes32Schema, evmAddressSchema, nearAccountIdSchema } from '../primitives.js';
 import { parseLiveMarketConfiguration } from './live-market.js';
 
 const booleanString = z
@@ -10,6 +10,8 @@ const booleanString = z
 
 const optionalUrl = z.union([z.url(), z.literal('')]).default('');
 const optionalString = z.string().default('');
+const optionalNearAccount = z.union([nearAccountIdSchema, z.literal('')]).default('');
+const optionalBytes32 = z.union([bytes32Schema, z.literal('')]).default('');
 const httpUrl = z.url().refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
   message: 'RPC URL must use HTTP or HTTPS.',
 });
@@ -153,8 +155,10 @@ export const debtShiftEnvironmentSchema = z
     NEAR_NETWORK: z.enum(['sandbox', 'testnet', 'mainnet']).default('sandbox'),
     NEAR_RPC_URL: httpUrl.default('https://test.rpc.fastnear.com'),
     NEAR_RPC_FALLBACK_URLS_JSON: urlListJson,
-    NEAR_REGISTRY_ACCOUNT: optionalString,
-    NEAR_SIGNER_ACCOUNT_ID: optionalString,
+    NEAR_REGISTRY_ACCOUNT: optionalNearAccount,
+    NEAR_REGISTRY_OWNER_ACCOUNT: optionalNearAccount,
+    NEAR_REGISTRY_WASM_SHA256: optionalBytes32,
+    NEAR_SIGNER_ACCOUNT_ID: optionalNearAccount,
     NEAR_SIGNER_PRIVATE_KEY: optionalString,
     NEAR_STORAGE_DEPOSIT_YOCTO: z
       .string()
@@ -337,26 +341,32 @@ export const debtShiftEnvironmentSchema = z
     if (
       nearWriteConfigurationRequired &&
       (environment.NEAR_REGISTRY_ACCOUNT.length === 0 ||
+        environment.NEAR_REGISTRY_OWNER_ACCOUNT.length === 0 ||
+        environment.NEAR_REGISTRY_WASM_SHA256.length === 0 ||
         environment.NEAR_SIGNER_ACCOUNT_ID.length === 0 ||
         environment.NEAR_SIGNER_PRIVATE_KEY.length === 0)
     ) {
       context.addIssue({
         code: 'custom',
         message:
-          'Hosted sandbox, funded testnet, or mainnet execution requires the NEAR registry account and verifier signer credentials.',
+          'Hosted sandbox, funded testnet, or mainnet execution requires the expected NEAR registry account, owner, WASM hash, and verifier signer credentials.',
         path: ['NEAR_REGISTRY_ACCOUNT'],
       });
     }
 
-    const partialNearSignerConfiguration = [
+    const nearRegistryConfigurationCount = [
+      environment.NEAR_REGISTRY_ACCOUNT,
+      environment.NEAR_REGISTRY_OWNER_ACCOUNT,
+      environment.NEAR_REGISTRY_WASM_SHA256,
       environment.NEAR_SIGNER_ACCOUNT_ID,
       environment.NEAR_SIGNER_PRIVATE_KEY,
     ].filter((value) => value.length !== 0).length;
-    if (partialNearSignerConfiguration === 1) {
+    if (nearRegistryConfigurationCount > 0 && nearRegistryConfigurationCount < 5) {
       context.addIssue({
         code: 'custom',
-        message: 'NEAR signer account and private key must be configured together.',
-        path: ['NEAR_SIGNER_ACCOUNT_ID'],
+        message:
+          'NEAR registry account, owner, WASM hash, signer account, and signer key must be configured together.',
+        path: ['NEAR_REGISTRY_ACCOUNT'],
       });
     }
   });

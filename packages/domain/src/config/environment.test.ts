@@ -62,7 +62,7 @@ describe('parseDebtShiftEnvironment', () => {
 
   it('requires a real NEAR registry configuration for a hosted production sandbox', () => {
     expect(() => parseDebtShiftEnvironment({ NODE_ENV: 'production' })).toThrow(
-      'Hosted sandbox, funded testnet, or mainnet execution requires the NEAR registry',
+      'Hosted sandbox, funded testnet, or mainnet execution requires the expected NEAR registry',
     );
     expect(() =>
       parseDebtShiftEnvironment({
@@ -71,6 +71,8 @@ describe('parseDebtShiftEnvironment', () => {
         API_PUBLIC_URL: 'https://api.debtshift.example',
         NEAR_NETWORK: 'testnet',
         NEAR_REGISTRY_ACCOUNT: 'registry.testnet',
+        NEAR_REGISTRY_OWNER_ACCOUNT: 'owner.testnet',
+        NEAR_REGISTRY_WASM_SHA256: `0x${'1'.repeat(64)}`,
         NEAR_SIGNER_ACCOUNT_ID: 'verifier.testnet',
         NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test-private-key',
       }),
@@ -168,6 +170,8 @@ describe('parseDebtShiftEnvironment', () => {
       INTENTS_AUTH_TOKEN: 'test-token',
       NEAR_NETWORK: 'mainnet',
       NEAR_REGISTRY_ACCOUNT: 'registry.near',
+      NEAR_REGISTRY_OWNER_ACCOUNT: 'owner.near',
+      NEAR_REGISTRY_WASM_SHA256: `0x${'1'.repeat(64)}`,
       NEAR_SIGNER_ACCOUNT_ID: 'verifier.near',
       NEAR_SIGNER_PRIVATE_KEY: 'ed25519:test-private-key',
     } as const;

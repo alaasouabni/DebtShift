@@ -16,6 +16,9 @@ describe('NEAR RPC failover', () => {
     await expect(client.view('get_agreement', { agreement_id: 'one' })).resolves.toEqual({
       agreement: 'final',
     });
+    await expect(client.code('registry.testnet')).resolves.toEqual(
+      new Uint8Array([0, 97, 115, 109]),
+    );
     await expect(client.call('append_attestation', { agreement_id: 'one' })).resolves.toEqual({
       transaction: 'final',
     });
@@ -23,6 +26,7 @@ describe('NEAR RPC failover', () => {
     expect(primary.view).toHaveBeenCalledOnce();
     expect(primary.call).not.toHaveBeenCalled();
     expect(fallback.view).toHaveBeenCalledOnce();
+    expect(fallback.code).toHaveBeenCalledOnce();
     expect(fallback.call).toHaveBeenCalledOnce();
   });
 
@@ -70,6 +74,7 @@ describe('NEAR RPC failover', () => {
 function endpoint(network: string, viewResult: unknown) {
   return {
     getNetworkId: vi.fn(async () => network),
+    code: vi.fn(async () => new Uint8Array([0, 97, 115, 109])),
     view:
       viewResult instanceof Error
         ? vi.fn(async () => Promise.reject(viewResult))
@@ -77,6 +82,7 @@ function endpoint(network: string, viewResult: unknown) {
     call: vi.fn(async () => ({ transaction: 'final' })),
   } satisfies NearRpcEndpoint & {
     getNetworkId: ReturnType<typeof vi.fn>;
+    code: ReturnType<typeof vi.fn>;
     view: ReturnType<typeof vi.fn>;
     call: ReturnType<typeof vi.fn>;
   };

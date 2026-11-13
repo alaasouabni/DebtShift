@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { MigrationExecutionContext } from '@debtshift/database';
 import {
   evidenceSchema,
@@ -31,6 +33,8 @@ type RegistryEnvironment = Pick<
   | 'NEAR_RPC_URL'
   | 'NEAR_RPC_FALLBACK_URLS_JSON'
   | 'NEAR_REGISTRY_ACCOUNT'
+  | 'NEAR_REGISTRY_OWNER_ACCOUNT'
+  | 'NEAR_REGISTRY_WASM_SHA256'
   | 'NEAR_SIGNER_ACCOUNT_ID'
   | 'NEAR_SIGNER_PRIVATE_KEY'
   | 'NEAR_STORAGE_DEPOSIT_YOCTO'
@@ -84,6 +88,7 @@ interface FinalReceipt {
 }
 
 export interface NearRegistryClient {
+  code(contractId: string): Promise<Uint8Array>;
   view(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown>;
   call(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown>;
 }
@@ -112,6 +117,28 @@ export class NearReceiptRegistryPort implements ReceiptRegistryPort {
     this.#environment = environment;
     this.#loadActiveFinalizedEvidence = loadActiveFinalizedEvidence;
     this.#client = client ?? createNearApiRegistryClient(environment);
+  }
+
+  async assertReady(): Promise<void> {
+    const code = await this.#client.code(this.#environment.NEAR_REGISTRY_ACCOUNT);
+    const actualWasmSha256 = `0x${createHash('sha256').update(code).digest('hex')}`;
+    if (actualWasmSha256 !== this.#environment.NEAR_REGISTRY_WASM_SHA256) {
+      throw new Error('NEAR registry code does not match the configured deployment manifest.');
+    }
+    const owner = await this.#client.view('owner_id', {});
+    if (owner !== this.#environment.NEAR_REGISTRY_OWNER_ACCOUNT) {
+      throw new Error('NEAR registry owner does not match the configured deployment manifest.');
+    }
+    const pendingOwner = await this.#client.view('pending_owner_id', {});
+    if (pendingOwner !== null) {
+      throw new Error('NEAR registry has a pending ownership transfer.');
+    }
+    const verifier = await this.#client.view('is_verifier', {
+      account_id: this.#environment.NEAR_SIGNER_ACCOUNT_ID,
+    });
+    if (verifier !== true) {
+      throw new Error('The configured NEAR signer is not an authorized registry verifier.');
+    }
   }
 
   async finalize(context: MigrationExecutionContext): Promise<Evidence> {
@@ -252,6 +279,14 @@ class NearApiRegistryEndpoint implements NearRpcEndpoint {
 
   getNetworkId(): Promise<string> {
     return this.#provider.getNetworkId();
+  }
+
+  async code(contractId: string): Promise<Uint8Array> {
+    const result = await this.#provider.viewContractCode({
+      contractId,
+      blockQuery: { finality: 'final' },
+    });
+    return result.code;
   }
 
   async view(methodName: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {

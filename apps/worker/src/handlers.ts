@@ -128,6 +128,7 @@ export interface WorkflowEvidenceProviders {
 }
 
 export interface ReceiptRegistryPort {
+  assertReady?(): Promise<void>;
   finalize(context: MigrationExecutionContext): Promise<Evidence>;
 }
 
