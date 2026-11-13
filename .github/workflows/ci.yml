@@ -34,6 +34,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: npm run check:evm
       - run: npm run check:evm-deployment
       - run: npm run test --workspace @debtshift/api
@@ -43,7 +44,7 @@ jobs:
 
   near-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
@@ -51,6 +52,12 @@ jobs:
           toolchain: 1.95.0
           targets: wasm32-unknown-unknown
           components: clippy, rustfmt
-      - run: sudo apt-get update && sudo apt-get install -y nasm
-      - run: cargo install cargo-near --version 0.23.0 --locked
+      - run: sudo apt-get update && sudo apt-get install -y libudev-dev nasm pkg-config
+      - uses: actions/cache@v4
+        id: cargo-near-cache
+        with:
+          path: ~/.cargo/bin/cargo-near
+          key: cargo-near-${{ runner.os }}-0.23.0-rust-1.95.0
+      - if: steps.cargo-near-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-near --version 0.23.0 --locked
       - run: npm run check:near
