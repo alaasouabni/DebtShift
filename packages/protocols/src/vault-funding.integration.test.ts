@@ -34,6 +34,7 @@ runDeploymentTests('testnet source vault funding', () => {
   let token: Address;
   let vault: Address;
   let manifest: ReturnType<typeof testnetVaultFundingManifestSchema.parse>;
+  let simulatedCanonicalBlockLagReads = 0;
 
   beforeAll(async () => {
     chain = await startAnvil({ chainId: 31_337, port: 19_588 });
@@ -64,8 +65,20 @@ runDeploymentTests('testnet source vault funding', () => {
       2_000_000n,
     ]);
 
+    const laggingCanonicalBlockClient = new Proxy(chain.publicClient, {
+      get(target, property, receiver) {
+        if (property !== 'getBlock') return Reflect.get(target, property, receiver);
+        return async (parameters: { readonly blockNumber?: bigint }) => {
+          if (parameters.blockNumber !== undefined && simulatedCanonicalBlockLagReads === 0) {
+            simulatedCanonicalBlockLagReads += 1;
+            throw new Error('Simulated load-balanced RPC block lag.');
+          }
+          return target.getBlock(parameters as never);
+        };
+      },
+    }) as PublicClient;
     const evidence = await fundTestnetLiquidityVault({
-      publicClient: chain.publicClient,
+      publicClient: laggingCanonicalBlockClient,
       wallet: funderWallet,
       chainId: chain.chain.id,
       confirmations: 1,
@@ -115,6 +128,7 @@ runDeploymentTests('testnet source vault funding', () => {
     expect(report.verifiedTransactionCount).toBe(3);
     expect(manifest.after.funderBalanceUnits).toBe('1000000');
     expect(manifest.after.vaultBalanceUnits).toBe('1000000');
+    expect(simulatedCanonicalBlockLagReads).toBe(1);
   });
 
   it('rejects transaction-input drift and a newly introduced residual allowance', async () => {

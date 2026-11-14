@@ -27,6 +27,28 @@ to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the e
 - `infra`: local services, monitoring, and deployment assets.
 - `strategies-docs`: approved scope, architecture, security rules, roadmap, and completion gates.
 
+## Public testnet deployment
+
+The submission route is deployed from Ethereum Sepolia Aave V3 to Base Sepolia. Its destination is
+a DebtShift-operated Morpho Blue-compatible deployment built from pinned canonical source; it is
+not represented as an official Morpho testnet deployment. The unavailable NEAR Intents/1Click
+testnet boundary remains explicitly simulated while the surrounding source/destination transfers
+and protocol evidence use real public-chain transactions.
+
+- Morpho-compatible deployment and 10 test-USDC seed:
+  [`deployment/manifests/testnet-morpho-base-sepolia-20261114-v1.json`](deployment/manifests/testnet-morpho-base-sepolia-20261114-v1.json)
+- Seven write-disabled DebtShift EVM contracts:
+  [`deployment/manifests/testnet-evm-sepolia-base-sepolia-20261114-v3.json`](deployment/manifests/testnet-evm-sepolia-base-sepolia-20261114-v3.json)
+- Exact 10 test-USDC source-vault funding with zero residual allowance:
+  [`deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json`](deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json)
+- Initialized NEAR testnet receipt registry:
+  [`deployment/manifests/near-testnet-registry-20261114-v1.json`](deployment/manifests/near-testnet-registry-20261114-v1.json)
+- Reconciled interrupted attempts: [`deployment/incidents`](deployment/incidents)
+
+All manifests bind source commit, route, identities, receipts, code/state evidence, and a disabled
+workflow-write switch. `MAINNET_EXECUTION_ENABLED` remained `false`; these deployments do not enable
+mainnet execution.
+
 ## Prerequisites
 
 - Node.js 22.16.0 and npm 10.9.2.

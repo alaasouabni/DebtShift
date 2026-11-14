@@ -546,7 +546,7 @@ async function writeFundingTransaction<Action extends FundingAction>(
   if (receipt.status !== 'success') throw new Error(`${action} reverted: ${hash}.`);
   const [transaction, canonicalBlock] = await Promise.all([
     input.publicClient.getTransaction({ hash }),
-    input.publicClient.getBlock({ blockNumber: receipt.blockNumber }),
+    readCanonicalBlock(input.publicClient, receipt.blockNumber),
   ]);
   if (
     canonicalBlock.hash?.toLowerCase() !== receipt.blockHash.toLowerCase() ||
@@ -569,6 +569,24 @@ async function writeFundingTransaction<Action extends FundingAction>(
   });
 }
 
+async function readCanonicalBlock(client: PublicClient, blockNumber: bigint) {
+  const maximumAttempts = 15;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    try {
+      return await client.getBlock({ blockNumber });
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < maximumAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+  throw new Error(`Canonical block ${blockNumber} was unavailable after bounded retries.`, {
+    cause: lastError,
+  });
+}
+
 async function verifyFundingTransaction(
   client: PublicClient,
   record: FundingTransaction,
@@ -580,7 +598,7 @@ async function verifyFundingTransaction(
     client.getTransaction({ hash: record.transactionHash }),
     client.getTransactionReceipt({ hash: record.transactionHash }),
   ]);
-  const canonicalBlock = await client.getBlock({ blockNumber: receipt.blockNumber });
+  const canonicalBlock = await readCanonicalBlock(client, receipt.blockNumber);
   if (
     receipt.status !== 'success' ||
     receipt.blockNumber.toString() !== record.blockNumber ||

@@ -22,7 +22,7 @@ export async function verifyNearDeploymentReadiness({ manifest, rpcUrls, provide
       }),
       view(provider, manifest.registryAccount, 'owner_id', {}),
       view(provider, manifest.registryAccount, 'pending_owner_id', {}),
-      view(provider, manifest.registryAccount, 'list_verifiers', { from_index: 0, limit: 64 }),
+      view(provider, manifest.registryAccount, 'list_verifiers', { from_index: 0, limit: 50 }),
     ]);
     const wasmSha256 = `0x${createHash('sha256').update(code.code).digest('hex')}`;
     if (wasmSha256 !== manifest.wasmSha256 || code.hash !== manifest.deployedCodeHash) {

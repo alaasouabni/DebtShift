@@ -266,7 +266,7 @@ The milestones are ordered by dependency and risk. A milestone is complete only 
 - [x] Register one immutable final receipt hash and terminal status.
 - [x] Add read views for agreement, attestations, and receipt lookup.
 - [x] Add Rust unit tests and NEAR sandbox integration tests.
-- [ ] Deploy to NEAR testnet using a documented deployment manifest.
+- [x] Deploy to NEAR testnet using a documented deployment manifest.
 - [ ] Verify application and registry receipt hashes match.
 
 ### Exit criteria

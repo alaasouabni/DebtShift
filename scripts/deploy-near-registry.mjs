@@ -141,7 +141,7 @@ if (deployedWasmSha256 !== wasmSha256) {
 const [actualOwner, pendingOwner, actualVerifiers, finalAccountState] = await Promise.all([
   view(provider, registryAccount, 'owner_id', {}),
   view(provider, registryAccount, 'pending_owner_id', {}),
-  view(provider, registryAccount, 'list_verifiers', { from_index: 0, limit: 64 }),
+  view(provider, registryAccount, 'list_verifiers', { from_index: 0, limit: 50 }),
   provider.viewAccount({ accountId: registryAccount, blockQuery: { finality: 'final' } }),
 ]);
 if (actualOwner !== ownerAccount) throw new Error('Final NEAR registry owner does not match.');

@@ -14,10 +14,10 @@ This file is updated throughout implementation. It is the first place to inspect
 | M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                                                                                                                                                   |
 | M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, asset-safe pre-source expiry/cancellation/revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                             |
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains.                                                 |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, guarded source-bound manifests/deployment/readiness CLIs, startup code/role attestation, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, manifest-bound EVM/NEAR startup attestation, and pinned canonical-source Morpho testnet deployment/readiness gates pass focused tests. Live credentialed validation remains.                                                               |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | The registry is deployed and independently ready on NEAR testnet with the reviewed owner/verifier and exact manifested WASM. Application-to-registry receipt-hash parity in the public workflow remains.                                                                                                                                                                                                                              |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes and default-off mainnet gate remain enforced. Canonical-source Morpho-compatible Base Sepolia infrastructure, all seven DebtShift EVM contracts, 10 test-USDC destination liquidity, 10 test-USDC source-vault funding, and NEAR registry state are live and manifested; the public workflow/transport exercise remains.                                                                                         |
 | M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, credential-safe distributed traces, provisioned operations dashboards, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. External alert delivery, operator acknowledgement, and provenance publication acceptance remain deployment gates. |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Source-commit-bound EVM and NEAR manifests, guarded clean-worktree deployment/readiness CLIs, pre-consumption runtime attestation, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                   |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Source-commit-bound Morpho, EVM, funding, and NEAR public-testnet manifests now exist with incident records and independent readiness evidence. Green CI, the Docker sandbox, and receipt-linked ledger reconciliation already pass; final public workflow evidence, hosted URLs, and the submission package remain.                                                                                                                  |
 
 ## Submission-critical mode
 
@@ -38,13 +38,50 @@ This file is updated throughout implementation. It is the first place to inspect
 - **Task:** P0.7 - finish the reproducible public-testnet dependency/deployment path, then deploy the
   verified public validation environments and collect evidence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Finish and push the guarded source-vault funding checkpoint, then obtain the
-  distinct public accounts/assets and require the twenty-check
-  `npm run check:public-testnet-funding` gate to pass. Rerun the frozen dependency validator before
-  executing the guarded canonical Morpho, DebtShift EVM, funding, and NEAR deployment runbooks.
-  Derive the executable route only from manifested deployments and run the complete public workflow
-  with the unavailable 1Click testnet boundary explicitly simulated. No external write occurred in
-  the completed internal checkpoint.
+- **Next verification:** Configure the runtime only from the four independently verified immutable
+  manifests and run the complete public workflow with the unavailable 1Click testnet boundary
+  explicitly simulated. Mainnet writes remain disabled.
+
+## 2026-11-14 public-testnet deployment evidence
+
+- The twenty-check credential-free account/funding inventory passed for the four distinct EVM roles
+  and three distinct NEAR roles before any deployment key was loaded.
+- The DebtShift-operated, canonical-source Morpho Blue-compatible Base Sepolia singleton is
+  `0x072FB33E63f76479DF0C145F3ebdcc3C241f0771`. Market
+  `0x4505167c540e27ecdb28aacf9977a68e2b3d760022be14a686cbb0f737b3564e` has 10 test USDC
+  available liquidity, zero borrow assets, preserved seed shares, a current oracle price, and zero
+  deployer allowance. This is public-testnet protocol-compatible infrastructure, not an official
+  Morpho testnet deployment.
+- The successful EVM manifest is
+  `deployment/manifests/testnet-evm-sepolia-base-sepolia-20261114-v3.json`. Independent readiness
+  verified seven contracts and fourteen configuration transactions with workflow writes disabled.
+  Ethereum Sepolia contracts are vault `0xDC52C1980c2F69c1152e05D3812d752A0D238f3E`, escrow
+  `0x61d32dFFDEA14cef1474A930495235cF8C8512BE`, Aave module
+  `0x060410b3e7ef61D83fA0Dde092B00b2E0f7e226F`, and adapter
+  `0x0fd9ABcb48bD76c4aCEb07Baad5c4d58f7a39aD5`. Base Sepolia contracts are escrow
+  `0x524619Bbbf63a8fC5C12F46f0406D16b5F733772`, Morpho module
+  `0x2eeC4cF64c3f152D80333896dFC77D7FF1029B19`, and adapter
+  `0xCE84C13aC794e169A81bDe8560a626eb5F708fAc`.
+- The successful funding manifest is
+  `deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json`. The guarded sequence
+  approved exactly 10 test USDC, deposited exactly 10 into the source vault, revoked allowance to
+  zero, and proved 10 test USDC free liquidity. Independent readiness passed at finalized Sepolia
+  block `12130480`, verifying all three transaction inputs/receipts, historical balance deltas,
+  current zero allowance, seven contracts, fourteen configuration transactions, executor gas, and
+  both 10 test-USDC liquidity floors.
+- NEAR transaction `Fjtfg2derYBQ7Mt2wmyh5XnHUQGkwCw4WmqBPxZFaQnQ` atomically deployed and
+  initialized `debtshift-registry-alaa-2026.testnet`. Independent readiness verifies WASM SHA-256
+  `0x4a9adf1ed8f95b047b2f99e9ec296484540f3571147af3e761d1ecabdc0ef56d`, deployed-code hash
+  `62E942bp8fnX38QhB552175SKUGr7WmAkachMzno4toW`, owner
+  `debtshift-owner-alaa-2026.testnet`, and verifier `debtshift-verifier-alaa-2026.testnet`.
+- Interrupted attempts are not hidden or reused. Their zero-byte manifests and reconciled receipts,
+  roles, balances, causes, and abandonment state are preserved under `deployment/incidents/`.
+- The complete repository gate passed after the operational fixes: OpenAPI generation drift,
+  formatting, script syntax, lint, type checks, every package test, and all eleven builds. The nine
+  EVM deployment/funding integration tests and the permanent live NEAR deployment readiness gate
+  also pass.
+- `MAINNET_EXECUTION_ENABLED` remained `false` throughout. No mainnet transaction or public 1Click
+  testnet claim was made.
 
 ## Decision log
 
