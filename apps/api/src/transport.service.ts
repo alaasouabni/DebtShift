@@ -115,6 +115,38 @@ export class TransportService {
     return this.#getAndStoreOneClickDryQuote(request);
   }
 
+  getAnalysisQuote(request: OneClickDryQuoteRequest) {
+    if (this.#simulator !== undefined) return this.#getSimulatorAnalysisQuote(request);
+    return this.#getAndStoreOneClickDryQuote(request);
+  }
+
+  async #getSimulatorAnalysisQuote(request: OneClickDryQuoteRequest) {
+    if (this.#simulator === undefined) {
+      throw new Error('The simulated analysis quote provider is unavailable.');
+    }
+    const quoteRequest = transportQuoteRequestSchema.parse({
+      inputAsset: request.inputAsset,
+      outputAsset: request.outputAsset,
+      amountInUnits: request.amountUnits,
+      maxSlippageBps: request.maxSlippageBps,
+      destinationReceiver: request.destinationReceiver,
+      refundReceiver: request.refundReceiver,
+    });
+    if (request.amountKind === 'EXACT_INPUT') return this.#simulator.getQuote(quoteRequest);
+
+    const targetOutputUnits = BigInt(request.amountUnits);
+    const probe = await this.#simulator.getQuote(quoteRequest);
+    const probeOutputUnits = BigInt(probe.expectedAmountOutUnits);
+    const requiredInputUnits =
+      (targetOutputUnits * targetOutputUnits + probeOutputUnits - 1n) / probeOutputUnits;
+    return this.#simulator.getQuote(
+      transportQuoteRequestSchema.parse({
+        ...quoteRequest,
+        amountInUnits: requiredInputUnits.toString(),
+      }),
+    );
+  }
+
   async #getAndStoreOneClickDryQuote(request: OneClickDryQuoteRequest) {
     if (this.#oneClickReadOnly === undefined) {
       throw new Error('Live 1Click dry quotes are unavailable in simulator mode.');
