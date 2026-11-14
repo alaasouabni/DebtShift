@@ -1,0 +1,904 @@
+{
+  "migration": {
+    "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+    "intentHash": "0x3749ee5d500efd191ef1ae1abe6b8827044acf98a80692f2eba1a8c7fe2a66e3",
+    "planHash": "0x5e855a97e06e8e19eceff897bf80d7cfcb1a23d65862bf882ac8c28437d8a7ae",
+    "quoteHash": "0x3133e01faf03aa93a26c6a159ba1807a9c33f1bb0333c0efffe1b3ded28bf92d",
+    "phase": "RECOVERY",
+    "version": 2,
+    "expiresAt": "2026-11-12T01:06:31.000Z",
+    "completedAt": null,
+    "createdAt": "2026-11-12T01:02:31.453Z",
+    "updatedAt": "2026-11-12T01:02:32.863Z"
+  },
+  "evidence": [
+    {
+      "evidenceId": "0x3399b033c0a0d9ef439aa66af8b0e346a846adfe10c6dfc285edc4b957c8905b",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "EXECUTION_PLAN_AUTHORIZATION",
+      "schemaVersion": 1,
+      "provider": "EIP712",
+      "network": "eip155:31337",
+      "chainId": null,
+      "blockNumber": null,
+      "blockHash": null,
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x3399b033c0a0d9ef439aa66af8b0e346a846adfe10c6dfc285edc4b957c8905b",
+      "rawObservationHash": "0x76f5cb4ee8e6a4f70eb5c53302af31388ea65d82cdb40e1ca797b495615d75c2",
+      "normalizedPayload": {
+        "plan": {
+          "nonce": "267370947395910383421465582380944440397",
+          "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+          "deadline": "1794445591",
+          "financing": {
+            "costs": [
+              {
+                "kind": "NETWORK",
+                "asset": {
+                  "symbol": "dUSDC",
+                  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                  "chainId": 31338,
+                  "decimals": 6
+                },
+                "amountUnits": "10000000",
+                "componentId": "local-morpho-balanced:source-gas",
+                "financingClass": "SEPARATELY_PAID",
+                "settlementAmountUnits": "10000000"
+              },
+              {
+                "kind": "NETWORK",
+                "asset": {
+                  "symbol": "dUSDC",
+                  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                  "chainId": 31338,
+                  "decimals": 6
+                },
+                "amountUnits": "10000000",
+                "componentId": "local-morpho-balanced:destination-gas",
+                "financingClass": "SEPARATELY_PAID",
+                "settlementAmountUnits": "10000000"
+              },
+              {
+                "kind": "TRANSPORT",
+                "asset": {
+                  "symbol": "dUSDC",
+                  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                  "chainId": 31338,
+                  "decimals": 6
+                },
+                "amountUnits": "10000000",
+                "componentId": "local-morpho-balanced:transport",
+                "financingClass": "SEPARATELY_PAID",
+                "settlementAmountUnits": "10000000"
+              },
+              {
+                "kind": "SLIPPAGE",
+                "asset": {
+                  "symbol": "dUSDC",
+                  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                  "chainId": 31338,
+                  "decimals": 6
+                },
+                "amountUnits": "5000000",
+                "componentId": "local-morpho-balanced:slippage",
+                "financingClass": "SEPARATELY_PAID",
+                "settlementAmountUnits": "5000000"
+              },
+              {
+                "kind": "PROTOCOL",
+                "asset": {
+                  "symbol": "dUSDC",
+                  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                  "chainId": 31338,
+                  "decimals": 6
+                },
+                "amountUnits": "15000000",
+                "componentId": "local-morpho-balanced:protocol",
+                "financingClass": "SEPARATELY_PAID",
+                "settlementAmountUnits": "15000000"
+              }
+            ],
+            "validUntil": "1794445591",
+            "evaluatedAt": "2026-11-12T01:02:31.257Z",
+            "modelVersion": 1,
+            "solverFeeUnits": "50000000",
+            "externalFunding": [],
+            "settlementAsset": {
+              "symbol": "dUSDC",
+              "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+              "chainId": 31338,
+              "decimals": 6
+            },
+            "liquidityBufferBps": 1000,
+            "capacityEvidenceHash": "0x70a430a1b4833935b4bbe6406bd4093f3aeb12465907fa23b7b4bb8ebd7cab5c",
+            "capitalizedCostUnits": "0",
+            "solverPrincipalUnits": "10000000000",
+            "fundingShortfallUnits": "0",
+            "sourceDebtPayoffUnits": "10000000000",
+            "separatelyPaidCostUnits": "50000000",
+            "solverAdvancedCostUnits": "0",
+            "stressCollateralDropBps": 1000,
+            "policyBorrowCapacityUnits": "11583000000",
+            "signedBorrowCapacityUnits": "10050000000",
+            "sourceConversionQuoteHash": "0x661aca42dadcdce4f8202b87bf29d70edd344c05e94a646c78dc1153fae5424b",
+            "sourceDebtPayoffAssetUnits": "10000000000",
+            "borrowerDebtPrepaymentUnits": "0",
+            "protocolBorrowCapacityUnits": "14850000000",
+            "liquidityBorrowCapacityUnits": "90909090909",
+            "confirmedExternalFundingUnits": "0",
+            "requiredDestinationBorrowUnits": "10050000000",
+            "borrowerDebtPrepaymentAssetUnits": "0",
+            "maximumSafeBorrowingCapacityUnits": "10050000000",
+            "totalRequiredRepaymentAndFinancedCostUnits": "10050000000"
+          },
+          "routeHash": "0xe1fdd3f99acf9474ff63aa4b396753e237d0637c2b52c2f7c5db9909b2e555cc",
+          "intentHash": "0x3749ee5d500efd191ef1ae1abe6b8827044acf98a80692f2eba1a8c7fe2a66e3",
+          "feeMaxUnits": "50000000",
+          "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+          "payoutAsset": {
+            "symbol": "dUSDC",
+            "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "chainId": 31338,
+            "decimals": 6
+          },
+          "sourceMarket": {
+            "chainId": 31337,
+            "marketId": "0x456866d088913085255907bec2d30e1262f40446d4927fbba78207114cfb29e0",
+            "protocol": "LOCAL_AAVE_MOCK",
+            "deployment": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+          },
+          "targetMarket": {
+            "chainId": 31338,
+            "marketId": "0xdd6d7df83f097ee9e12e5e45978460b94df267bc3fffde657266e0d79f9f3d71",
+            "protocol": "LOCAL_MORPHO_MOCK",
+            "deployment": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+          },
+          "payoutReceiver": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+          "refundReceiver": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+          "fundingProvider": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+          "reservationHash": "0x72d077ade8a678bd54d5bd40c43840b544d6cb9ef76b257cf2eeba1d15f0d86d",
+          "sourceDebtAsset": {
+            "symbol": "sUSDC",
+            "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "chainId": 31337,
+            "decimals": 6
+          },
+          "sourcePositionId": "0x126dbb1e057f980a423c60074f2a7c7075c4e57347a99abc37799cf925e527de",
+          "principalMaxUnits": "10000000000",
+          "transportProvider": "DEBTSHIFT_SIMULATOR",
+          "targetDebtMaxUnits": "10050000000",
+          "transportQuoteHash": "0x3133e01faf03aa93a26c6a159ba1807a9c33f1bb0333c0efffe1b3ded28bf92d",
+          "destinationReceiver": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+          "destinationDebtAsset": {
+            "symbol": "dUSDC",
+            "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "chainId": 31338,
+            "decimals": 6
+          },
+          "sourceCollateralAsset": {
+            "symbol": "sWETH",
+            "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+            "chainId": 31337,
+            "decimals": 18
+          },
+          "sourceRepaymentMaxUnits": "10000000000",
+          "transportDepositAddress": "simulator:3133e01faf03aa93a26c6a159ba1807a",
+          "sourceCollateralMinUnits": "10000000000000000000",
+          "destinationCollateralAsset": {
+            "symbol": "dWETH",
+            "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+            "chainId": 31338,
+            "decimals": 18
+          },
+          "minDestinationCollateralUnits": "9940050000000000000"
+        },
+        "planHash": "0x5e855a97e06e8e19eceff897bf80d7cfcb1a23d65862bf882ac8c28437d8a7ae",
+        "signature": "0x1a594d9ee87a3b01eb1f3d6298bbe1eb36db942c5d077b3c684efccc7c2dc461024acd54fdb15cab272d9c5b86365d9ad243e064df0b7507cd66cccfc27ac9031c"
+      },
+      "observedAt": "2026-11-12T01:02:24.000Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "SIGNATURE",
+      "verifierVersion": "debtshift-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:31.453Z"
+    },
+    {
+      "evidenceId": "0x0ac0f53342b255cfdc8d2c6d49c91f1096ff897272e191a3fac118d4ce14d18a",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "FINANCING_FEASIBILITY",
+      "schemaVersion": 1,
+      "provider": "DETERMINISTIC_ENGINE_V1",
+      "network": "eip155:31337",
+      "chainId": null,
+      "blockNumber": null,
+      "blockHash": null,
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x0ac0f53342b255cfdc8d2c6d49c91f1096ff897272e191a3fac118d4ce14d18a",
+      "rawObservationHash": "0xf2f6a3a9e8a7c2121f0b92c287cea1623d20d11890fc42d4e4e605b4e3bfe359",
+      "normalizedPayload": {
+        "costs": [
+          {
+            "kind": "NETWORK",
+            "asset": {
+              "symbol": "dUSDC",
+              "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+              "chainId": 31338,
+              "decimals": 6
+            },
+            "amountUnits": "10000000",
+            "componentId": "local-morpho-balanced:source-gas",
+            "financingClass": "SEPARATELY_PAID",
+            "settlementAmountUnits": "10000000"
+          },
+          {
+            "kind": "NETWORK",
+            "asset": {
+              "symbol": "dUSDC",
+              "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+              "chainId": 31338,
+              "decimals": 6
+            },
+            "amountUnits": "10000000",
+            "componentId": "local-morpho-balanced:destination-gas",
+            "financingClass": "SEPARATELY_PAID",
+            "settlementAmountUnits": "10000000"
+          },
+          {
+            "kind": "TRANSPORT",
+            "asset": {
+              "symbol": "dUSDC",
+              "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+              "chainId": 31338,
+              "decimals": 6
+            },
+            "amountUnits": "10000000",
+            "componentId": "local-morpho-balanced:transport",
+            "financingClass": "SEPARATELY_PAID",
+            "settlementAmountUnits": "10000000"
+          },
+          {
+            "kind": "SLIPPAGE",
+            "asset": {
+              "symbol": "dUSDC",
+              "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+              "chainId": 31338,
+              "decimals": 6
+            },
+            "amountUnits": "5000000",
+            "componentId": "local-morpho-balanced:slippage",
+            "financingClass": "SEPARATELY_PAID",
+            "settlementAmountUnits": "5000000"
+          },
+          {
+            "kind": "PROTOCOL",
+            "asset": {
+              "symbol": "dUSDC",
+              "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+              "chainId": 31338,
+              "decimals": 6
+            },
+            "amountUnits": "15000000",
+            "componentId": "local-morpho-balanced:protocol",
+            "financingClass": "SEPARATELY_PAID",
+            "settlementAmountUnits": "15000000"
+          }
+        ],
+        "validUntil": "1794445591",
+        "evaluatedAt": "2026-11-12T01:02:31.257Z",
+        "modelVersion": 1,
+        "solverFeeUnits": "50000000",
+        "externalFunding": [],
+        "settlementAsset": {
+          "symbol": "dUSDC",
+          "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+          "chainId": 31338,
+          "decimals": 6
+        },
+        "liquidityBufferBps": 1000,
+        "capacityEvidenceHash": "0x70a430a1b4833935b4bbe6406bd4093f3aeb12465907fa23b7b4bb8ebd7cab5c",
+        "capitalizedCostUnits": "0",
+        "solverPrincipalUnits": "10000000000",
+        "fundingShortfallUnits": "0",
+        "sourceDebtPayoffUnits": "10000000000",
+        "separatelyPaidCostUnits": "50000000",
+        "solverAdvancedCostUnits": "0",
+        "stressCollateralDropBps": 1000,
+        "policyBorrowCapacityUnits": "11583000000",
+        "signedBorrowCapacityUnits": "10050000000",
+        "sourceConversionQuoteHash": "0x661aca42dadcdce4f8202b87bf29d70edd344c05e94a646c78dc1153fae5424b",
+        "sourceDebtPayoffAssetUnits": "10000000000",
+        "borrowerDebtPrepaymentUnits": "0",
+        "protocolBorrowCapacityUnits": "14850000000",
+        "liquidityBorrowCapacityUnits": "90909090909",
+        "confirmedExternalFundingUnits": "0",
+        "requiredDestinationBorrowUnits": "10050000000",
+        "borrowerDebtPrepaymentAssetUnits": "0",
+        "maximumSafeBorrowingCapacityUnits": "10050000000",
+        "totalRequiredRepaymentAndFinancedCostUnits": "10050000000"
+      },
+      "observedAt": "2026-11-12T01:02:24.000Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "SCHEMA_AND_STATE",
+      "verifierVersion": "debtshift-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:31.453Z"
+    },
+    {
+      "evidenceId": "0x85c16469550ee2e3459a9d72eb2153d0d878712950012f562c81474f178e5a1e",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "INTENT_AUTHORIZATION",
+      "schemaVersion": 1,
+      "provider": "EIP712",
+      "network": "eip155:31337",
+      "chainId": null,
+      "blockNumber": null,
+      "blockHash": null,
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x85c16469550ee2e3459a9d72eb2153d0d878712950012f562c81474f178e5a1e",
+      "rawObservationHash": "0x5abd20b7a53f3f121161f19b1482ff94428b281ba9cd7272a90b2fbd0a004c1b",
+      "normalizedPayload": {
+        "intent": {
+          "nonce": "282233567169449387978442103346333360311",
+          "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+          "feeAsset": {
+            "symbol": "dUSDC",
+            "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "chainId": 31338,
+            "decimals": 6
+          },
+          "expiration": "1794445951",
+          "accountType": "EOA",
+          "safetyPolicy": {
+            "kind": "MAX_LTV_BPS",
+            "maximumLtvBps": 7000,
+            "stressMaximumLtvBps": 6500
+          },
+          "allowedTargets": [
+            {
+              "chainId": 31338,
+              "marketId": "0xdd6d7df83f097ee9e12e5e45978460b94df267bc3fffde657266e0d79f9f3d71",
+              "protocol": "LOCAL_MORPHO_MOCK",
+              "deployment": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+            }
+          ],
+          "maxSlippageBps": 50,
+          "sourcePosition": {
+            "market": {
+              "chainId": 31337,
+              "marketId": "0x456866d088913085255907bec2d30e1262f40446d4927fbba78207114cfb29e0",
+              "protocol": "LOCAL_AAVE_MOCK",
+              "deployment": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+            },
+            "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+            "debtAsset": {
+              "symbol": "sUSDC",
+              "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+              "chainId": 31337,
+              "decimals": 6
+            },
+            "collateralAsset": {
+              "symbol": "sWETH",
+              "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+              "chainId": 31337,
+              "decimals": 18
+            }
+          },
+          "maxTotalFeeUnits": "50000000",
+          "maxDurationSeconds": 600,
+          "maxSourceDebtUnits": "10000000000",
+          "minAprReductionBps": 150,
+          "minSourceCollateralUnits": "10000000000000000000"
+        },
+        "signature": "0x589318730d5e1f6d03bee0650d2162808ee3be97031a82372311c0b92084d8c0476aa26aef2286f9b435e1d602f9865059acf5c349d27ac2ff30025ea858e0a31c",
+        "intentHash": "0x3749ee5d500efd191ef1ae1abe6b8827044acf98a80692f2eba1a8c7fe2a66e3"
+      },
+      "observedAt": "2026-11-12T01:02:24.000Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "SIGNATURE",
+      "verifierVersion": "debtshift-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:31.453Z"
+    },
+    {
+      "evidenceId": "0x5b89dc2a72dccfb3527a47e9c5ffea4eb4f7235ac2064d1c042e705ccc7e52e1",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "ROUTE_QUOTE",
+      "schemaVersion": 1,
+      "provider": "DEBTSHIFT_SIMULATOR",
+      "network": "eip155:31337",
+      "chainId": null,
+      "blockNumber": null,
+      "blockHash": null,
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x5b89dc2a72dccfb3527a47e9c5ffea4eb4f7235ac2064d1c042e705ccc7e52e1",
+      "rawObservationHash": "0x266863e623b18ff9ffee89f46b41cf48ee823bd83bebbd6bb0dcf03578ad3bf4",
+      "normalizedPayload": {
+        "fees": [
+          {
+            "kind": "TRANSPORT",
+            "asset": {
+              "symbol": "sWETH",
+              "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+              "chainId": 31337,
+              "decimals": 18
+            },
+            "amountUnits": "10000000000000000"
+          }
+        ],
+        "mode": "SIMULATED",
+        "quoteId": "sim-3133e01faf03aa93",
+        "provider": "DEBTSHIFT_SIMULATOR",
+        "expiresAt": "2026-11-12T01:07:31.000Z",
+        "quoteHash": "0x3133e01faf03aa93a26c6a159ba1807a9c33f1bb0333c0efffe1b3ded28bf92d",
+        "inputAsset": {
+          "symbol": "sWETH",
+          "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+          "chainId": 31337,
+          "decimals": 18
+        },
+        "outputAsset": {
+          "symbol": "dWETH",
+          "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+          "chainId": 31338,
+          "decimals": 18
+        },
+        "amountInUnits": "10000000000000000000",
+        "correlationId": "sim-3133e01faf03aa93",
+        "depositAddress": "simulator:3133e01faf03aa93a26c6a159ba1807a",
+        "refundReceiver": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "rawResponseHash": "0xd7306b4ce050d1e70d40580a48c98abd9d11d17e09710e541e076ec107dbc044",
+        "minAmountOutUnits": "9940050000000000000",
+        "destinationReceiver": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+        "expectedAmountOutUnits": "9990000000000000000"
+      },
+      "observedAt": "2026-11-12T01:02:24.000Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "SCHEMA_AND_STATE",
+      "verifierVersion": "debtshift-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:31.453Z"
+    },
+    {
+      "evidenceId": "0x473a6610d4bd9367a9797b992b247439d2b950fad25612ef186d41256c31888e",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "SOURCE_POSITION_SNAPSHOT",
+      "schemaVersion": 1,
+      "provider": "DIRECT_RPC",
+      "network": "eip155:31337",
+      "chainId": "31337",
+      "blockNumber": "19",
+      "blockHash": "0x28953abe0a96787cf69deb6e7053f65ee4b382e05cba41ea06d92ddfd9491898",
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x473a6610d4bd9367a9797b992b247439d2b950fad25612ef186d41256c31888e",
+      "rawObservationHash": "0x5ba149cec963c63022490eb17aaaa81267d8d968524506752447460ad67f87c1",
+      "normalizedPayload": {
+        "block": {
+          "hash": "0x28953abe0a96787cf69deb6e7053f65ee4b382e05cba41ea06d92ddfd9491898",
+          "number": "19",
+          "observedAt": "2026-11-12T01:02:24.000Z"
+        },
+        "health": {
+          "kind": "AAVE_HEALTH_FACTOR",
+          "healthFactorWad": "1500000000000000000"
+        },
+        "position": {
+          "market": {
+            "chainId": 31337,
+            "marketId": "0x456866d088913085255907bec2d30e1262f40446d4927fbba78207114cfb29e0",
+            "protocol": "LOCAL_AAVE_MOCK",
+            "deployment": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+          },
+          "borrower": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+          "debtAsset": {
+            "symbol": "sUSDC",
+            "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "chainId": 31337,
+            "decimals": 6
+          },
+          "collateralAsset": {
+            "symbol": "sWETH",
+            "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+            "chainId": 31337,
+            "decimals": 18
+          }
+        },
+        "debtUnits": "10000000000",
+        "snapshotId": "0x534f2fbc970cae33e1283936bc6589e77fbbb5954eac0a42485acf4d41c56ff4",
+        "borrowAprBps": 700,
+        "collateralUnits": "10000000000000000000"
+      },
+      "observedAt": "2026-11-12T01:02:24.000Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "SCHEMA_AND_STATE",
+      "verifierVersion": "debtshift-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:31.453Z"
+    },
+    {
+      "evidenceId": "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "FINANCING_REVALIDATION",
+      "schemaVersion": 1,
+      "provider": "DEBTSHIFT_RISK_VALIDATOR",
+      "network": "eip155:31337",
+      "chainId": "31337",
+      "blockNumber": "21",
+      "blockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+      "transactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2",
+      "logIndex": null,
+      "providerReference": "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb",
+      "rawObservationHash": "0x32bf4103b4f24430d645ea2b4a01dfb9f7cdafe6d09a0496180619f1f7447b7d",
+      "normalizedPayload": {
+        "action": "reserve",
+        "finality": {
+          "requiredConfirmations": 1,
+          "canonicalBlockVerified": true
+        },
+        "planHash": "0x5e855a97e06e8e19eceff897bf80d7cfcb1a23d65862bf882ac8c28437d8a7ae",
+        "feeCapUnits": "50000000",
+        "observation": {},
+        "principalUnits": "10000000000",
+        "feasibilityHash": "0x716a29b45527f2f11c88d25b96a27b69047255fd6a507198706db63feebbcd41",
+        "financingRevalidation": {
+          "checkpoint": "BEFORE_RESERVATION",
+          "observedAt": "2026-11-12T01:02:32.188Z",
+          "sourceState": "OPEN_MATCHED",
+          "policyFailureCodes": [],
+          "collateralValueUnits": "19880100000",
+          "fundingShortfallUnits": "0",
+          "protocolMaximumLtvBps": 7500,
+          "collateralPriceInDebtWad": "2000000000000000000000",
+          "maximumTargetBorrowAprBps": 550,
+          "policyBorrowCapacityUnits": "11629858500",
+          "signedBorrowCapacityUnits": "10050000000",
+          "destinationCollateralUnits": "9940050000000000000",
+          "observedTargetBorrowAprBps": 500,
+          "protocolBorrowCapacityUnits": "14910075000",
+          "liquidityBorrowCapacityUnits": "90909090909",
+          "originalCapacityEvidenceHash": "0x70a430a1b4833935b4bbe6406bd4093f3aeb12465907fa23b7b4bb8ebd7cab5c",
+          "confirmedExternalFundingUnits": "0",
+          "requiredDestinationBorrowUnits": "10050000000",
+          "maximumSafeBorrowingCapacityUnits": "10050000000"
+        },
+        "feasibilityTransactionHash": "0x6f44255b19e410bf2f90283401938cc7234ff1364f4b687e406467fc3276927e"
+      },
+      "observedAt": "2026-11-12T01:02:32.265Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "RECEIPT_AND_STATE",
+      "verifierVersion": "debtshift-worker-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:32.271Z"
+    },
+    {
+      "evidenceId": "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "LIQUIDITY_RESERVATION",
+      "schemaVersion": 1,
+      "provider": "LOCAL_TEST_VAULT",
+      "network": "eip155:31337",
+      "chainId": "31337",
+      "blockNumber": "21",
+      "blockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+      "transactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2",
+      "logIndex": null,
+      "providerReference": "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+      "rawObservationHash": "0x32bf4103b4f24430d645ea2b4a01dfb9f7cdafe6d09a0496180619f1f7447b7d",
+      "normalizedPayload": {
+        "action": "reserve",
+        "finality": {
+          "requiredConfirmations": 1,
+          "canonicalBlockVerified": true
+        },
+        "planHash": "0x5e855a97e06e8e19eceff897bf80d7cfcb1a23d65862bf882ac8c28437d8a7ae",
+        "feeCapUnits": "50000000",
+        "observation": {},
+        "principalUnits": "10000000000",
+        "feasibilityHash": "0x716a29b45527f2f11c88d25b96a27b69047255fd6a507198706db63feebbcd41",
+        "financingRevalidation": {
+          "checkpoint": "BEFORE_RESERVATION",
+          "observedAt": "2026-11-12T01:02:32.188Z",
+          "sourceState": "OPEN_MATCHED",
+          "policyFailureCodes": [],
+          "collateralValueUnits": "19880100000",
+          "fundingShortfallUnits": "0",
+          "protocolMaximumLtvBps": 7500,
+          "collateralPriceInDebtWad": "2000000000000000000000",
+          "maximumTargetBorrowAprBps": 550,
+          "policyBorrowCapacityUnits": "11629858500",
+          "signedBorrowCapacityUnits": "10050000000",
+          "destinationCollateralUnits": "9940050000000000000",
+          "observedTargetBorrowAprBps": 500,
+          "protocolBorrowCapacityUnits": "14910075000",
+          "liquidityBorrowCapacityUnits": "90909090909",
+          "originalCapacityEvidenceHash": "0x70a430a1b4833935b4bbe6406bd4093f3aeb12465907fa23b7b4bb8ebd7cab5c",
+          "confirmedExternalFundingUnits": "0",
+          "requiredDestinationBorrowUnits": "10050000000",
+          "maximumSafeBorrowingCapacityUnits": "10050000000"
+        },
+        "feasibilityTransactionHash": "0x6f44255b19e410bf2f90283401938cc7234ff1364f4b687e406467fc3276927e"
+      },
+      "observedAt": "2026-11-12T01:02:32.267Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "RECEIPT_AND_STATE",
+      "verifierVersion": "debtshift-worker-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:32.289Z"
+    },
+    {
+      "evidenceId": "0x0c2eef5922cbfd0b589cc7844ade0bab68ac05122f2861ab32fd5da70c05fa79",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "RECOVERY_OPENED",
+      "schemaVersion": 1,
+      "provider": "DEBTSHIFT_CANONICALITY_WATCHER",
+      "network": "debtshift:workflow",
+      "chainId": null,
+      "blockNumber": null,
+      "blockHash": null,
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x0c2eef5922cbfd0b589cc7844ade0bab68ac05122f2861ab32fd5da70c05fa79",
+      "rawObservationHash": "0x6a90eaff2a13a8045914b48cdf70df604fa5b7acd3d49432de2a2639a6f7098f",
+      "normalizedPayload": {
+        "policy": "HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION",
+        "reason": "FINALIZED_CHAIN_EVIDENCE_REORGED",
+        "failures": [
+          {
+            "reason": "FINALITY_DEPTH_LOST",
+            "chainId": 31337,
+            "evidenceId": "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb",
+            "evidenceType": "FINANCING_REVALIDATION",
+            "transactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2",
+            "expectedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+            "observedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+            "expectedBlockNumber": "21",
+            "requiredConfirmations": 1,
+            "observedTipBlockNumber": "19"
+          },
+          {
+            "reason": "FINALITY_DEPTH_LOST",
+            "chainId": 31337,
+            "evidenceId": "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+            "evidenceType": "LIQUIDITY_RESERVATION",
+            "transactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2",
+            "expectedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+            "observedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+            "expectedBlockNumber": "21",
+            "requiredConfirmations": 1,
+            "observedTipBlockNumber": "19"
+          }
+        ],
+        "residualAssets": [
+          {
+            "kind": "CANONICALITY_INCIDENT",
+            "disposition": "REQUIRES_DIRECT_CHAIN_RECONCILIATION",
+            "affectedEvidenceIds": [
+              "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+              "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb"
+            ]
+          }
+        ],
+        "affectedEvidenceIds": [
+          "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+          "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb"
+        ],
+        "requiresManualReview": true
+      },
+      "observedAt": "2026-11-12T01:02:32.826Z",
+      "verificationState": "FINALIZED",
+      "verificationMethod": "CANONICAL_BLOCK_AND_RECEIPT_REVALIDATION",
+      "verifierVersion": "debtshift-worker-v1",
+      "supersedesEvidenceId": null,
+      "createdAt": "2026-11-12T01:02:32.839Z"
+    },
+    {
+      "evidenceId": "0x6cbcf77c1f269061f2c5d80d719eee7d62f9744929a060c5f07fbcd0a6335c3f",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "FINANCING_REVALIDATION",
+      "schemaVersion": 1,
+      "provider": "DEBTSHIFT_CANONICALITY_WATCHER",
+      "network": "eip155:31337",
+      "chainId": "31337",
+      "blockNumber": null,
+      "blockHash": null,
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x6cbcf77c1f269061f2c5d80d719eee7d62f9744929a060c5f07fbcd0a6335c3f",
+      "rawObservationHash": "0x8e0e5390e4cd53ffb1a9b3730c3553027e5908ee913e69c314cc422901cf2f54",
+      "normalizedPayload": {
+        "reason": "FINALIZED_CHAIN_EVIDENCE_REORGED",
+        "originalBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+        "originalEvidenceId": "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb",
+        "canonicalityFailure": {
+          "reason": "FINALITY_DEPTH_LOST",
+          "chainId": 31337,
+          "evidenceId": "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb",
+          "evidenceType": "FINANCING_REVALIDATION",
+          "transactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2",
+          "expectedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+          "observedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+          "expectedBlockNumber": "21",
+          "requiredConfirmations": 1,
+          "observedTipBlockNumber": "19"
+        },
+        "originalBlockNumber": "21",
+        "originalTransactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2"
+      },
+      "observedAt": "2026-11-12T01:02:32.826Z",
+      "verificationState": "RETRACTED",
+      "verificationMethod": "CANONICAL_BLOCK_AND_RECEIPT_REVALIDATION",
+      "verifierVersion": "debtshift-worker-v1",
+      "supersedesEvidenceId": "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb",
+      "createdAt": "2026-11-12T01:02:32.878Z"
+    },
+    {
+      "evidenceId": "0x7f48122e8bda9d17a7e0250816c39394b9abc386298e75ad82c8bab5cc9d782d",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "LIQUIDITY_RESERVATION",
+      "schemaVersion": 1,
+      "provider": "DEBTSHIFT_CANONICALITY_WATCHER",
+      "network": "eip155:31337",
+      "chainId": "31337",
+      "blockNumber": null,
+      "blockHash": null,
+      "transactionHash": null,
+      "logIndex": null,
+      "providerReference": "0x7f48122e8bda9d17a7e0250816c39394b9abc386298e75ad82c8bab5cc9d782d",
+      "rawObservationHash": "0x882905252c09f8378f6467bafda85791f9c945f1ddf0cab1a9e76f0554bd5979",
+      "normalizedPayload": {
+        "reason": "FINALIZED_CHAIN_EVIDENCE_REORGED",
+        "originalBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+        "originalEvidenceId": "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+        "canonicalityFailure": {
+          "reason": "FINALITY_DEPTH_LOST",
+          "chainId": 31337,
+          "evidenceId": "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+          "evidenceType": "LIQUIDITY_RESERVATION",
+          "transactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2",
+          "expectedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+          "observedBlockHash": "0x5c9066886d7763c22b2dcdae91d3c2806816fa5433efe1dc746207c32cfb2270",
+          "expectedBlockNumber": "21",
+          "requiredConfirmations": 1,
+          "observedTipBlockNumber": "19"
+        },
+        "originalBlockNumber": "21",
+        "originalTransactionHash": "0xee9bf843c67d4d327501ff6f8dd92c84bbda2a4298a03aba73da9fe8386a80e2"
+      },
+      "observedAt": "2026-11-12T01:02:32.828Z",
+      "verificationState": "RETRACTED",
+      "verificationMethod": "CANONICAL_BLOCK_AND_RECEIPT_REVALIDATION",
+      "verifierVersion": "debtshift-worker-v1",
+      "supersedesEvidenceId": "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+      "createdAt": "2026-11-12T01:02:32.888Z"
+    }
+  ],
+  "events": [
+    {
+      "eventId": "0x05ae64fa286a118fb85acd6dced21cfdda254ed7354d801da212641b2fdd54d4",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "sequence": 1,
+      "type": "MIGRATION_AUTHORIZED",
+      "phase": "AUTHORIZED",
+      "actor": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "payload": {
+        "planHash": "0x5e855a97e06e8e19eceff897bf80d7cfcb1a23d65862bf882ac8c28437d8a7ae",
+        "quoteHash": "0x3133e01faf03aa93a26c6a159ba1807a9c33f1bb0333c0efffe1b3ded28bf92d",
+        "intentHash": "0x3749ee5d500efd191ef1ae1abe6b8827044acf98a80692f2eba1a8c7fe2a66e3",
+        "financingHash": "0xf9b1708f972eb0904d390feb9d85d6797e5c50fb1deceed81f2b1e88c71b5960"
+      },
+      "payloadHash": "0x898cda166912c60528adc3e4067ce3bfd64db32b145c60e6cd1b9e097b8b8e8a",
+      "observedAt": "2026-11-12T01:02:24.000Z",
+      "createdAt": "2026-11-12T01:02:31.453Z"
+    },
+    {
+      "eventId": "0xeaa2fce4a406166542475bc37a5f77eb2011bf886b3a1723b76c380af38cf732",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "sequence": 2,
+      "type": "MIGRATION_PHASE_ADVANCED",
+      "phase": "RESERVED",
+      "actor": "worker",
+      "payload": {
+        "to": "RESERVED",
+        "from": "AUTHORIZED",
+        "evidenceId": "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f"
+      },
+      "payloadHash": "0xd6797e0be85e13efe8518e410fcc969263df7728510cad8e71add140462f8774",
+      "observedAt": "2026-11-12T01:02:32.267Z",
+      "createdAt": "2026-11-12T01:02:32.289Z"
+    },
+    {
+      "eventId": "0x7153ce4d847e56a17e155d86fd57d0ff20d02727a3844dbe89f794c24a040500",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "sequence": 3,
+      "type": "MIGRATION_PHASE_ADVANCED",
+      "phase": "RECOVERY",
+      "actor": "worker",
+      "payload": {
+        "to": "RECOVERY",
+        "from": "RESERVED",
+        "evidenceId": "0x0c2eef5922cbfd0b589cc7844ade0bab68ac05122f2861ab32fd5da70c05fa79"
+      },
+      "payloadHash": "0xb2594a7543f31c79a863242dc60137f858159e2b4f029bc7354117296c2695c3",
+      "observedAt": "2026-11-12T01:02:32.826Z",
+      "createdAt": "2026-11-12T01:02:32.839Z"
+    }
+  ],
+  "commands": [
+    {
+      "commandId": "0x4a8817e695cddb23fb8853ff75b969cd17ccd5fd9ebebe3ff4c5329409b3768a",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "RESERVE_LIQUIDITY",
+      "idempotencyKey": "reserve:0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "status": "SUCCEEDED",
+      "logicalAttempt": 1,
+      "payload": {
+        "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1"
+      },
+      "payloadHash": "0xf790ce7a1e51b8d2343999c2e9d89d85493ee9b9c6974288cc886a84851268b7",
+      "lastError": null,
+      "availableAt": "2026-11-12T01:02:31.453Z",
+      "createdAt": "2026-11-12T01:02:31.453Z",
+      "updatedAt": "2026-11-12T01:02:32.344Z"
+    },
+    {
+      "commandId": "0x92980d8255d57f24fb40e7cc94c1838a634d08c2a159e6d3ac197bef66cbf54b",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "type": "CLOSE_SOURCE",
+      "idempotencyKey": "source-close:0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "status": "SUCCEEDED",
+      "logicalAttempt": 1,
+      "payload": {
+        "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1"
+      },
+      "payloadHash": "0xf790ce7a1e51b8d2343999c2e9d89d85493ee9b9c6974288cc886a84851268b7",
+      "lastError": null,
+      "availableAt": "2026-11-12T01:02:32.289Z",
+      "createdAt": "2026-11-12T01:02:32.289Z",
+      "updatedAt": "2026-11-12T01:02:32.903Z"
+    }
+  ],
+  "ledger": [],
+  "reservations": [
+    {
+      "reservationId": "0xd166a011ff247b885357bdf0965faf73cb4a93123858ad5aac27646646689990",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "reservationHash": "0x72d077ade8a678bd54d5bd40c43840b544d6cb9ef76b257cf2eeba1d15f0d86d",
+      "provider": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+      "chainId": "31337",
+      "asset": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+      "principalUnits": "10000000000",
+      "feeCapUnits": "50000000",
+      "status": "RELEASED",
+      "expiresAt": "2026-11-12T01:06:31.000Z",
+      "createdAt": "2026-11-12T01:02:31.453Z",
+      "updatedAt": "2026-11-12T01:02:32.828Z"
+    }
+  ],
+  "recoveryCases": [
+    {
+      "recoveryId": "0x1452f9df911bedb544751a4816dd4d6cfc2e3c86bd8f2521db8954acf918c265",
+      "migrationId": "0x3a594089b6c0fceb2d914f4edc4ee3c2b63c007cfa7bd5ca513cc040f19f1fd1",
+      "policy": "HALT_FOR_MANUAL_CANONICAL_STATE_RECONCILIATION",
+      "status": "OPEN",
+      "reason": "FINALIZED_CHAIN_EVIDENCE_REORGED",
+      "residualAssets": [
+        {
+          "kind": "CANONICALITY_INCIDENT",
+          "disposition": "REQUIRES_DIRECT_CHAIN_RECONCILIATION",
+          "affectedEvidenceIds": [
+            "0x8418954db49fd8c6436fc02567103d6a26f9b41a1d7c8a694a7066918bcec66f",
+            "0xefbd56d411565b9bc83f5dddbebf1ab48fb05030d6fe25d9f2e0dfd6805c5efb"
+          ]
+        }
+      ],
+      "openedAt": "2026-11-12T01:02:32.826Z",
+      "resolvedAt": null,
+      "createdAt": "2026-11-12T01:02:32.839Z",
+      "updatedAt": "2026-11-12T01:02:32.826Z"
+    }
+  ]
+}

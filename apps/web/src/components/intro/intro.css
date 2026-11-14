@@ -1,0 +1,159 @@
+/*
+ * The brand intro. 2.4 s in all:
+ *
+ *   0.00–0.60  the light stroke of the mark draws
+ *   0.25–0.85  the teal stroke draws
+ *   0.55–1.20  the letters of the name rise, one after another
+ *   0.60–1.65  the loading line fills
+ *   0.95       the tagline fades in
+ *   1.70–2.35  the content lifts and the screen slides away upwards
+ *
+ * Only drawn while `<html data-intro="play">`, which the head script sets.
+ */
+
+.intro {
+  display: none;
+}
+
+html[data-intro='play'] body {
+  overflow: hidden;
+}
+
+html[data-intro='play'] .intro {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(60% 60% at 50% 45%, rgba(63, 182, 197, 0.16), transparent 70%),
+    radial-gradient(40% 40% at 70% 80%, rgba(0, 236, 151, 0.07), transparent 70%), #04101f;
+  color: #e8eef4;
+  animation: intro-leave 0.65s cubic-bezier(0.76, 0, 0.24, 1) 1.7s forwards;
+  will-change: transform;
+}
+
+.intro__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  animation: intro-content-leave 0.5s cubic-bezier(0.76, 0, 0.24, 1) 1.65s forwards;
+}
+
+.intro__mark {
+  overflow: visible;
+}
+
+.intro__stroke {
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: intro-draw 0.6s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.intro__stroke--ink {
+  stroke: #e8eef4;
+}
+
+.intro__stroke--accent {
+  stroke: #3fb6c5;
+  animation-delay: 0.25s;
+  filter: drop-shadow(0 0 6px rgba(63, 182, 197, 0.7));
+}
+
+.intro__name {
+  margin: 0;
+  display: flex;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: 56px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.intro__letter {
+  display: inline-block;
+  transform: translateY(110%);
+  animation: intro-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: calc(0.55s + var(--i) * 0.045s);
+}
+
+.intro__tagline {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: #9fb1c4;
+  opacity: 0;
+  animation: intro-fade 0.5s ease 0.95s forwards;
+}
+
+.intro__bar {
+  position: relative;
+  width: 180px;
+  height: 2px;
+  margin-top: 10px;
+  border-radius: 2px;
+  background: rgba(159, 177, 196, 0.2);
+  overflow: hidden;
+}
+
+.intro__bar span {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #3fb6c5, #00ec97);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  animation: intro-fill 1.05s cubic-bezier(0.65, 0, 0.35, 1) 0.6s forwards;
+}
+
+@keyframes intro-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes intro-rise {
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes intro-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes intro-fill {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes intro-content-leave {
+  to {
+    transform: translateY(-48px);
+    opacity: 0;
+  }
+}
+
+@keyframes intro-leave {
+  to {
+    transform: translateY(-100%);
+    border-bottom-left-radius: 50% 12%;
+    border-bottom-right-radius: 50% 12%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-intro='play'] .intro {
+    display: none;
+  }
+  html[data-intro='play'] body {
+    overflow: auto;
+  }
+}

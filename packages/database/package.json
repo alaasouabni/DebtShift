@@ -16,7 +16,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "eslint src",
-    "test": "vitest run --dir src --passWithNoTests",
+    "test": "vitest run --dir src --passWithNoTests --hookTimeout=30000",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

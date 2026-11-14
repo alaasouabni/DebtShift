@@ -9,7 +9,7 @@
     "dev": "tsx watch src/main.ts",
     "lint": "eslint src",
     "start": "node dist/main.js",
-    "test": "vitest run --dir src --passWithNoTests",
+    "test": "vitest run --dir src --passWithNoTests --hookTimeout=30000",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -38,24 +38,84 @@ describe('migration browser recovery', () => {
     );
   });
 
-  it('keeps browser secrets out of persistence, cookies, and analytics sinks', () => {
+  it('keeps browser secrets out of cookies and analytics sinks', () => {
     const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
-    const productionSource = readProductionSources(sourceRoot).join('\n');
+    const productionSource = readProductionSources(sourceRoot)
+      .map((file) => file.text)
+      .join('\n');
 
     expect(productionSource).not.toMatch(
-      /\b(?:localStorage|sessionStorage|indexedDB|sendBeacon|dataLayer|captureException|Sentry|posthog|mixpanel)\b/i,
+      /\b(?:indexedDB|sendBeacon|dataLayer|captureException|Sentry|posthog|mixpanel)\b/i,
     );
     expect(productionSource).not.toMatch(/document\.cookie/i);
   });
+
+  /*
+   * Browser storage is allowed for five short, non-secret values and nowhere
+   * else: the theme choice, the recorded-demo flag, the explanation
+   * preferences (never the API key), the id of the last migration, so a
+   * refresh can resume monitoring, and whether the brand intro has played. A new file that reaches for storage fails
+   * here until it is added on purpose.
+   */
+  it('keeps browser storage to the known non-secret values', () => {
+    const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
+    const sources = readProductionSources(sourceRoot);
+    const allowed = new Set([
+      'features/authorization/authorize-view.tsx',
+      'features/history/history-view.tsx',
+      'features/migrations/migration-view.tsx',
+      'features/settings/explanation-settings.ts',
+      'lib/demo/index.ts',
+      'lib/intro/index.ts',
+      'lib/theme/index.ts',
+    ]);
+    const usesStorage = /\bwindow\.(?:localStorage|sessionStorage)\b|\bstorage\(\)\?\./;
+
+    const offenders = sources
+      .filter((file) => usesStorage.test(file.text) && !allowed.has(file.path))
+      .map((file) => file.path);
+    expect(offenders).toEqual([]);
+
+    // Whatever is written is written under one of the fixed keys.
+    const keys = sources.flatMap((file) =>
+      [...file.text.matchAll(/\.setItem\(\s*([A-Za-z_]+)/g)].map((match) => match[1]),
+    );
+    expect(keys.length).toBeGreaterThan(0);
+    expect(new Set(keys)).toEqual(
+      new Set(['MIGRATION_STORAGE_KEY', 'STORAGE_KEY', 'THEME_STORAGE_KEY', 'FLAG']),
+    );
+
+    // The modules that hold the session and the wallet never touch storage.
+    for (const path of [
+      'lib/api/client.ts',
+      'features/wallet/wallet-context.tsx',
+      'features/wallet/session-gate.tsx',
+    ]) {
+      const file = sources.find((candidate) => candidate.path === path);
+      expect(file, path).toBeDefined();
+      expect(file!.text).not.toMatch(/\b(?:localStorage|sessionStorage)\b/);
+    }
+  });
 });
 
-function readProductionSources(directory: string): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+interface SourceFile {
+  readonly path: string;
+  readonly text: string;
+}
+
+function readProductionSources(directory: string, root = directory): SourceFile[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry): SourceFile[] => {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) return readProductionSources(path);
+    if (entry.isDirectory()) return readProductionSources(path, root);
     if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name) || entry.name.includes('.test.')) {
       return [];
     }
-    return [readFileSync(path, 'utf8')];
+    return [
+      {
+        // Always forward slashes, whatever the platform's separator is.
+        path: path.slice(root.length).split(sep).filter(Boolean).join('/'),
+        text: readFileSync(path, 'utf8'),
+      },
+    ];
   });
 }

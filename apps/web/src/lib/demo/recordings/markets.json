@@ -1,0 +1,48 @@
+[
+  {
+    "marketPk": "442bd025-d691-41f6-9ffb-e9219593efbc",
+    "chainId": "31337",
+    "protocol": "LOCAL_AAVE_MOCK",
+    "deployment": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+    "marketId": "0x456866d088913085255907bec2d30e1262f40446d4927fbba78207114cfb29e0",
+    "debtAsset": {
+      "symbol": "sUSDC",
+      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "chainId": 31337,
+      "decimals": 6
+    },
+    "collateralAsset": {
+      "symbol": "sWETH",
+      "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      "chainId": 31337,
+      "decimals": 18
+    },
+    "enabled": true,
+    "metadata": {},
+    "createdAt": "2026-11-11T22:51:43.691Z",
+    "updatedAt": "2026-11-13T14:32:28.843Z"
+  },
+  {
+    "marketPk": "5416467d-18f8-419d-a91f-79d043d181b4",
+    "chainId": "31338",
+    "protocol": "LOCAL_MORPHO_MOCK",
+    "deployment": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+    "marketId": "0xdd6d7df83f097ee9e12e5e45978460b94df267bc3fffde657266e0d79f9f3d71",
+    "debtAsset": {
+      "symbol": "dUSDC",
+      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "chainId": 31338,
+      "decimals": 6
+    },
+    "collateralAsset": {
+      "symbol": "dWETH",
+      "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      "chainId": 31338,
+      "decimals": 18
+    },
+    "enabled": true,
+    "metadata": {},
+    "createdAt": "2026-11-11T22:51:43.691Z",
+    "updatedAt": "2026-11-13T14:32:28.845Z"
+  }
+]
