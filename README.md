@@ -21,7 +21,8 @@
 </p>
 
 <p align="center">
-  <b><a href="#demo">▶ Watch the demo</a></b> ·
+  <b><a href="https://youtu.be/_XsPmwwCZ6M">▶ Watch the demo</a></b> ·
+  <b><a href="https://x.com/Yodeleheeee/status/2121674559707382027">𝕏 Demo post</a></b> ·
   <b><a href="#try-it-in-three-commands-no-wallet-no-docker">Try it in 3 commands</a></b> ·
   <b><a href="#verified-on-public-testnets">Testnet proof</a></b> ·
   <b><a href="#how-near-is-used">How NEAR is used</a></b> ·
@@ -32,6 +33,11 @@
 
 <p align="center">
   <img src="docs/readme/demo-preview.gif" alt="DebtShift in 18 seconds: the move, NEAR Intents, the MetaMask signature, the solver repaid" width="85%">
+</p>
+
+<p align="center">
+  <a href="https://youtu.be/_XsPmwwCZ6M"><b>▶ Watch the full 6-minute walkthrough on YouTube</b></a> ·
+  <a href="https://x.com/Yodeleheeee/status/2121674559707382027"><b>𝕏 See the demo post</b></a>
 </p>
 
 <!-- Paste the GitHub video link (https://github.com/user-attachments/assets/...) on the next line to show the full demo player here. -->
