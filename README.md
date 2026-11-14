@@ -16,6 +16,16 @@ and authenticated 1Click reads. Production modes cannot fall back to fixture val
 additionally require the restart-bound server switch `MAINNET_EXECUTION_ENABLED=true`; it defaults
 to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the enforced boundary.
 
+## Judge quick path
+
+1. Read the public old-position/new-position proof and explorer links below.
+2. Inspect the automatic discovery and no-funds fork result in
+   [`deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json`](deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json).
+3. Review the concise current decisions in
+   [`strategies-docs/08-progress-and-decisions.md`](strategies-docs/08-progress-and-decisions.md).
+4. Reproduce the software gate with `npm ci && npm run check`; reproduce contracts with
+   `npm run check:contracts`; reproduce the mainnet-fork route with `npm run proof:mainnet-fork`.
+
 ## Automatic discovery and mainnet-fork proof
 
 Production route analysis no longer depends on a configured Morpho market ID. For a connected
@@ -131,7 +141,6 @@ The complete block hashes, evidence IDs, incident history, and final state recon
   [`deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json`](deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json)
 - Initialized NEAR testnet receipt registry:
   [`deployment/manifests/near-testnet-registry-20261114-v1.json`](deployment/manifests/near-testnet-registry-20261114-v1.json)
-- Reconciled interrupted attempts: [`deployment/incidents`](deployment/incidents)
 
 All manifests bind source commit, route, identities, receipts, code/state evidence, and a disabled
 workflow-write switch. `MAINNET_EXECUTION_ENABLED` remained `false`; these deployments do not enable

@@ -19,3 +19,15 @@ requires the exact `MAINNET_CONTRACT_DEPLOYMENT_CONFIRMATION` value enforced by 
 
 No example with invented transaction hashes is committed because a deployment manifest is evidence,
 not configuration. Testnet and mainnet files are added only after the corresponding receipts exist.
+
+## Canonical public-testnet manifests
+
+- `testnet-morpho-base-sepolia-20261114-v1.json`: canonical-source Morpho-compatible deployment and
+  seeded market.
+- `testnet-evm-sepolia-base-sepolia-20261114-v3.json`: seven configured DebtShift EVM contracts.
+- `testnet-vault-funding-ethereum-sepolia-20261114-v2.json`: exact source-vault deposit and allowance
+  cleanup.
+- `near-testnet-registry-20261114-v1.json`: deployed and initialized NEAR receipt registry.
+
+Abandoned zero-byte reservations and per-attempt notes are not canonical deployment evidence and are
+not retained in the judge-facing repository.

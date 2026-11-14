@@ -2,9 +2,14 @@
 
 ## Purpose
 
-This directory is the operational playbook for implementing DebtShift. It turns the technical specification into ordered, verifiable work. It is the source of truth for scope, sequencing, unresolved decisions, milestone status, and completion criteria. With two days remaining as of 2026-11-12, `14-submission-critical-plan.md` controls work priority without erasing the full production backlog.
+This directory is the operational playbook for DebtShift. It turns the technical specification into
+ordered, verifiable architecture, security, deployment, and evidence rules. Implementation must be
+understandable from this directory without relying on chat history.
 
-Implementation must be understandable from this directory without relying on chat history.
+For a fast review, read `00-product-scope.md`, `01-architecture-blueprint.md`,
+`08-progress-and-decisions.md`, `24-public-testnet-workflow-execution.md`, and
+`25-automatic-route-discovery-mainnet-fork-proof.md`. The remaining files are focused reference
+documents for contracts, risk, operations, and deployment.
 
 ## Approved direction
 
@@ -50,8 +55,6 @@ Implementation must be understandable from this directory without relying on cha
 | [11-refinancing-feasibility-model.md](./11-refinancing-feasibility-model.md)                               | Defines borrowing capacity, funding shortfalls, secured resolutions, and revalidation rules.                   |
 | [12-production-provider-boundaries.md](./12-production-provider-boundaries.md)                             | Separates simulator fixtures from live Aave, Morpho, Chainlink, and 1Click providers.                          |
 | [13-frontend-handoff.md](./13-frontend-handoff.md)                                                         | Defines frontend ownership, API and signing contracts, user journeys, safety labels, and tests.                |
-| [14-submission-critical-plan.md](./14-submission-critical-plan.md)                                         | Defines the two-day P0 delivery order, ownership, deferrals, safety rules, and submission gates.               |
-| [15-account-handoff.md](./15-account-handoff.md)                                                           | Gives the next Codex account the exact verified checkpoint, blockers, and resume commands.                     |
 | [16-operations-runbooks.md](./16-operations-runbooks.md)                                                   | Gives executable containment, recovery, backup, pause, and key-rotation procedures.                            |
 | [17-sandbox-evidence-example.md](./17-sandbox-evidence-example.md)                                         | Records one reproducible local migration's exact transaction, evidence, image, and safety proof.               |
 | [18-observability-deployment.md](./18-observability-deployment.md)                                         | Defines trace safety, durable context propagation, dashboards, and operator verification.                      |
@@ -65,8 +68,8 @@ Implementation must be understandable from this directory without relying on cha
 
 ## Work protocol
 
-1. Read this file, `08-progress-and-decisions.md`, and any active deadline override before starting a work session.
-2. During the current submission window, select the earliest incomplete P0 item in `14-submission-critical-plan.md`; otherwise select the earliest incomplete milestone whose dependencies are complete.
+1. Read this file and `08-progress-and-decisions.md` before starting a work session.
+2. Select the earliest incomplete milestone whose dependencies are complete.
 3. Mark only one implementation task as `IN_PROGRESS` in the progress tracker.
 4. Record material architectural choices in the decision log before depending on them broadly.
 5. Implement the smallest coherent vertical increment.
@@ -105,16 +108,15 @@ Implementation must be understandable from this directory without relying on cha
 
 ## Current project status
 
-| Area                        | Status      |
-| --------------------------- | ----------- |
-| Technical document analysis | COMPLETE    |
-| Strategy documentation      | COMPLETE    |
-| Repository initialization   | COMPLETE    |
-| Application implementation  | IN_PROGRESS |
-| Contract implementation     | IN_PROGRESS |
-| Contract-backed sandbox     | IN_PROGRESS |
-| NEAR testnet deployment     | COMPLETE    |
-| Public-testnet recovery     | COMPLETE    |
-| Public-testnet happy path   | COMPLETE    |
-| Mainnet implementation      | IN_PROGRESS |
-| Mainnet writes              | DISABLED    |
+| Area                                       | Status                          |
+| ------------------------------------------ | ------------------------------- |
+| Technical document analysis                | COMPLETE                        |
+| Strategy documentation                     | COMPLETE                        |
+| Application workflow                       | COMPLETE FOR THE REVIEWED ROUTE |
+| EVM and NEAR contracts                     | COMPLETE FOR THE REVIEWED ROUTE |
+| Contract-backed sandbox                    | COMPLETE                        |
+| NEAR testnet deployment                    | COMPLETE                        |
+| Public-testnet recovery and happy path     | COMPLETE                        |
+| Automatic mainnet-readonly route discovery | COMPLETE                        |
+| No-funds dual-mainnet-fork proof           | COMPLETE                        |
+| Mainnet broadcasting                       | DISABLED                        |
