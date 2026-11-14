@@ -1,13 +1,39 @@
-# DebtShift
+<p align="center">
+  <img src="docs/readme/banner.png" alt="DebtShift: move your loan to a cheaper market on another chain, through NEAR Intents" width="100%">
+</p>
 
-**Move a loan to a cheaper market on another chain, with two signatures and without repaying it
-first.** Built at NEAR HACKATHON (November 2026), track **Unstoppable DeFi**.
+<p align="center">
+  <img src="https://img.shields.io/badge/NEAR_HACKATHON-2026-00EC97?style=for-the-badge&labelColor=04101f" alt="NEAR HACKATHON 2026">
+  <img src="https://img.shields.io/badge/track-Unstoppable_DeFi-3fb6c5?style=for-the-badge&labelColor=04101f" alt="Track: Unstoppable DeFi">
+  <img src="https://img.shields.io/badge/transport-NEAR_Intents-00EC97?style=for-the-badge&labelColor=04101f" alt="NEAR Intents">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-e8eef4?style=for-the-badge&labelColor=04101f" alt="MIT license"></a>
+</p>
 
-- **Demo video (2:15):** DEMO_POST_LINK
-- **Full walkthrough (6:25):** FULL_VIDEO_LINK
-- **Try it without a wallet:** [three commands, below](#try-it-in-three-commands-no-wallet-no-docker)
-- **Verified on public testnets:** an Aave V3 position on Ethereum Sepolia closed and reopened on Base
-  Sepolia, with its evidence finalized on NEAR testnet ([receipts below](#verified-on-public-testnets))
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js">
+  <img src="https://img.shields.io/badge/three.js-000000?style=flat-square&logo=threedotjs&logoColor=white" alt="three.js">
+  <img src="https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white" alt="NestJS">
+  <img src="https://img.shields.io/badge/Solidity-363636?style=flat-square&logo=solidity&logoColor=white" alt="Solidity">
+  <img src="https://img.shields.io/badge/Foundry-1c1c1c?style=flat-square" alt="Foundry">
+  <img src="https://img.shields.io/badge/Rust_near--sdk-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust near-sdk">
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/viem-1e1e1e?style=flat-square" alt="viem">
+</p>
+
+<p align="center">
+  <b><a href="FULL_VIDEO_LINK">▶ Watch the demo</a></b> ·
+  <b><a href="DEMO_POST_LINK">𝕏 Demo post</a></b> ·
+  <b><a href="#try-it-in-three-commands-no-wallet-no-docker">Try it in 3 commands</a></b> ·
+  <b><a href="#verified-on-public-testnets">Testnet proof</a></b> ·
+  <b><a href="#how-near-is-used">How NEAR is used</a></b>
+</p>
+
+<p align="center">
+  <a href="FULL_VIDEO_LINK"><img src="docs/readme/video-thumbnail.jpg" alt="Watch the 6-minute DebtShift walkthrough" width="80%"></a>
+</p>
+
+> **Move a loan to a cheaper market on another chain, with two signatures and without repaying it
+> first.** Built at NEAR HACKATHON (November 2026) for the **Unstoppable DeFi** track.
 
 ## The problem
 
@@ -37,6 +63,45 @@ Most borrowers never do it, and pay the difference every day.
 4. **Fails safe.** Cross-chain steps cannot be atomic, and DebtShift does not pretend they are. Before
    the old loan closes, the borrower can cancel. After that, value returns along the refund path they
    signed.
+
+```mermaid
+flowchart LR
+  B([Borrower]) -- "signs the policy<br/>and the exact plan" --> D[DebtShift<br/>API and worker]
+  V[(DebtShift vault<br/>solver liquidity)] -- "1 · reserved<br/>2 · repays the old loan" --> A[Aave V3<br/>old loan · 7.00%]
+  A -- "collateral released" --> N{{NEAR Intents<br/>1Click transport}}
+  N -- "3 · delivered" --> E[Escrow<br/>fixed by the plan]
+  E -- "4 · new loan opens" --> M[Morpho Blue<br/>new loan · 4.50%]
+  M -- "5 · principal + capped fee" --> V
+  D -. "6 · evidence bundle" .-> R[(NEAR receipt<br/>registry)]
+```
+
+## See it
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/board-near-intents.gif" alt="The collateral crosses chains through NEAR Intents"><br><sub><b>The mechanism.</b> The collateral crosses through NEAR Intents into an escrow fixed by the signed plan.</sub></td>
+    <td width="50%"><img src="docs/readme/metamask-connect.gif" alt="Connecting MetaMask to DebtShift"><br><sub><b>Your own wallet.</b> Connect, sign in, then two EIP-712 signatures in MetaMask.</sub></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/landing-dark.jpg" alt="Landing page, dark mode"><br><sub>Landing page: a live 3D picture of the move (dark mode).</sub></td>
+    <td width="50%"><img src="docs/readme/landing-light.jpg" alt="Landing page, light mode"><br><sub>The same page in light mode.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/readme/app-position.jpg" alt="Position read from the source chain"><br><sub><b>1 · Position.</b> Read live from the source chain, with the block it was read at.</sub></td>
+    <td><img src="docs/readme/app-routes.jpg" alt="Route comparison"><br><sub><b>2 · Routes.</b> Every candidate market checked against your policy; rejections explained.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/readme/app-authorize.jpg" alt="Authorize the policy"><br><sub><b>3 · Authorize.</b> The exact limits, readable before you sign.</sub></td>
+    <td align="center"><img src="docs/readme/metamask-signature.jpg" alt="MetaMask signature request for the execution plan" width="62%"><br><sub><b>4 · Sign.</b> The execution plan, field by field, in MetaMask.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/readme/app-migration.jpg" alt="Live migration monitor"><br><sub><b>5 · Watch it run.</b> Every phase streams in live: here the solver is repaid.</sub></td>
+    <td><img src="docs/readme/app-evidence.jpg" alt="Evidence for every step"><br><sub><b>6 · Evidence.</b> Transaction, block, chain and verification for every step.</sub></td>
+  </tr>
+</table>
 
 ## How NEAR is used
 
@@ -138,7 +203,8 @@ because Aave variable debt continued accruing. DebtShift repaid that exact live 
 the target with the same `5.000106 USDC` principal. The verified transport delivered `0.00999 WETH`
 from the released `0.01 WETH` within the signed route bound.
 
-#### DebtShift liquidity-vault reconciliation
+<details>
+<summary><b>DebtShift liquidity-vault reconciliation (before, reserved, after)</b></summary>
 
 The source liquidity vault is
 [`0xDC52...8f3E`](https://sepolia.etherscan.io/address/0xDC52C1980c2F69c1152e05D3812d752A0D238f3E).
@@ -150,7 +216,10 @@ It is not the borrower’s old or new lending position.
 | Reserved/source close | Maximum principal `5.005059 USDC`; actual draw `5.000106 USDC`; unused `0.004953 USDC` returned after exact Aave repayment | Reservation [`0x7524...c86`](https://sepolia.etherscan.io/tx/0x7524a461e58243bb478f0626cf54228968d0ee580158212b3db765619e456c86) and source-close events in [`0xe1e0...d51`](https://sepolia.etherscan.io/tx/0xe1e0122bfd1e8dcd482567def9134cd1b5d9c0c0eff5fda0a66a8f21afc0bd51) |
 | After settlement      | `10 USDC` balance, `10 USDC` free, `0` reserved, `0` receivable, `0` locked reserve, and zero executor allowance           | [`0xd2b8...b07e`](https://sepolia.etherscan.io/tx/0xd2b82d9f7d81bd0515e5cad887e9c71015ac91d924005341521115648f88b07e) emitted `RecoveryReserveConsumed` and `LiquiditySettled` for exactly `5.000106 USDC`, refunding `0.004953 USDC`                                            |
 
-#### Canonical receipt sequence
+</details>
+
+<details>
+<summary><b>Canonical receipt sequence: all 8 explorer receipts</b></summary>
 
 | Step | Result                                                                  | Explorer receipt                                                                                                      |
 | ---: | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -178,6 +247,8 @@ The complete block hashes, evidence IDs, incident history, and final state recon
 All manifests bind source commit, route, identities, receipts, code/state evidence, and a disabled
 workflow-write switch. `MAINNET_EXECUTION_ENABLED` remained `false`; these deployments do not enable
 mainnet execution.
+
+</details>
 
 ## Mainnet-fork proof: automatic route discovery
 
