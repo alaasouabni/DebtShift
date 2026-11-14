@@ -24,7 +24,8 @@
   <b><a href="#demo">▶ Watch the demo</a></b> ·
   <b><a href="#try-it-in-three-commands-no-wallet-no-docker">Try it in 3 commands</a></b> ·
   <b><a href="#verified-on-public-testnets">Testnet proof</a></b> ·
-  <b><a href="#how-near-is-used">How NEAR is used</a></b>
+  <b><a href="#how-near-is-used">How NEAR is used</a></b> ·
+  <b><a href="#business-model">Business model</a></b>
 </p>
 
 <h2 id="demo" align="center">Demo</h2>
@@ -117,6 +118,40 @@ flowchart LR
 testnets, the 1Click settlement step is simulated and labeled as such everywhere: in the API
 (`SIMULATED_1CLICK_BOUNDARY`), in the UI and in the evidence. The transfers around it are real
 transactions. Mainnet writes are disabled by default (`MAINNET_EXECUTION_ENABLED=false`).
+
+## Business model
+
+> [!TIP]
+> **In one line:** the borrower keeps most of the rate saving, and every cost of the move is one
+> they have already read and signed, with a hard cap.
+
+```mermaid
+flowchart LR
+  B([Borrower<br/>keeps the saving:<br/>about $250 a year]) -- "signed, capped costs<br/>$100 all in" --> C{One move}
+  C -- "solver fee<br/>50 USDC, capped" --> S[(Solver)]
+  C -- "gas, transport,<br/>slippage" --> N[Networks and NEAR Intents]
+  C -. "planned: success fee,<br/>capped and signed" .-> D[DebtShift]
+```
+
+| Who                              | Today, in this code (recorded sandbox run: 10,000 USDC moved from 7.00% to 4.50%)                                                                                                                                                                                                                 | Planned                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Borrower**                     | Sees every cost before signing: **$100 all in** (solver fee, gas, transport, slippage). Keeps the saving: **about $250 a year**, so the move **pays for itself after 146 days**. Every route is checked against the borrower's policy (minimum rate drop, maximum fee) before it can be prepared. | Unchanged: every cost stays visible, capped and signed before anything moves.                                                                                                                                                                                                                                                                                                                             |
+| **Solver** (temporary liquidity) | Fronts the repayment for a few minutes and earns a **capped fee: 50 USDC (0.5%)**, bounded by both signatures and repaid from the new loan.                                                                                                                                                       | More solvers competing on that fee.                                                                                                                                                                                                                                                                                                                                                                       |
+| **DebtShift**                    | **No protocol fee in this version**, by design: protocol revenue is out of scope for the hackathon build (`strategies-docs/00-product-scope.md`).                                                                                                                                                 | **1. Success fee:** a few basis points of the moved principal, shown and signed like the solver fee, charged only when the migration completes.<br>**2. Own solver vault:** DebtShift's vault fronts repayments and earns the solver fee.<br>**3. Refinancing API:** wallets and lending apps embed DebtShift through the existing REST API, OpenAPI contract and `@debtshift/sdk`, with a revenue share. |
+
+> [!NOTE]
+> The "Planned" column is the team's roadmap, not shipped code. Figures in the "Today" column come
+> from the recorded sandbox run with test assets, not from a quote for any real position.
+
+**Why it can work:**
+
+- **A real, recurring gap.** Rates for the same asset differ between markets and chains, and most
+  borrowers never move because it takes cash up front and five transactions on two chains.
+  DebtShift removes both.
+- **Trust is the product.** Every fee is a signed upper bound, so the fee model cannot surprise a
+  borrower.
+- **Revenue follows volume, not a token.** Income scales with the debt refinanced; DebtShift needs no
+  token to work.
 
 ## Try it in three commands (no wallet, no Docker)
 
