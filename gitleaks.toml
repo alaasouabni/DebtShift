@@ -7,6 +7,7 @@ regexTarget = "secret"
 regexes = [
   '''ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
   '''59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d''',
+  '''229fd969e094ca4cfc3db7ec738d91e87097030765eef8768c6a34e41bcf018f''',
   '''5fbdb2315678afecb367f032d93f642f64180aa3''',
   '''e7f1725e7734ce288f8367e1bb143e90bb3f0512''',
 ]
@@ -19,7 +20,7 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "Official public testnet token and Aave reserve-token contract addresses"
+description = "Official public testnet/mainnet token and Aave reserve-token contract addresses"
 regexTarget = "secret"
 regexes = [
   '''C558DBdd856501FCd9aaF1E62eae57A9F0629a3c''',
@@ -29,4 +30,6 @@ regexes = [
   '''22a35DB253f4F6D0029025D6312A3BdAb20C2c6A''',
   '''16dA4541aD1807f4443d92D26044C1147406EB80''',
   '''36B5dE936eF1710E1d22EabE5231b28581a92ECc''',
+  '''af88d065e77c8cC2239327C5EDb3A432268e5831''',
+  '''82aF49447D8a07e3bd95BD0d56f35241523fBab1''',
 ]
