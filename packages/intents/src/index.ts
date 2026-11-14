@@ -1,3 +1,4 @@
+export * from './catalog.js';
 export * from './one-click.js';
 export * from './provider-resilience.js';
 export * from './transport.js';

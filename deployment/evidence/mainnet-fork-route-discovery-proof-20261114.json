@@ -1,0 +1,203 @@
+{
+  "status": "PASSED",
+  "mainnetExecutionEnabled": false,
+  "borrower": "0x48A86B87AAB50e2D279e76f49FA495415cBb3683",
+  "sourceBlock": {
+    "chainId": 8453,
+    "number": "57337544",
+    "hash": "0x066aa433204d6be6d8e135dee325166c1dc58ba7e59bf102a5ceca020d1dff8b"
+  },
+  "destinationBlock": {
+    "chainId": 42161,
+    "number": "524148205",
+    "hash": "0x0041505c810e4826bf4b395e1347aef56040637b0a9bde9d02d3d98dfbe1f0d0"
+  },
+  "discovery": {
+    "provider": "MORPHO_REST_INDEX",
+    "requestHash": "0xc360c142d173b85f0fa5387550704f6cf6356462e0f4c90ddc39a76746d4fd17",
+    "responseHashes": ["0x216ed07d9c2a488c0f43d6bdb332964a38086f846cf4120b33e4557d4514b7d6"],
+    "inspectedMarkets": [
+      {
+        "chainId": 42161,
+        "marketId": "0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c",
+        "loanToken": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "collateralToken": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+        "oracle": "0x282FEB10549fde52bD61A6979424Ddf18A4971A2",
+        "irm": "0x66F30587FB8D4206918deb78ecA7d5eBbafD06DA",
+        "lltvWad": "860000000000000000",
+        "creationBlockNumber": "358435191"
+      }
+    ],
+    "selectedCandidateId": "live-morpho:0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c",
+    "evaluations": [
+      {
+        "candidateId": "live-morpho:0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c",
+        "eligible": true,
+        "rank": 1,
+        "scoreUsdMicro": "7668553",
+        "economics": {
+          "sourceAprBps": 690,
+          "targetAprBeforeBps": 377,
+          "targetAprAfterBps": 379,
+          "targetRateImpactBps": 2,
+          "aprReductionBps": 311,
+          "stressTargetAprBps": 579,
+          "allInCostUsdMicro": "0",
+          "carryingCostUsdMicro": "0",
+          "grossSavingsUsdMicro": "7668553",
+          "stressGrossSavingsUsdMicro": "2737008",
+          "netBenefitUsdMicro": "7668553",
+          "stressNetBenefitUsdMicro": "2737008",
+          "annualGrossSavingsUsdMicro": "31100246",
+          "breakEvenSeconds": "0"
+        },
+        "safety": {
+          "kind": "MAX_LTV_BPS",
+          "postLtvBps": 526,
+          "stressLtvBps": 657,
+          "maximumLtvBps": 7000,
+          "stressMaximumLtvBps": 6000
+        },
+        "financing": {
+          "modelVersion": 1,
+          "eligible": true,
+          "settlementAsset": {
+            "chainId": 42161,
+            "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+            "decimals": 6,
+            "symbol": "USDC",
+            "providerAssetId": "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near"
+          },
+          "sourceDebtPayoffAssetUnits": "1001007932",
+          "sourceDebtPayoffUnits": "1001007932",
+          "sourceConversionQuoteHash": "0x604699d74df205d750850180d99ad0dfe12fc0ce0037f5dd1bc7318e4a553197",
+          "borrowerDebtPrepaymentUnits": "0",
+          "solverAdvancedCostUnits": "0",
+          "solverPrincipalUnits": "1001007932",
+          "solverFeeUnits": "0",
+          "capitalizedCostUnits": "0",
+          "separatelyPaidCostUnits": "0",
+          "totalRequiredRepaymentAndFinancedCostUnits": "1001007932",
+          "confirmedExternalFundingUnits": "0",
+          "protocolBorrowCapacityUnits": "16395960926",
+          "policyBorrowCapacityUnits": "11439042507",
+          "liquidityBorrowCapacityUnits": "16982259831",
+          "signedBorrowCapacityUnits": "1001007932",
+          "maximumSafeBorrowingCapacityUnits": "1001007932",
+          "requiredDestinationBorrowUnits": "1001007932",
+          "fundingShortfallUnits": "0",
+          "components": [],
+          "externalFunding": [],
+          "rejections": []
+        },
+        "rejections": [],
+        "provenance": {
+          "sourceSnapshotId": "0xeac839b61665ab00160508ccfae27a5863d2a33217fc22e6b7d27888c8ed5560",
+          "marketSnapshotId": "0x95d106aadb41df45a1cd04a8db28bad2b99da424b514e6ee9b342a48c36eef75",
+          "marketBlockNumber": "524148205",
+          "marketBlockHash": "0x0041505c810e4826bf4b395e1347aef56040637b0a9bde9d02d3d98dfbe1f0d0",
+          "oracleUpdatedAt": "2026-11-14T12:00:52.000Z",
+          "evaluatedAt": "2026-11-14T13:05:22.000Z",
+          "rateProjection": "pinned-arbitrum-fork:524148205"
+        }
+      }
+    ]
+  },
+  "transport": {
+    "providerCatalog": "NEAR_INTENTS_1CLICK",
+    "catalogResponseHash": "0xe1c7ce745bd83afc7e1d5861aa9448ea54a748acea4c38bb327d386a0ab5dc75",
+    "assets": [
+      {
+        "assetId": "nep141:base-0x4200000000000000000000000000000000000006.omft.near",
+        "contractAddress": "0x4200000000000000000000000000000000000006",
+        "decimals": 18
+      },
+      {
+        "assetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+        "contractAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "decimals": 6
+      },
+      {
+        "assetId": "nep141:arb-0x82af49447d8a07e3bd95bd0d56f35241523fbab1.omft.near",
+        "contractAddress": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+        "decimals": 18
+      },
+      {
+        "assetId": "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near",
+        "contractAddress": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "decimals": 6
+      }
+    ],
+    "executionBoundary": "SIMULATED_1CLICK_BOUNDARY",
+    "inputCollateralUnits": "10000000000000000000",
+    "deliveredCollateralUnits": "9990000000000000000"
+  },
+  "source": {
+    "before": {
+      "snapshotId": "0xeac839b61665ab00160508ccfae27a5863d2a33217fc22e6b7d27888c8ed5560",
+      "position": {
+        "market": {
+          "chainId": 8453,
+          "protocol": "AAVE_V3",
+          "deployment": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+          "marketId": "0x3be00743121279c0f587b2de9ea44adb7bac9e5fbfc12a23f4db85d55c468668"
+        },
+        "borrower": "0x48A86B87AAB50e2D279e76f49FA495415cBb3683",
+        "collateralAsset": {
+          "chainId": 8453,
+          "address": "0x4200000000000000000000000000000000000006",
+          "decimals": 18,
+          "symbol": "WETH",
+          "providerAssetId": "nep141:base-0x4200000000000000000000000000000000000006.omft.near"
+        },
+        "debtAsset": {
+          "chainId": 8453,
+          "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "decimals": 6,
+          "symbol": "USDC",
+          "providerAssetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near"
+        }
+      },
+      "collateralUnits": "10000015718098350568",
+      "debtUnits": "1000007932",
+      "health": {
+        "kind": "AAVE_HEALTH_FACTOR",
+        "healthFactorWad": "16046329603574149722"
+      },
+      "borrowAprBps": 690,
+      "block": {
+        "number": "57337550",
+        "hash": "0xcb85ac9fe737a0a082c0164e3eca9f91736369c0f510d6071ad60196b657643a",
+        "observedAt": "2026-11-14T13:05:22.000Z"
+      }
+    },
+    "after": null,
+    "actualRepaidUnits": "1000007969"
+  },
+  "destination": {
+    "marketId": "0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c",
+    "collateralUnits": "9990000000000000000",
+    "debtUnits": "1000007970",
+    "ltvBps": 525
+  },
+  "reconciliation": {
+    "sourceVaultSettled": true,
+    "destinationResidualBalances": ["0", "0", "0", "0", "0", "0"]
+  },
+  "localForkTransactions": {
+    "wrapSource": "0xb62c0bfe6a5a20bb4095c890a91c5083a3fe6739d6a5e32ad4b582a68ed9457f",
+    "approveAave": "0xe15888a3fd182acb1715bb807892cd6a1fe22cadeb1d6cbf256403bd7b9ff99c",
+    "supplyAave": "0x8017a52f65a27b618fd61a123000c7fb283d4b8cbd722833f801533514235ce2",
+    "borrowAave": "0x4694da5842395a1b7567dc64ee5cc6e13239daa125fba54d245cb624d79342b2",
+    "fundForkVault": "0x08037f1ead594b9d74b34b49255094eefde7916cb41915c302ed3485692423c9",
+    "authorizeSource": "0x4f371199b5c6a36f699f4f02ef93d5df7f63831404f78e8de3b971f803c18e6d",
+    "closeSource": "0x04288ef718b7a5654d07faf0064fba9769883e39811827afe720f369ee6d44c5",
+    "dispatchToSimulatedOneClick": "0x821a7879bab0fec00447eebab6a2854352237ac5bb20b1dd660febdaa896c158",
+    "simulatedOneClickCustody": "0x6f58eb83dad963df296b6432033b987506891c2e518ebf8cc034592d0c9caafd",
+    "wrapDestination": "0x4b75a8fe8f16106b10b20448a93962dcd5e6221d1b571e40bf246a38a5687d56",
+    "registerSimulatedDelivery": "0x217f4331cfeb37cce9261d5acb191d54b552a74e50fa9c6f37274f82514f1144",
+    "openDestination": "0x8711c722712fa09ba56eec15106d8abbda66a10b2646c652dd5f711b08427447",
+    "settleSourceVault": "0x7db223cd3e4728391ad1792dcf382b265dd5cfdd7ef1e6139869b9d4a7456a2c"
+  },
+  "warning": "These hashes exist only inside disposable local forks and are not public mainnet explorer receipts."
+}

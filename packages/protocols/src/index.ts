@@ -5,6 +5,7 @@ export * from './local-chain.js';
 export * from './local-demo.js';
 export * from './local-deployment.js';
 export * from './morpho-blue.js';
+export * from './morpho-discovery.js';
 export * from './production-deployment.js';
 export * from './testnet-morpho-deployment.js';
 export * from './vault-funding.js';

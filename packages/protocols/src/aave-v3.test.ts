@@ -6,6 +6,7 @@ import {
   AaveV3ReadAdapter,
   buildAaveCollateralClaimAuthorization,
   buildAaveBorrowerCloseTransactions,
+  discoverAaveUserReserves,
   ERC20_METADATA_ABI,
   rayToBps,
   readAaveReserveTokenAddresses,
@@ -158,6 +159,62 @@ describe('Aave V3 direct-read adapter', () => {
         blockNumber: 123n,
       }),
     );
+  });
+
+  it('discovers active collateral and debt from the complete reserve list at one block', async () => {
+    const readContract = vi.fn(async (request: unknown) => {
+      const call = request as { readonly functionName: string; readonly args?: readonly unknown[] };
+      if (call.functionName === 'getAllReservesTokens') {
+        return [
+          { symbol: 'WETH', tokenAddress: COLLATERAL },
+          { symbol: 'USDC', tokenAddress: DEBT },
+        ];
+      }
+      if (call.functionName === 'getUserReserveData') {
+        return call.args?.[0] === COLLATERAL
+          ? [10n, 0n, 0n, 0n, 0n, 0n, 0n, 0n, true]
+          : [0n, 0n, 5n, 0n, 5n, 0n, 0n, 0n, false];
+      }
+      if (call.functionName === 'getReserveConfigurationData') {
+        return [
+          call.args?.[0] === COLLATERAL ? 18n : 6n,
+          0n,
+          0n,
+          0n,
+          0n,
+          true,
+          true,
+          false,
+          true,
+          false,
+        ];
+      }
+      throw new Error(`Unexpected ${call.functionName}.`);
+    });
+    const client = {
+      getChainId: vi.fn(async () => 8453),
+      getBlock: vi.fn(async () => ({
+        number: 123n,
+        hash: `0x${'12'.repeat(32)}`,
+        timestamp: 1_700_000_010n,
+      })),
+      readContract,
+    } as unknown as PublicClient;
+
+    const result = await discoverAaveUserReserves(
+      client,
+      { chainId: 8453, pool: POOL, dataProvider: DATA_PROVIDER },
+      BORROWER,
+    );
+
+    expect(result.block.number).toBe('123');
+    expect(result.reserves).toEqual([
+      expect.objectContaining({ asset: COLLATERAL, collateralUnits: '10', decimals: 18 }),
+      expect.objectContaining({ asset: DEBT, variableDebtUnits: '5', decimals: 6 }),
+    ]);
+    for (const [call] of readContract.mock.calls.slice(1)) {
+      expect((call as { blockNumber?: bigint }).blockNumber).toBe(123n);
+    }
   });
 
   it('converts Aave ray rates to nearest basis points without floating point math', () => {

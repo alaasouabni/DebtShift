@@ -23,6 +23,7 @@ import {
   AaveV3ReadAdapter,
   buildAaveCollateralClaimAuthorization,
   buildMorphoAuthorizationPair,
+  discoverAaveUserReserves,
   encodeMorphoAuthorizationPair,
   ERC20_METADATA_ABI,
   MORPHO_BLUE_READ_ABI,
@@ -142,7 +143,47 @@ export class LiveProtocolService implements ProtocolDataPort {
   }
 
   async getSourcePosition(borrowerInput: string): Promise<PositionSnapshot> {
-    const position = await this.#adapter.readPosition(getAddress(borrowerInput));
+    const borrower = getAddress(borrowerInput);
+    const discovery = await discoverAaveUserReserves(
+      this.#client,
+      {
+        chainId: this.#sourceChainId,
+        pool: this.#configuration.source.pool,
+        dataProvider: this.#configuration.source.dataProvider,
+      },
+      borrower,
+    );
+    const collateral = discovery.reserves.filter(
+      (reserve) => reserve.usageAsCollateralEnabled && BigInt(reserve.collateralUnits) > 0n,
+    );
+    const debt = discovery.reserves.filter(
+      (reserve) => BigInt(reserve.stableDebtUnits) + BigInt(reserve.variableDebtUnits) > 0n,
+    );
+    if (collateral.length !== 1 || debt.length !== 1) {
+      throw new Error(
+        'DebtShift currently requires exactly one active Aave collateral reserve and one debt reserve.',
+      );
+    }
+    const collateralReserve = collateral[0];
+    const debtReserve = debt[0];
+    if (collateralReserve === undefined || debtReserve === undefined) {
+      throw new Error('Aave source discovery did not produce a complete collateral/debt pair.');
+    }
+    if (BigInt(debtReserve.stableDebtUnits) !== 0n) {
+      throw new Error('DebtShift does not support Aave stable-rate debt discovery.');
+    }
+    if (
+      !isAddressEqual(
+        collateralReserve.asset,
+        this.#configuration.source.collateralAsset.address,
+      ) ||
+      !isAddressEqual(debtReserve.asset, this.#configuration.source.debtAsset.address)
+    ) {
+      throw new Error(
+        'The discovered Aave position uses assets outside the reviewed route boundary.',
+      );
+    }
+    const position = await this.#adapter.readPosition(borrower, BigInt(discovery.block.number));
     if (position === undefined) {
       throw new Error('No supported Aave V3 source position was found for this wallet.');
     }
