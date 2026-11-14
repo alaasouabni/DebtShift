@@ -879,9 +879,12 @@ async function deployTracked(
   ) {
     throw new Error(`${artifactName} deployment reverted: ${deploymentTransactionHash}`);
   }
-  const code = await client.getCode({ address: receipt.contractAddress });
+  const code = await readDeployedCode(client, receipt.contractAddress, receipt.blockNumber);
   if (code === undefined || code === '0x') {
-    throw new Error(`${artifactName} deployment has no runtime bytecode.`);
+    throw new Error(
+      `${artifactName} deployment ${deploymentTransactionHash} at ${receipt.contractAddress} ` +
+        `has no runtime bytecode at receipt block ${receipt.blockNumber}.`,
+    );
   }
   return {
     artifact: artifactName,
@@ -891,6 +894,27 @@ async function deployTracked(
     deploymentBlockHash: receipt.blockHash,
     runtimeCodeHash: keccak256(code),
   };
+}
+
+async function readDeployedCode(
+  client: PublicClient,
+  address: Address,
+  blockNumber: bigint,
+): Promise<Hex | undefined> {
+  const maximumAttempts = 15;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    try {
+      const code = await client.getCode({ address, blockNumber });
+      if (code !== undefined && code !== '0x') return code;
+    } catch {
+      // Public RPC load balancers can route the receipt and state reads to backends at different
+      // heads. Retry the exact receipt block rather than accepting an empty latest-state read.
+    }
+    if (attempt < maximumAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+  return undefined;
 }
 
 async function writeTracked(
