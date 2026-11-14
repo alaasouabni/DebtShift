@@ -351,9 +351,6 @@ to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the e
 
 ## Built during NEAR HACKATHON
 
-The repository's history starts on 2026-11-09, inside the hackathon window (from the announcement
-on 2026-10-19 to 2026-11-14); every commit is part of the judged work.
-
 Open-source libraries and tools used: Next.js, React, three.js, GSAP and Lenis (web); NestJS,
 BullMQ, ioredis, Drizzle ORM, node-postgres and zod (API and worker); viem (EVM);
 near-api-js and near-sdk (NEAR); Foundry (EVM contracts); PGlite and Vitest (tests); Turborepo
