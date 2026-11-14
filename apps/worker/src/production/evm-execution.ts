@@ -118,6 +118,7 @@ interface FinancingRevalidation extends Readonly<Record<string, unknown>> {
   readonly confirmedExternalFundingUnits: string;
   readonly solverPrincipalUnits: string;
   readonly solverFeeUnits: string;
+  readonly capitalizedCostUnits: string;
   readonly totalRequiredUnits: string;
   readonly requiredDestinationBorrowUnits: string;
   readonly fundingShortfallUnits: string;
@@ -151,6 +152,10 @@ interface FeasibilityInput {
   readonly evaluatedAt: bigint;
   readonly validUntil: bigint;
 }
+
+const FEASIBILITY_HASH_PARAMETERS = parseAbiParameters(
+  'bytes32, (bytes32, bytes32, bytes32, address, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint64, uint64, uint64)',
+);
 
 class FinancingCapacityFailure extends Error {
   override readonly name = 'FinancingCapacityFailure';
@@ -869,7 +874,24 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       { action: 'settleLiquidity', reconciled: true },
     );
     if (existing !== undefined) {
-      return withRevalidation(existing, await this.#revalidate(context, 'AFTER_SETTLEMENT'));
+      const revalidation = await this.#revalidate(context, 'AFTER_SETTLEMENT');
+      const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+      return withRevalidation(
+        {
+          ...existing,
+          payload: {
+            ...existing.payload,
+            ...settlementReconciliationPayload(
+              this.#account.address,
+              exposure.principalUnits,
+              exposure.feeUnits,
+              exposure.recoveryReserveProvider,
+              exposure.recoveryReserveUnits,
+            ),
+          },
+        },
+        revalidation,
+      );
     }
     const revalidation = await this.#revalidate(context, 'BEFORE_SETTLEMENT');
     const proof = await this.#recordSourceFeasibility(context, artifacts, revalidation);
@@ -1336,6 +1358,7 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       confirmedExternalFundingUnits: '0',
       solverPrincipalUnits: solverPrincipal.toString(),
       solverFeeUnits: solverFee.toString(),
+      capitalizedCostUnits: plan.financing.capitalizedCostUnits,
       totalRequiredUnits: totalRequired.toString(),
       requiredDestinationBorrowUnits: requiredBorrow.toString(),
       fundingShortfallUnits: shortfall.toString(),
@@ -1386,12 +1409,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       'recordFeasibility',
       [context.migration.migrationId, evidence],
     );
-    const feasibilityHash = await this.#readHex(
-      this.#sourcePublic,
-      artifacts.vault,
-      this.#environment.SOURCE_VAULT_ADDRESS,
-      'latestFeasibilityHash',
-      [context.migration.migrationId],
+    const feasibilityHash = financingFeasibilityHash(
+      context.migration.migrationId as Hex,
+      evidence.liquidityAsset,
+      base,
     );
     return { feasibilityHash, transactionHash };
   }
@@ -1420,12 +1441,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       'recordFeasibility',
       [context.migration.migrationId, evidence],
     );
-    const feasibilityHash = await this.#readHex(
-      this.#destinationPublic,
-      artifacts.destinationAdapter,
-      this.#environment.DESTINATION_ADAPTER_ADDRESS,
-      'latestFeasibilityHash',
-      [context.migration.migrationId],
+    const feasibilityHash = financingFeasibilityHash(
+      context.migration.migrationId as Hex,
+      evidence.settlementAsset,
+      base,
     );
     return { feasibilityHash, transactionHash };
   }
@@ -2824,6 +2843,52 @@ export function conservativeFeasibilityTimestamp(latestBlockTimestamp: bigint): 
   return latestBlockTimestamp > FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
     ? latestBlockTimestamp - FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
     : 0n;
+}
+
+export function financingFeasibilityHash(
+  migrationId: Hex,
+  asset: Address,
+  evidence: FeasibilityInput,
+): Hex {
+  return keccak256(
+    encodeAbiParameters(FEASIBILITY_HASH_PARAMETERS, [
+      migrationId,
+      [
+        evidence.planHash,
+        evidence.analysisHash,
+        evidence.externalFundingEvidenceHash,
+        asset,
+        evidence.solverPrincipalUnits,
+        evidence.solverFeeUnits,
+        evidence.capitalizedCostUnits,
+        evidence.totalRequiredUnits,
+        evidence.confirmedExternalFundingUnits,
+        evidence.maximumSafeBorrowingCapacityUnits,
+        evidence.requiredDestinationBorrowUnits,
+        evidence.fundingShortfallUnits,
+        evidence.sequence,
+        evidence.evaluatedAt,
+        evidence.validUntil,
+      ],
+    ]),
+  );
+}
+
+export function settlementReconciliationPayload(
+  payer: Address,
+  principalUnits: bigint,
+  feeUnits: bigint,
+  recoveryReserveProvider: Address,
+  recoveryReserveMaximumUnits: bigint,
+): Readonly<Record<string, unknown>> {
+  return {
+    payer,
+    principalUnits: principalUnits.toString(),
+    feeUnits: feeUnits.toString(),
+    repaymentUnits: (principalUnits + feeUnits).toString(),
+    recoveryReserveProvider,
+    recoveryReserveMaximumUnits: recoveryReserveMaximumUnits.toString(),
+  };
 }
 
 export function* descendingInclusiveBlockRanges(

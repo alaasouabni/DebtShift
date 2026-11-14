@@ -2012,6 +2012,23 @@ operative source of truth.
   `10 USDC` free with zero reserve/receivable; zero stale allowance; empty destination escrow and
   Morpho target; module authorization disabled; all required gas balances funded.
 
+### 2026-11-14 - Public-testnet happy path completed
+
+- Migration `0xece17b2ff0fc8c28c5878e5fccef6cfaf108b3ef99d66f719b1165d151db8475`
+  completed the full public-testnet workflow: reserve, Aave close, two-chain transport, destination
+  verification, Morpho target open, exact vault settlement, balanced ledger, and NEAR receipt.
+- Final state is `COMPLETED`. The Aave source is empty; the Morpho target holds `0.00999 WETH`
+  collateral and about `5.000106 USDC` debt; both escrows are empty; the source vault is restored to
+  exactly `10 USDC` free liquidity with zero receivable and zero locked recovery reserve.
+- The canonical settlement transaction had already succeeded when an immediate RPC state read
+  returned stale data. Reconciliation now computes feasibility hashes locally and reconstructs the
+  complete settlement-accounting payload from the canonical event plus finalized contract state.
+- The NEAR testnet receipt finalized with bundle hash
+  `0x46bcf82c8e04a4fdabefadb8c90c03e75c2136a1bfe200c1b2204e4122169166` in transaction
+  `G9f91sonXUNaLEB5t15hPoehXT38WTUwmYa4wez2VCCS`.
+- Exact Ethereum, Base, and NEAR explorer links and final balances are recorded in
+  `24-public-testnet-workflow-execution.md`. Mainnet execution remained disabled throughout.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

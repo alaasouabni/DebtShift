@@ -523,8 +523,9 @@ export function createWorkflowHandlers({
             ];
           } catch (error) {
             if (error instanceof RetryableCommandError) throw error;
+            const detail = error instanceof Error ? error.message : String(error);
             throw new RetryableCommandError(
-              'Solver settlement did not finalize; the exact receivable must be reconciled before completion.',
+              `Solver settlement did not finalize; the exact receivable must be reconciled before completion. Cause: ${detail}`,
             );
           }
         },

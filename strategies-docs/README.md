@@ -114,6 +114,6 @@ Implementation must be understandable from this directory without relying on cha
 | Contract-backed sandbox     | IN_PROGRESS |
 | NEAR testnet deployment     | COMPLETE    |
 | Public-testnet recovery     | COMPLETE    |
-| Public-testnet happy path   | IN_PROGRESS |
+| Public-testnet happy path   | COMPLETE    |
 | Mainnet implementation      | IN_PROGRESS |
 | Mainnet writes              | DISABLED    |
