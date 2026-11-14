@@ -59,6 +59,7 @@ import {
 
 type EvmPublicClient = PublicClient<Transport, Chain>;
 type EvmWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
+const FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS = 30n;
 
 class PreBroadcastSimulationError extends Error {
   override readonly name = 'PreBroadcastSimulationError';
@@ -1440,7 +1441,9 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       (await this.#readBigInt(client, artifact, address, 'latestFeasibilitySequence', [
         context.migration.migrationId,
       ])) + 1n;
-    const evaluatedAt = (await client.getBlock({ blockTag: 'latest' })).timestamp;
+    const evaluatedAt = conservativeFeasibilityTimestamp(
+      (await client.getBlock({ blockTag: 'latest' })).timestamp,
+    );
     return {
       planHash: context.signedPlan.planHash,
       analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
@@ -2800,6 +2803,12 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
         : this.#environment.DESTINATION_DEPLOYMENT_BLOCK_NUMBER,
     );
   }
+}
+
+export function conservativeFeasibilityTimestamp(latestBlockTimestamp: bigint): bigint {
+  return latestBlockTimestamp > FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
+    ? latestBlockTimestamp - FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
+    : 0n;
 }
 
 function finalizedAction(
