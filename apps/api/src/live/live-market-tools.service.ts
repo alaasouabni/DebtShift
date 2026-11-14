@@ -330,21 +330,23 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
               expiresAt: earliestExpiry(debtForwardQuote, debtReverseQuote),
             },
           },
-          costs: financingCosts.map(([name, kind, usdMicro]) => {
-            const amount = usdMicroToTokenUnitsCeil(
-              usdMicro,
-              route.destinationDebtAsset.decimals,
-              destinationDebtUsd,
-            );
-            return {
-              componentId: `${candidateId}:${name}`,
-              kind,
-              financingClass: 'SEPARATELY_PAID' as const,
-              asset: route.destinationDebtAsset,
-              amountUnits: amount.toString(),
-              settlementAmountUnits: amount.toString(),
-            };
-          }),
+          costs: financingCosts
+            .filter(([, , usdMicro]) => usdMicro > 0n)
+            .map(([name, kind, usdMicro]) => {
+              const amount = usdMicroToTokenUnitsCeil(
+                usdMicro,
+                route.destinationDebtAsset.decimals,
+                destinationDebtUsd,
+              );
+              return {
+                componentId: `${candidateId}:${name}`,
+                kind,
+                financingClass: 'SEPARATELY_PAID' as const,
+                asset: route.destinationDebtAsset,
+                amountUnits: amount.toString(),
+                settlementAmountUnits: amount.toString(),
+              };
+            }),
           solverFee: {
             asset: route.destinationDebtAsset,
             amountUnits: '0',
