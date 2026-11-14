@@ -300,18 +300,47 @@ function SiteHeaderBar({
           {connected ? (
             <>
               <span style={{ display: 'flex', flexDirection: 'column', textAlign: 'right' }}>
-                <span className="mono">{truncateHex(wallet.account ?? '')}</span>
+                <span
+                  className="mono"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: 6,
+                  }}
+                >
+                  {/*
+                    Connected is not signed in: the API answers only the
+                    latter. Shown as a dot rather than words, so the header
+                    keeps to one row on a 1440-pixel laptop screen.
+                  */}
+                  {wallet.isDemo ? null : (
+                    <span
+                      aria-hidden="true"
+                      title={wallet.session.status === 'active' ? 'Signed in' : 'Not signed in'}
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        background:
+                          wallet.session.status === 'active'
+                            ? 'var(--success)'
+                            : 'var(--line-strong)',
+                      }}
+                    />
+                  )}
+                  {truncateHex(wallet.account ?? '')}
+                  {wallet.isDemo ? null : (
+                    <span className="visually-hidden">
+                      {wallet.session.status === 'active' ? ', signed in' : ', not signed in'}
+                    </span>
+                  )}
+                </span>
                 <span
                   className="hdr__chain"
                   style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-muted)' }}
                 >
                   {chainLabel(wallet.chainId)}
-                  {/* Connected is not signed in: the API answers only the latter. */}
-                  {wallet.isDemo
-                    ? ''
-                    : wallet.session.status === 'active'
-                      ? ' · signed in'
-                      : ' · not signed in'}
                 </span>
               </span>
               {wallet.isDemo ? null : (

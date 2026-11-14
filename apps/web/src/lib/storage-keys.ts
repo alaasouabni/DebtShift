@@ -13,3 +13,6 @@
 
 /** The last migration started from this browser. */
 export const MIGRATION_STORAGE_KEY = 'debtshift:last-migration-id';
+
+/** Set once the brand intro has played in this browser session (sessionStorage). */
+export const INTRO_SEEN_KEY = 'debtshift:intro-seen';

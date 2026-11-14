@@ -1,14 +1,11 @@
 // @vitest-environment jsdom
 
 /*
- * The theme control.
+ * The theme switch.
  *
- * What matters here is not that a class flips — it is that the user can always
- * get back to following their operating system, and that the control says
- * which of the three states it is in rather than only how the page looks.
- *
- * The app is dark-first: a visitor who has chosen nothing gets dark. "System"
- * and "light" are one and two presses away.
+ * A visible two-way switch: light or dark, one press, and it says which one is
+ * on. The app is dark-first. A "system" choice stored by the earlier version
+ * of this control keeps following the machine until the visitor presses it.
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -34,14 +31,9 @@ function setSystemPrefersDark(prefersDark: boolean) {
   };
 }
 
-/** Waits for the control to replace its placeholder. */
-async function findToggle() {
-  return waitFor(() => screen.getByRole('button', { name: /^Theme:/i }));
-}
-
-/** A visitor who previously chose to follow their operating system. */
-function chooseSystem() {
-  window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
+/** Waits for the switch to replace its placeholder. */
+async function findSwitch() {
+  return waitFor(() => screen.getByRole('switch', { name: /dark mode/i }));
 }
 
 beforeEach(() => {
@@ -56,95 +48,76 @@ afterEach(cleanup);
 describe('the initial state', () => {
   it('starts dark when nothing was chosen', async () => {
     render(<ThemeToggle />);
-    const button = await findToggle();
+    const control = await findSwitch();
     expect(DEFAULT_THEME_CHOICE).toBe('dark');
-    expect(button.getAttribute('data-theme-choice')).toBe('dark');
+    expect(control.getAttribute('aria-checked')).toBe('true');
   });
 
   it('starts dark even on a machine that prefers light', async () => {
-    // Dark-first is the default look, not a reading of the machine. Following
-    // the machine is a choice the visitor makes with the toggle.
     setSystemPrefersDark(false);
     render(<ThemeToggle />);
-    expect((await findToggle()).getAttribute('data-theme-choice')).toBe('dark');
+    expect((await findSwitch()).getAttribute('aria-checked')).toBe('true');
   });
 
   it('restores a stored choice', async () => {
     window.localStorage.setItem(THEME_STORAGE_KEY, 'light');
     render(<ThemeToggle />);
-    const button = await findToggle();
-    expect(button.getAttribute('data-theme-choice')).toBe('light');
+    expect((await findSwitch()).getAttribute('aria-checked')).toBe('false');
   });
 
-  it('reports light and system differently even though they look the same', async () => {
-    // On a light machine both render a light page. The control must still say
-    // which one is in force, or the user cannot navigate back to system.
-    window.localStorage.setItem(THEME_STORAGE_KEY, 'light');
+  it('shows the machine theme for a stored "system" choice', async () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
+    setSystemPrefersDark(false);
     render(<ThemeToggle />);
-    expect((await findToggle()).getAttribute('aria-label')).toMatch(/Theme: light/);
-
-    cleanup();
-    chooseSystem();
-    render(<ThemeToggle />);
-    expect((await findToggle()).getAttribute('aria-label')).toMatch(/Theme: system/);
+    const control = await findSwitch();
+    expect(control.getAttribute('aria-checked')).toBe('false');
+    expect(control.getAttribute('data-theme-choice')).toBe('system');
   });
 });
 
 describe('pressing it', () => {
-  it('cycles dark → light → system and back to dark', async () => {
+  it('switches dark → light → dark', async () => {
     render(<ThemeToggle />);
-    const button = await findToggle();
+    const control = await findSwitch();
 
-    fireEvent.click(button);
-    expect(button.getAttribute('data-theme-choice')).toBe('light');
-    fireEvent.click(button);
-    expect(button.getAttribute('data-theme-choice')).toBe('system');
-    fireEvent.click(button);
-    expect(button.getAttribute('data-theme-choice')).toBe('dark');
+    fireEvent.click(control);
+    expect(control.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(control);
+    expect(control.getAttribute('aria-checked')).toBe('true');
   });
 
   it('applies the theme to the document', async () => {
     render(<ThemeToggle />);
-    fireEvent.click(await findToggle());
-
+    fireEvent.click(await findSwitch());
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     expect(document.documentElement.style.colorScheme).toBe('light');
   });
 
   it('persists the choice', async () => {
     render(<ThemeToggle />);
-    fireEvent.click(await findToggle());
+    fireEvent.click(await findSwitch());
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
   });
 
-  it('resolves system against the machine, not against the default', async () => {
-    // dark → light → system. On a light machine "system" must be light, even
-    // though the app's own default is dark.
-    setSystemPrefersDark(false);
-    render(<ThemeToggle />);
-    const button = await findToggle();
-    fireEvent.click(button);
-    fireEvent.click(button);
-    expect(button.getAttribute('data-theme-choice')).toBe('system');
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-
-    cleanup();
-    window.localStorage.clear();
+  it('turns a "system" choice into an explicit one, opposite to what is shown', async () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
     setSystemPrefersDark(true);
     render(<ThemeToggle />);
-    const again = await findToggle();
-    fireEvent.click(again);
-    fireEvent.click(again);
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    const control = await findSwitch();
+    expect(control.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(control);
+    expect(control.getAttribute('data-theme-choice')).toBe('light');
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
   });
 });
 
 describe('following the machine', () => {
   it('reacts to the system switching while the choice is system', async () => {
-    chooseSystem();
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
     const media = setSystemPrefersDark(false);
     render(<ThemeToggle />);
-    await findToggle();
+    await findSwitch();
 
     media.change(true);
     await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('dark'));
@@ -153,59 +126,53 @@ describe('following the machine', () => {
   it('ignores the system once the user has chosen', async () => {
     const media = setSystemPrefersDark(false);
     render(<ThemeToggle />);
-    const button = await findToggle();
+    const control = await findSwitch();
 
-    fireEvent.click(button); // explicit light
-    expect(button.getAttribute('data-theme-choice')).toBe('light');
-
+    fireEvent.click(control); // explicit light
     media.change(true);
-    // The explicit choice wins: no change.
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 
   it('ignores the system on the default too, which is dark by decision', async () => {
     const media = setSystemPrefersDark(true);
     render(<ThemeToggle />);
-    const button = await findToggle();
-    expect(button.getAttribute('data-theme-choice')).toBe('dark');
-
-    // No listener is attached unless the choice is "system".
+    await findSwitch();
     media.change(false);
     expect(document.documentElement.getAttribute('data-theme')).not.toBe('light');
   });
 });
 
 describe('accessibility', () => {
-  it('is a real button with a label that says what pressing it does', async () => {
+  it('is a real button acting as a switch, with a label', async () => {
     render(<ThemeToggle />);
-    const button = await findToggle();
-    expect(button.tagName).toBe('BUTTON');
-    expect(button.getAttribute('aria-label')).toMatch(/Activate to change/i);
+    const control = await findSwitch();
+    expect(control.tagName).toBe('BUTTON');
+    expect(control.getAttribute('role')).toBe('switch');
+    expect(control.getAttribute('aria-label')).toBe('Dark mode');
   });
 
-  it('hides its icon from assistive technology', async () => {
+  it('hides its icons from assistive technology', async () => {
     render(<ThemeToggle />);
-    const button = await findToggle();
-    expect(button.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    const control = await findSwitch();
+    for (const icon of control.querySelectorAll('svg')) {
+      expect(icon.getAttribute('aria-hidden')).toBe('true');
+    }
   });
 
   it('reserves its space before it is ready, so the header does not shift', () => {
     const { container } = render(<ThemeToggle />);
-    const placeholder = container.querySelector('[aria-hidden="true"]');
-    expect(placeholder).not.toBeNull();
+    expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
   });
 });
 
 describe('when storage is denied', () => {
-  it('still toggles', async () => {
+  it('still switches', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('denied');
     });
-
     render(<ThemeToggle />);
-    fireEvent.click(await findToggle());
+    fireEvent.click(await findSwitch());
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-
     vi.restoreAllMocks();
   });
 });

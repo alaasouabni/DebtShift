@@ -1,0 +1,305 @@
+/*
+ * Landing: the bands that give the page below the hero its rhythm.
+ *
+ * Each section sits on its own full-width band, and neighbouring bands never
+ * share a colour:
+ *
+ *   raised   one step lighter than the page (white on a light page)
+ *   deep     an inverted, near-black band; it re-declares the dark palette
+ *            locally, so it reads dark even when the page is light
+ *   base     the page colour itself
+ *   accent   the page colour tinted with the brand teal
+ *   cta      the closing band: deep, with a teal light
+ *
+ * Cards take the opposite tone of the band they sit on, so they always stand
+ * out from it.
+ *
+ * Without JavaScript, or with reduced motion, every band is drawn in its
+ * finished state: slanted edges at rest, the deep bands at full width.
+ */
+
+.band {
+  --band-bg: var(--surface);
+  --slant: 56px;
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  background: var(--band-bg);
+  color: var(--ink);
+}
+
+/* Section padding is set inline per section; bands give every one room. */
+.band > section {
+  padding-top: 120px !important;
+  padding-bottom: 120px !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* -------------------------------------------------------------- tones */
+
+.band--base {
+  --band-bg: var(--surface);
+}
+
+.band--raised {
+  --band-bg: color-mix(in srgb, var(--surface-raised) 62%, var(--surface));
+  border-top: 1px solid var(--line);
+}
+
+[data-theme='light'] .band--raised {
+  --band-bg: #ffffff;
+}
+
+.band--accent {
+  --band-bg: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+[data-theme='dark'] .band--accent {
+  --band-bg: color-mix(in srgb, var(--accent) 9%, #071c33);
+}
+
+/* Cards stand out from their band by taking the other tone. */
+.band--raised .tile,
+.band--raised .glass,
+.band--accent .tile {
+  background: var(--surface);
+}
+
+[data-theme='light'] .band--raised .tile,
+[data-theme='light'] .band--raised .glass {
+  background: var(--surface);
+  box-shadow: none;
+}
+
+[data-theme='light'] .band--accent .tile {
+  background: #ffffff;
+}
+
+/* The inverted bands: the dark palette, whatever the page's theme. */
+.band--deep,
+.band--cta {
+  --ink: #e8eef4;
+  --ink-muted: #9fb1c4;
+  --line: #1c3a5e;
+  --line-strong: #5a7799;
+  --surface: #06182c;
+  --surface-raised: #0e2a4b;
+  --accent: #3fb6c5;
+  --accent-strong: #6bcad6;
+  --accent-soft: #0b3a45;
+  --success: #5cc98a;
+  --warning: #f2b45c;
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --band-bg: #030d1a;
+  color-scheme: dark;
+}
+
+.band--deep {
+  background:
+    radial-gradient(70% 60% at 85% 0%, rgba(63, 182, 197, 0.14), transparent 60%),
+    radial-gradient(60% 50% at 0% 100%, rgba(98, 126, 234, 0.12), transparent 60%), var(--band-bg);
+}
+
+.band--cta {
+  --band-bg: #04101f;
+  background:
+    radial-gradient(60% 80% at 100% 0%, rgba(63, 182, 197, 0.28), transparent 60%),
+    radial-gradient(50% 70% at 0% 100%, rgba(0, 236, 151, 0.12), transparent 60%), var(--band-bg);
+}
+
+/* The closing card already has its own surface; inside the cta band it becomes the band. */
+.band--cta .cta {
+  background: transparent;
+  border: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.band--cta > section {
+  padding-top: 140px !important;
+  padding-bottom: 160px !important;
+}
+
+/* ------------------------------------------------------- slanted edges */
+
+/*
+ * A slanted band overlaps the band above it by the height of its slant, and
+ * cuts its own top edge on the diagonal, so the edge shows the colour of the
+ * band above rather than a gap.
+ */
+.band--slant {
+  margin-top: -96px;
+  padding-top: 96px;
+  clip-path: polygon(0 var(--slant), 100% 0, 100% 100%, 0 100%);
+  z-index: 1;
+}
+
+.band--slant + .band--slant,
+.band--deep + .band--slant {
+  z-index: 2;
+}
+
+/* ------------------------------------------------------ deep band edges */
+
+.band--deep,
+.band--cta {
+  clip-path: inset(0 0 0 0 round 0);
+  z-index: 1;
+}
+
+/* ------------------------------------------------- the large faint word */
+
+.band__word {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  z-index: 0;
+  font-size: clamp(110px, 17vw, 300px);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+  color: var(--ink);
+  opacity: 0.04;
+  pointer-events: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.band--slant .band__word {
+  top: 120px;
+}
+
+.band--deep .band__word {
+  opacity: 0.05;
+}
+
+[data-theme='light'] .band__word {
+  opacity: 0.05;
+}
+
+/* A soft light in each band, which drifts as the band scrolls. */
+.band__glow {
+  position: absolute;
+  z-index: 0;
+  width: 60vw;
+  height: 60vw;
+  max-width: 900px;
+  max-height: 900px;
+  right: -15vw;
+  top: 10%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 16%, transparent),
+    transparent 65%
+  );
+  pointer-events: none;
+  will-change: transform;
+}
+
+.band--accent .band__glow {
+  left: -20vw;
+  right: auto;
+}
+
+[data-theme='light'] .band__glow {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 10%, transparent),
+    transparent 65%
+  );
+}
+
+/* ---------------------------------------------------- chapter headers */
+
+.chapter {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.chapter__index {
+  display: inline-grid;
+  place-items: center;
+  min-width: 38px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.chapter__rule {
+  flex: 1;
+  max-width: 280px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  transform-origin: 0 50%;
+}
+
+/* ------------------------------------- the line through "How it works" */
+
+/* The line sits behind the cards, level with their icons, inside its own box. */
+.steps {
+  position: relative;
+}
+
+.steps-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 44px;
+  height: 2px;
+  z-index: 0;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.steps-line span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+
+/* Opaque cards, so the line runs between them and not through them. */
+.steps .feature-grid > li {
+  position: relative;
+  z-index: 1;
+  background: var(--surface-raised);
+}
+
+@media (max-width: 900px) {
+  .steps-line {
+    display: none;
+  }
+
+  .band--slant {
+    --slant: 32px;
+    margin-top: -48px;
+    padding-top: 48px;
+  }
+
+  .band > section {
+    padding-top: 80px !important;
+    padding-bottom: 80px !important;
+  }
+}
+
+/* The story pins itself and sets its own height; it needs no extra padding. */
+.band--deep > section.story {
+  padding-top: 24px !important;
+  padding-bottom: 24px !important;
+}

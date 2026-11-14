@@ -5,6 +5,8 @@ import { SiteFooter, SiteHeader } from '../components/shell/index';
 import { EnvironmentProvider } from '../features/environment/environment-context';
 import { SessionGate } from '../features/wallet/session-gate';
 import { WalletProvider } from '../features/wallet/wallet-context';
+import { Intro } from '../components/intro/intro';
+import { INTRO_BOOTSTRAP_SCRIPT } from '../lib/intro';
 import { THEME_BOOTSTRAP_SCRIPT } from '../lib/theme';
 
 import './globals.css';
@@ -36,6 +38,8 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           flash. Everything else about the theme lives in React.
         */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        {/* Decides, before first paint, whether the brand intro plays. */}
+        <script dangerouslySetInnerHTML={{ __html: INTRO_BOOTSTRAP_SCRIPT }} />
         {/*
           Figtree, the design system's typeface. Loaded by link rather than
           next/font so a build without network access still succeeds — the
@@ -49,6 +53,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         />
       </head>
       <body>
+        <Intro />
         <EnvironmentProvider>
           <WalletProvider>
             <div className="shell">

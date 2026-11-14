@@ -51,10 +51,10 @@ describe('migration browser recovery', () => {
   });
 
   /*
-   * Browser storage is allowed for four short, non-secret values and nowhere
+   * Browser storage is allowed for five short, non-secret values and nowhere
    * else: the theme choice, the recorded-demo flag, the explanation
-   * preferences (never the API key) and the id of the last migration, so a
-   * refresh can resume monitoring. A new file that reaches for storage fails
+   * preferences (never the API key), the id of the last migration, so a
+   * refresh can resume monitoring, and whether the brand intro has played. A new file that reaches for storage fails
    * here until it is added on purpose.
    */
   it('keeps browser storage to the known non-secret values', () => {
@@ -66,6 +66,7 @@ describe('migration browser recovery', () => {
       'features/migrations/migration-view.tsx',
       'features/settings/explanation-settings.ts',
       'lib/demo/index.ts',
+      'lib/intro/index.ts',
       'lib/theme/index.ts',
     ]);
     const usesStorage = /\bwindow\.(?:localStorage|sessionStorage)\b|\bstorage\(\)\?\./;
