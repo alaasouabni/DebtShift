@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "source": {
+    "pool": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
+    "dataProvider": "0x3e9708d80f7B3e43118013075F7e95CE3AB31F31",
+    "collateralAsset": {
+      "address": "0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c",
+      "decimals": 18,
+      "symbol": "WETH"
+    },
+    "debtAsset": {
+      "address": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
+      "decimals": 6,
+      "symbol": "USDC"
+    }
+  },
+  "destination": {
+    "morpho": "0x072FB33E63f76479DF0C145F3ebdcc3C241f0771",
+    "marketId": "0x4505167c540e27ecdb28aacf9977a68e2b3d760022be14a686cbb0f737b3564e",
+    "morphoOracle": "0xDE8d95076931C5Ed84e57705b53c1dA81a04Af09",
+    "collateralAsset": {
+      "address": "0x4200000000000000000000000000000000000006",
+      "decimals": 18,
+      "symbol": "WETH"
+    },
+    "debtAsset": {
+      "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "decimals": 6,
+      "symbol": "USDC"
+    },
+    "morphoOracleFeeds": [
+      {
+        "address": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+        "maximumAgeSeconds": 3600
+      },
+      {
+        "address": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+        "maximumAgeSeconds": 90000
+      }
+    ]
+  },
+  "prices": {
+    "sourceCollateralUsd": {
+      "address": "0x694AA1769357215DE4FAC081bf1f309aDC325306",
+      "maximumAgeSeconds": 10800
+    },
+    "sourceDebtUsd": {
+      "address": "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
+      "maximumAgeSeconds": 90000
+    },
+    "sourceNativeUsd": {
+      "address": "0x694AA1769357215DE4FAC081bf1f309aDC325306",
+      "maximumAgeSeconds": 10800
+    },
+    "destinationCollateralUsd": {
+      "address": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+      "maximumAgeSeconds": 3600
+    },
+    "destinationDebtUsd": {
+      "address": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+      "maximumAgeSeconds": 90000
+    },
+    "destinationNativeUsd": {
+      "address": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+      "maximumAgeSeconds": 3600
+    }
+  },
+  "policy": {
+    "horizonDays": 90,
+    "maxAllInCostUsdMicro": "250000000",
+    "minAprReductionBps": 50,
+    "maxPositionSnapshotAgeSeconds": 300,
+    "maxMarketSnapshotAgeSeconds": 300,
+    "maxOracleAgeSeconds": 86400,
+    "minimumLiquidityBufferBps": 500,
+    "stressCollateralDropBps": 2000,
+    "stressTargetAprIncreaseBps": 200,
+    "maximumLtvBps": 7000,
+    "stressMaximumLtvBps": 6000
+  },
+  "analyticsCosts": {
+    "sourceGasUnitsUpperBound": 2000000,
+    "destinationGasUnitsUpperBound": 2500000,
+    "estimatedSettlementSeconds": 300,
+    "settlementTimeP95Seconds": 1800,
+    "tailLossEstimateUsdMicro": "25000000",
+    "settlementRiskCostUsdMicro": "10000000",
+    "dependencyRiskCostUsdMicro": "10000000"
+  }
+}
