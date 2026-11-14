@@ -21,16 +21,19 @@
 </p>
 
 <p align="center">
-  <b><a href="FULL_VIDEO_LINK">▶ Watch the demo</a></b> ·
-  <b><a href="DEMO_POST_LINK">𝕏 Demo post</a></b> ·
+  <b><a href="#demo">▶ Watch the demo</a></b> ·
   <b><a href="#try-it-in-three-commands-no-wallet-no-docker">Try it in 3 commands</a></b> ·
   <b><a href="#verified-on-public-testnets">Testnet proof</a></b> ·
   <b><a href="#how-near-is-used">How NEAR is used</a></b>
 </p>
 
+<h2 id="demo" align="center">Demo</h2>
+
 <p align="center">
-  <a href="FULL_VIDEO_LINK"><img src="docs/readme/video-thumbnail.jpg" alt="Watch the 6-minute DebtShift walkthrough" width="80%"></a>
+  <img src="docs/readme/demo-preview.gif" alt="DebtShift in 18 seconds: the move, NEAR Intents, the MetaMask signature, the solver repaid" width="85%">
 </p>
+
+<!-- Paste the GitHub video link (https://github.com/user-attachments/assets/...) on the next line to show the full demo player here. -->
 
 > **Move a loan to a cheaper market on another chain, with two signatures and without repaying it
 > first.** Built at NEAR HACKATHON (November 2026) for the **Unstoppable DeFi** track.
@@ -440,9 +443,8 @@ See `strategies-docs/README.md` for the implementation source of truth.
 
 ## Team
 
-- **Ala** ([@alaasouabni](https://github.com/alaasouabni)): protocol, contracts, API, worker,
-  public-testnet deployment.
-- **Firas** ([@firasbelhiba](https://github.com/firasbelhiba)): web app, landing page, demo and video.
+- **Ala** ([@alaasouabni](https://github.com/alaasouabni)): Web3 developer and software engineer.
+- **Firas** ([@firasbelhiba](https://github.com/firasbelhiba)): Web3 developer and software engineer.
 
 ## License
 
