@@ -16,7 +16,7 @@
  * that real payload, because the local stack cannot currently reach them.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as ApiClient from '../../lib/api/client';
@@ -46,7 +46,16 @@ async function renderMigration(details: MigrationDetails = settled) {
   migrationMock.mockResolvedValue(details);
   const { MigrationView } = await import('./migration-view');
   const result = render(<MigrationView migrationId={details.migration.migrationId} />);
-  await screen.findByRole('heading', { level: 1 });
+  // Wait for the loaded page, not the "Reading the migration…" placeholder:
+  // both are an h1, and only the placeholder is aria-busy. On a slow machine
+  // the placeholder can be on screen for a while.
+  await waitFor(
+    () => {
+      const heading = screen.getByRole('heading', { level: 1 });
+      if (heading.getAttribute('aria-busy') === 'true') throw new Error('still loading');
+    },
+    { timeout: 10_000 },
+  );
   return result;
 }
 
