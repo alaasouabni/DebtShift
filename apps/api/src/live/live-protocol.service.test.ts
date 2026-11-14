@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { describe, expect, it } from 'vitest';
 
-import { LiveProtocolService } from './live-protocol.service.js';
+import { isWithinAaveAccrualBounds, LiveProtocolService } from './live-protocol.service.js';
 
 describe('LiveProtocolService registry binding', () => {
   it('builds live Aave-to-Morpho identities only from explicit configuration', () => {
@@ -67,6 +67,32 @@ describe('LiveProtocolService registry binding', () => {
       sourceVault: '0x4000000000000000000000000000000000000002',
       executor: '0x4000000000000000000000000000000000000003',
     });
+  });
+});
+
+describe('Aave source accrual bounds', () => {
+  const base = {
+    snapshotCollateralUnits: 10_000n,
+    snapshotDebtUnits: 1_000_000n,
+    debtBufferBps: 10,
+  } as const;
+
+  it('accepts passive collateral and variable-debt accrual within the signed debt cap', () => {
+    expect(
+      isWithinAaveAccrualBounds({
+        ...base,
+        currentCollateralUnits: 10_001n,
+        currentDebtUnits: 1_000_001n,
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    { currentCollateralUnits: 9_999n, currentDebtUnits: 1_000_001n },
+    { currentCollateralUnits: 10_001n, currentDebtUnits: 999_999n },
+    { currentCollateralUnits: 10_001n, currentDebtUnits: 1_001_001n },
+  ])('rejects a material source-position change: %o', (current) => {
+    expect(isWithinAaveAccrualBounds({ ...base, ...current })).toBe(false);
   });
 });
 

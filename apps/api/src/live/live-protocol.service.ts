@@ -55,6 +55,7 @@ export class LiveProtocolService implements ProtocolDataPort {
   readonly #sourceModule: Address;
   readonly #sourceChainId: number;
   readonly #sourceFinalityConfirmations: number;
+  readonly #sourceDebtBufferBps: number;
 
   constructor(@Inject(ConfigService) config: ConfigService) {
     if (config.getOrThrow<string>('MARKET_DATA_PROVIDER') !== 'LIVE_READ_ONLY') {
@@ -70,6 +71,7 @@ export class LiveProtocolService implements ProtocolDataPort {
     this.#sourceModule = config.getOrThrow<Address>('SOURCE_LENDING_ADDRESS');
     this.#sourceChainId = sourceChainId;
     this.#sourceFinalityConfirmations = config.getOrThrow<number>('SOURCE_FINALITY_CONFIRMATIONS');
+    this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
     const mode = config.getOrThrow<'testnet' | 'mainnet-readonly' | 'mainnet'>('DEBTSHIFT_MODE');
     this.#client = createPublicClient({
       transport: http(config.getOrThrow<string>('SOURCE_RPC_URL')),
@@ -163,9 +165,14 @@ export class LiveProtocolService implements ProtocolDataPort {
     const current = await this.#adapter.readPosition(snapshot.position.borrower);
     if (
       current === undefined ||
-      current.collateralUnits !== snapshot.collateralUnits ||
-      current.debtUnits !== snapshot.debtUnits ||
-      current.position.market.marketId !== snapshot.position.market.marketId
+      current.position.market.marketId !== snapshot.position.market.marketId ||
+      !isWithinAaveAccrualBounds({
+        snapshotCollateralUnits: BigInt(snapshot.collateralUnits),
+        snapshotDebtUnits: BigInt(snapshot.debtUnits),
+        currentCollateralUnits: BigInt(current.collateralUnits),
+        currentDebtUnits: BigInt(current.debtUnits),
+        debtBufferBps: this.#sourceDebtBufferBps,
+      })
     ) {
       throw new Error('Aave source position changed after route preparation.');
     }
@@ -392,6 +399,22 @@ function serializeMorphoAuthorization(authorization: {
     nonce: authorization.nonce.toString(),
     deadline: authorization.deadline.toString(),
   };
+}
+
+export function isWithinAaveAccrualBounds(input: {
+  readonly snapshotCollateralUnits: bigint;
+  readonly snapshotDebtUnits: bigint;
+  readonly currentCollateralUnits: bigint;
+  readonly currentDebtUnits: bigint;
+  readonly debtBufferBps: number;
+}): boolean {
+  const maximumDebtUnits =
+    (input.snapshotDebtUnits * BigInt(10_000 + input.debtBufferBps) + 9_999n) / 10_000n;
+  return (
+    input.currentCollateralUnits >= input.snapshotCollateralUnits &&
+    input.currentDebtUnits >= input.snapshotDebtUnits &&
+    input.currentDebtUnits <= maximumDebtUnits
+  );
 }
 
 function token(
