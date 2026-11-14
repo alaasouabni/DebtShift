@@ -1,6 +1,7 @@
 import type { PositionSnapshot, ProviderQuote, TokenReference } from '@debtshift/domain';
 import { hashCanonicalText, marketSnapshotSchema } from '@debtshift/domain';
 import type { RouteRiskTools } from '@debtshift/agent';
+import { verifyOneClickRouteAssets } from '@debtshift/intents';
 import {
   routeCandidateSchema,
   routePolicySchema,
@@ -10,7 +11,9 @@ import {
 import {
   ChainlinkOracleFreshnessReader,
   ChainlinkPriceReader,
+  MorphoMarketDiscoveryClient,
   MorphoBlueReadAdapter,
+  type DiscoveredMorphoMarket,
   type ChainlinkPriceObservation,
 } from '@debtshift/protocols';
 import { Inject, Injectable } from '@nestjs/common';
@@ -23,6 +26,11 @@ import { LiveProtocolService } from './live-protocol.service.js';
 
 const USD_DECIMALS = 6;
 const MORPHO_ORACLE_SCALE = 10n ** 36n;
+
+interface TargetMarketDiscovery {
+  readonly marketId: `0x${string}`;
+  readonly indexed?: DiscoveredMorphoMarket;
+}
 
 /**
  * Live, read-only route intelligence. It uses direct Aave/Morpho/Chainlink
@@ -37,6 +45,8 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
   readonly #sourcePrices: ChainlinkPriceReader;
   readonly #destinationPrices: ChainlinkPriceReader;
   readonly #sourceDebtBufferBps: number;
+  readonly #mode: 'testnet' | 'mainnet-readonly' | 'mainnet';
+  readonly #marketDiscovery: MorphoMarketDiscoveryClient;
 
   constructor(
     @Inject(LiveProtocolService) private readonly protocols: LiveProtocolService,
@@ -44,7 +54,9 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
     @Inject(ConfigService) config: ConfigService,
   ) {
     const configuration = protocols.configuration;
+    this.#mode = config.getOrThrow<'testnet' | 'mainnet-readonly' | 'mainnet'>('DEBTSHIFT_MODE');
     this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
+    this.#marketDiscovery = new MorphoMarketDiscoveryClient();
     this.#destinationClient = createPublicClient({
       transport: http(config.getOrThrow<string>('DESTINATION_RPC_URL')),
     });
@@ -151,19 +163,26 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       BigInt(debtForwardQuote.expectedAmountOutUnits),
       BigInt(debtReverseQuote.amountInUnits),
     );
-    const market = await this.#morpho.readMarket(
-      route.targetMarket.marketId,
-      settlementPayoffUnits,
+    const discoveredTargets = await this.#discoverTargetMarkets(route);
+    const markets = await Promise.all(
+      discoveredTargets.map(async (target) => {
+        const market = await this.#morpho.readMarket(target.marketId, settlementPayoffUnits);
+        this.#assertMarketIdentity(market.params, target.indexed);
+        return market;
+      }),
     );
-    this.#assertMarketIdentity(market.params);
-    const marketSnapshot = marketSnapshotSchema.parse({
-      ...market.snapshot,
-      collateralAsset: route.destinationCollateralAsset,
-      debtAsset: route.destinationDebtAsset,
-    });
+    const referenceMarket = markets[0];
+    if (referenceMarket === undefined) {
+      throw new Error('No onchain-verified Morpho market remained after discovery.');
+    }
+    if (
+      markets.some((market) => market.snapshot.block.hash !== referenceMarket.snapshot.block.hash)
+    ) {
+      throw new Error('Discovered Morpho markets were not observed at one canonical block.');
+    }
     const sourceBlock = await this.protocols.sourceClient.getBlock({ blockTag: 'latest' });
     const sourceObservedAt = new Date(Number(sourceBlock.timestamp) * 1_000).toISOString();
-    const destinationBlockNumber = BigInt(market.snapshot.block.number);
+    const destinationBlockNumber = BigInt(referenceMarket.snapshot.block.number);
     const configuration = this.protocols.configuration;
     const [
       sourceCollateralUsd,
@@ -193,17 +212,17 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       this.#destinationPrices.readAtBlock(
         configuration.prices.destinationCollateralUsd,
         destinationBlockNumber,
-        market.snapshot.block.observedAt,
+        referenceMarket.snapshot.block.observedAt,
       ),
       this.#destinationPrices.readAtBlock(
         configuration.prices.destinationDebtUsd,
         destinationBlockNumber,
-        market.snapshot.block.observedAt,
+        referenceMarket.snapshot.block.observedAt,
       ),
       this.#destinationPrices.readAtBlock(
         configuration.prices.destinationNativeUsd,
         destinationBlockNumber,
-        market.snapshot.block.observedAt,
+        referenceMarket.snapshot.block.observedAt,
       ),
       this.protocols.sourceClient.getGasPrice(),
       this.#destinationClient.getGasPrice(),
@@ -235,15 +254,6 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       18,
       destinationNativeUsd,
     );
-    const deliveredCollateralLoanUnits =
-      (BigInt(collateralQuote.minAmountOutUnits) * BigInt(marketSnapshot.oracle.priceMantissa)) /
-      MORPHO_ORACLE_SCALE;
-    const oracleDeliveredUsd = usdMicroFloor(
-      deliveredCollateralLoanUnits,
-      route.destinationDebtAsset.decimals,
-      destinationDebtUsd,
-    );
-    const deliveredCollateralValueUsd = minBigInt(oracleDeliveredUsd, minimumCollateralUsd);
     const principalDebtUsd = usdMicroCeil(
       BigInt(position.debtUnits),
       route.sourceDebtAsset.decimals,
@@ -255,19 +265,6 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       destinationDebtUsd,
     );
     const policy = this.createPolicy(evaluatedAt);
-    const stressedCollateralLoanUnits =
-      (deliveredCollateralLoanUnits * BigInt(10_000 - policy.stressCollateralDropBps)) / 10_000n;
-    const protocolCapacity =
-      (deliveredCollateralLoanUnits * BigInt(marketSnapshot.lltvBps ?? 0)) / 10_000n;
-    const normalPolicyCapacity =
-      (deliveredCollateralLoanUnits * BigInt(configuration.policy.maximumLtvBps)) / 10_000n;
-    const stressPolicyCapacity =
-      (stressedCollateralLoanUnits * BigInt(configuration.policy.stressMaximumLtvBps)) / 10_000n;
-    const policyCapacity = minBigInt(normalPolicyCapacity, stressPolicyCapacity);
-    const liquidityCapacity =
-      (BigInt(market.availableBorrowUnits) * 10_000n) /
-      BigInt(10_000 + policy.minimumLiquidityBufferBps);
-    const candidateId = `live-morpho:${route.targetMarket.marketId}`;
     const conversionHash = hashCanonicalText(
       `debtshift.oneclick-bid-ask-bound.v1:${debtForwardQuote.quoteHash}:${debtReverseQuote.quoteHash}:${settlementPayoffUnits}`,
     );
@@ -278,8 +275,38 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       ['slippage', 'SLIPPAGE', slippageUsd],
     ] as const;
 
-    return [
-      routeCandidateSchema.parse({
+    return markets.map((market) => {
+      const marketSnapshot = marketSnapshotSchema.parse({
+        ...market.snapshot,
+        collateralAsset: route.destinationCollateralAsset,
+        debtAsset: route.destinationDebtAsset,
+      });
+      const deliveredCollateralLoanUnits =
+        (BigInt(collateralQuote.minAmountOutUnits) * BigInt(marketSnapshot.oracle.priceMantissa)) /
+        MORPHO_ORACLE_SCALE;
+      const oracleDeliveredUsd = usdMicroFloor(
+        deliveredCollateralLoanUnits,
+        route.destinationDebtAsset.decimals,
+        destinationDebtUsd,
+      );
+      const deliveredCollateralValueUsd = minBigInt(oracleDeliveredUsd, minimumCollateralUsd);
+      const stressedCollateralLoanUnits =
+        (deliveredCollateralLoanUnits * BigInt(10_000 - policy.stressCollateralDropBps)) / 10_000n;
+      const protocolCapacity =
+        (deliveredCollateralLoanUnits * BigInt(marketSnapshot.lltvBps ?? 0)) / 10_000n;
+      const normalPolicyCapacity =
+        (deliveredCollateralLoanUnits * BigInt(configuration.policy.maximumLtvBps)) / 10_000n;
+      const stressPolicyCapacity =
+        (stressedCollateralLoanUnits * BigInt(configuration.policy.stressMaximumLtvBps)) / 10_000n;
+      const policyCapacity = minBigInt(normalPolicyCapacity, stressPolicyCapacity);
+      const liquidityCapacity =
+        (BigInt(market.availableBorrowUnits) * 10_000n) /
+        BigInt(10_000 + policy.minimumLiquidityBufferBps);
+      const candidateId = `live-morpho:${market.marketId}`;
+      const adapterVersionApproved =
+        this.#mode === 'mainnet-readonly' ||
+        market.marketId.toLowerCase() === route.targetMarket.marketId.toLowerCase();
+      return routeCandidateSchema.parse({
         candidateId,
         market: marketSnapshot,
         requestedBorrowUnits: settlementPayoffUnits.toString(),
@@ -308,7 +335,7 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
           provenance: `morpho-direct:${market.blockNumber}`,
         },
         assetRouteSupported: true,
-        adapterVersionApproved: route.execution.kind === 'EXECUTABLE',
+        adapterVersionApproved,
         transportMinimumMet: BigInt(collateralQuote.minAmountOutUnits) > 0n,
         financing: {
           evaluatedAt,
@@ -360,15 +387,48 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
             signedUnits: settlementPayoffUnits.toString(),
           },
         },
-      }),
-    ];
+      });
+    });
   }
 
-  #assertMarketIdentity(params: {
-    readonly loanToken: Address;
-    readonly collateralToken: Address;
-    readonly oracle: Address;
-  }): void {
+  async #discoverTargetMarkets(
+    route: LiveProtocolService['route'],
+  ): Promise<readonly TargetMarketDiscovery[]> {
+    if (this.#mode === 'testnet') return [{ marketId: route.targetMarket.marketId }];
+    const catalog = await this.transport.getTokenCatalog();
+    verifyOneClickRouteAssets(catalog, [
+      route.sourceCollateralAsset,
+      route.sourceDebtAsset,
+      route.destinationCollateralAsset,
+      route.destinationDebtAsset,
+    ]);
+    const observation = await this.#marketDiscovery.discoverMarkets({
+      chainId: route.targetMarket.chainId,
+      loanToken: route.destinationDebtAsset.address,
+      collateralToken: route.destinationCollateralAsset.address,
+      listed: true,
+    });
+    const approved = observation.markets.filter((market) =>
+      isAddressEqual(market.oracle, this.protocols.configuration.destination.morphoOracle),
+    );
+    if (approved.length === 0) {
+      throw new Error(
+        'Morpho discovery found no listed market with the approved asset and oracle boundary.',
+      );
+    }
+    return approved.map((indexed) => ({ marketId: indexed.marketId, indexed }));
+  }
+
+  #assertMarketIdentity(
+    params: {
+      readonly loanToken: Address;
+      readonly collateralToken: Address;
+      readonly oracle: Address;
+      readonly irm: Address;
+      readonly lltv: bigint;
+    },
+    indexed?: DiscoveredMorphoMarket,
+  ): void {
     const configuration = this.protocols.configuration.destination;
     if (!isAddressEqual(params.loanToken, configuration.debtAsset.address)) {
       throw new Error('Morpho loan token does not match the approved live registry.');
@@ -378,6 +438,18 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
     }
     if (!isAddressEqual(params.oracle, configuration.morphoOracle)) {
       throw new Error('Morpho oracle does not match the approved live registry.');
+    }
+    if (
+      indexed !== undefined &&
+      (!isAddressEqual(params.loanToken, indexed.loanToken) ||
+        !isAddressEqual(params.collateralToken, indexed.collateralToken) ||
+        !isAddressEqual(params.oracle, indexed.oracle) ||
+        !isAddressEqual(params.irm, indexed.irm) ||
+        params.lltv !== BigInt(indexed.lltvWad))
+    ) {
+      throw new Error(
+        'Morpho indexed market identity does not match canonical onchain parameters.',
+      );
     }
   }
 }

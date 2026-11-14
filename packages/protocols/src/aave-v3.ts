@@ -64,6 +64,22 @@ export const AAVE_POOL_WRITE_ABI = [
 export const AAVE_DATA_PROVIDER_ABI = [
   {
     type: 'function',
+    name: 'getAllReservesTokens',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      {
+        name: 'reserves',
+        type: 'tuple[]',
+        components: [
+          { name: 'symbol', type: 'string' },
+          { name: 'tokenAddress', type: 'address' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'function',
     name: 'getReserveTokensAddresses',
     stateMutability: 'view',
     inputs: [{ name: 'asset', type: 'address' }],
@@ -205,6 +221,29 @@ export interface AaveReserveTokenAddresses {
   readonly variableDebtToken: Address;
 }
 
+export interface AaveUserReserveBalance {
+  readonly asset: Address;
+  readonly symbol: string;
+  readonly decimals: number;
+  readonly collateralUnits: string;
+  readonly stableDebtUnits: string;
+  readonly variableDebtUnits: string;
+  readonly usageAsCollateralEnabled: boolean;
+}
+
+export interface AaveUserReserveDiscovery {
+  readonly chainId: number;
+  readonly pool: Address;
+  readonly dataProvider: Address;
+  readonly borrower: Address;
+  readonly block: {
+    readonly number: string;
+    readonly hash: Hex;
+    readonly observedAt: string;
+  };
+  readonly reserves: readonly AaveUserReserveBalance[];
+}
+
 export interface PreparedEvmTransaction {
   readonly to: Address;
   readonly data: Hex;
@@ -240,6 +279,99 @@ export async function readAaveReserveTokenAddresses(
     throw new Error(`Aave reserve ${asset} returned invalid token identities.`);
   }
   return normalized;
+}
+
+/**
+ * Enumerates the user's active balances across the complete Aave reserve list
+ * at one canonical block. Route support is decided by the caller after this
+ * discovery step; unsupported active assets are not silently ignored.
+ */
+export async function discoverAaveUserReserves(
+  client: PublicClient,
+  config: { readonly chainId: number; readonly pool: Address; readonly dataProvider: Address },
+  borrowerInput: Address,
+  requestedBlockNumber?: bigint,
+): Promise<AaveUserReserveDiscovery> {
+  const borrower = getAddress(borrowerInput);
+  const pool = getAddress(config.pool);
+  const dataProvider = getAddress(config.dataProvider);
+  const [actualChainId, block] = await Promise.all([
+    client.getChainId(),
+    requestedBlockNumber === undefined
+      ? client.getBlock({ blockTag: 'latest' })
+      : client.getBlock({ blockNumber: requestedBlockNumber }),
+  ]);
+  if (actualChainId !== config.chainId) {
+    throw new Error(
+      `Aave discovery RPC chain mismatch: expected ${config.chainId}, received ${actualChainId}.`,
+    );
+  }
+  if (block.hash === null) throw new Error('Aave discovery block is not canonical.');
+  if (requestedBlockNumber !== undefined && block.number !== requestedBlockNumber) {
+    throw new Error('Aave discovery RPC returned a different block than requested.');
+  }
+  const reserveRows = await client.readContract({
+    address: dataProvider,
+    abi: AAVE_DATA_PROVIDER_ABI,
+    functionName: 'getAllReservesTokens',
+    blockNumber: block.number,
+  });
+  if (reserveRows.length === 0 || reserveRows.length > 128) {
+    throw new Error('Aave discovery returned an invalid reserve count.');
+  }
+  const seen = new Set<string>();
+  const reserves = await Promise.all(
+    reserveRows.map(async (reserve) => {
+      const asset = getAddress(reserve.tokenAddress);
+      const key = asset.toLowerCase();
+      if (seen.has(key)) throw new Error(`Aave discovery returned duplicate reserve ${asset}.`);
+      seen.add(key);
+      const [user, configuration] = await Promise.all([
+        client.readContract({
+          address: dataProvider,
+          abi: AAVE_DATA_PROVIDER_ABI,
+          functionName: 'getUserReserveData',
+          args: [asset, borrower],
+          blockNumber: block.number,
+        }),
+        client.readContract({
+          address: dataProvider,
+          abi: AAVE_DATA_PROVIDER_ABI,
+          functionName: 'getReserveConfigurationData',
+          args: [asset],
+          blockNumber: block.number,
+        }),
+      ]);
+      return {
+        asset,
+        symbol: reserve.symbol,
+        decimals: Number(configuration[0]),
+        collateralUnits: user[0].toString(),
+        stableDebtUnits: user[1].toString(),
+        variableDebtUnits: user[2].toString(),
+        usageAsCollateralEnabled: user[8],
+      } satisfies AaveUserReserveBalance;
+    }),
+  );
+  return {
+    chainId: config.chainId,
+    pool,
+    dataProvider,
+    borrower,
+    block: {
+      number: block.number.toString(),
+      hash: block.hash,
+      observedAt: new Date(Number(block.timestamp) * 1_000).toISOString(),
+    },
+    reserves: reserves
+      .filter(
+        (reserve) =>
+          BigInt(reserve.collateralUnits) > 0n ||
+          BigInt(reserve.stableDebtUnits) > 0n ||
+          BigInt(reserve.variableDebtUnits) > 0n,
+      )
+      .sort((left, right) => left.asset.localeCompare(right.asset)),
+  };
 }
 
 /**

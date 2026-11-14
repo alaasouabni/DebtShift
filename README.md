@@ -16,6 +16,36 @@ and authenticated 1Click reads. Production modes cannot fall back to fixture val
 additionally require the restart-bound server switch `MAINNET_EXECUTION_ENABLED=true`; it defaults
 to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the enforced boundary.
 
+## Automatic discovery and mainnet-fork proof
+
+Production route analysis no longer depends on a configured Morpho market ID. For a connected
+wallet, DebtShift enumerates the wallet's active Aave reserves at one canonical block, resolves the
+four exact transport assets from the live 1Click catalog, discovers listed Morpho markets for the
+supported loan/collateral pair, and verifies every retained market against onchain Morpho state.
+The existing deterministic optimizer then applies liquidity, financing, LTV, stress, freshness,
+cost, and APR gates before selecting a route. Unknown assets, multiple active Aave collateral/debt
+reserves, stable-rate debt, unapproved oracles, and index/onchain disagreements fail closed.
+
+The no-funds dual-mainnet-fork proof passed on 2026-11-14:
+
+- source fork: [Base block 57,337,544](https://basescan.org/block/57337544), where the proof opened
+  and then fully closed a 10 WETH / 1,000 USDC Aave V3 position;
+- destination fork: [Arbitrum block 524,148,205](https://arbiscan.io/block/524148205);
+- automatically selected market:
+  `0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c`;
+- observed source APR: `6.90%`; projected destination APR after the borrow: `3.79%`;
+- resulting fork position: `9.99 WETH` collateral and `1,000.007970 USDC` debt;
+- source Aave position absent after execution, source vault settled, and all checked destination
+  adapter/escrow/module residual balances equal to zero.
+
+The complete machine-readable evidence is
+[`deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json`](deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json).
+Run it again with `npm run proof:mainnet-fork`; it needs Foundry and public RPC access, but no private
+key or real funds. The proof reads the live 1Click catalog, while the actual cross-chain 1Click
+settlement is explicitly labeled `SIMULATED_1CLICK_BOUNDARY` because an external provider cannot
+observe disposable local forks. Its transaction hashes are local-fork evidence, not mainnet
+explorer receipts. `MAINNET_EXECUTION_ENABLED` remains `false` throughout.
+
 ## Repository
 
 - `apps/web`: Next.js borrower dashboard.
