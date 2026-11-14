@@ -1805,11 +1805,18 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       ],
     ]);
 
-    const reserveTokens = await readAaveReserveTokenAddresses(
-      this.#sourcePublic,
-      this.#configuration.source.dataProvider,
-      this.#environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
-    );
+    const [collateralReserveTokens, debtReserveTokens] = await Promise.all([
+      readAaveReserveTokenAddresses(
+        this.#sourcePublic,
+        this.#configuration.source.dataProvider,
+        this.#environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
+      ),
+      readAaveReserveTokenAddresses(
+        this.#sourcePublic,
+        this.#configuration.source.dataProvider,
+        this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+      ),
+    ]);
     const [
       sourceAdapterVault,
       sourceAdapterLending,
@@ -1988,10 +1995,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
         'source adapter collateral token',
       ],
       [sourceLendingPool, this.#configuration.source.pool, 'Aave source pool'],
-      [sourceLendingAToken, reserveTokens.aToken, 'Aave source aToken'],
+      [sourceLendingAToken, collateralReserveTokens.aToken, 'Aave source aToken'],
       [
         sourceLendingVariableDebtToken,
-        reserveTokens.variableDebtToken,
+        debtReserveTokens.variableDebtToken,
         'Aave source variable debt token',
       ],
       [
