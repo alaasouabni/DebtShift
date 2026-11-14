@@ -1,73 +1,106 @@
 # DebtShift
 
-DebtShift is a production-oriented cross-chain debt refinancing system. It discovers an
-existing lending position, deterministically compares safer or cheaper target routes, obtains
-bounded wallet authorization, coordinates a durable refinance, and records verifiable evidence.
+**Move a loan to a cheaper market on another chain, with two signatures and without repaying it
+first.** Built at NEAR HACKATHON (November 2026), track **Unstoppable DeFi**.
 
-DebtShift has one provider-neutral refinance workflow. The contract-backed sandbox and public
-testnet exercise that workflow through mode-specific adapters; they are not separate simulated
-business implementations. The sandbox executes real private-chain contracts and transactions and
-simulates only the unavailable external 1Click testnet boundary. Mainnet targets the complete
-Aave-to-1Click-to-Morpho workflow, not an isolated transport canary.
+- **Demo video (2:15):** DEMO_POST_LINK
+- **Full walkthrough (6:25):** FULL_VIDEO_LINK
+- **Try it without a wallet:** [three commands, below](#try-it-in-three-commands-no-wallet-no-docker)
+- **Verified on public testnets:** an Aave V3 position on Ethereum Sepolia closed and reopened on Base
+  Sepolia, with its evidence finalized on NEAR testnet ([receipts below](#verified-on-public-testnets))
 
-The four runtime modes are `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet`.
-`mainnet-readonly` requires a complete runtime market registry and direct Aave, Morpho, Chainlink,
-and authenticated 1Click reads. Production modes cannot fall back to fixture values. Mainnet writes
-additionally require the restart-bound server switch `MAINNET_EXECUTION_ENABLED=true`; it defaults
-to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the enforced boundary.
+## The problem
 
-## Judge quick path
+The same loan is often cheaper somewhere else. A borrower paying 7.00% on Aave can find 4.50% on
+Morpho on another chain, but moving there by hand means finding the full debt in cash first, then
+five transactions on two chains: repay, withdraw the collateral, bridge it, deposit it, borrow again.
+Most borrowers never do it, and pay the difference every day.
 
-1. Read the public old-position/new-position proof and explorer links below.
-2. Inspect the automatic discovery and no-funds fork result in
-   [`deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json`](deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json).
-3. Review the concise current decisions in
-   [`strategies-docs/08-progress-and-decisions.md`](strategies-docs/08-progress-and-decisions.md).
-4. Reproduce the software gate with `npm ci && npm run check`; reproduce contracts with
-   `npm run check:contracts`; reproduce the mainnet-fork route with `npm run proof:mainnet-fork`.
+## What DebtShift does
 
-## Automatic discovery and mainnet-fork proof
+1. **Reads the position** live from the source chain and **compares every candidate market** against
+   fixed rules (liquidity, loan-to-value under stress, freshness, every cost). The rejected routes
+   show exactly which check failed.
+2. **Asks for two signatures** (EIP-712), after a separate sign-in message that authorizes nothing:
+   - **the policy**: hard limits any route must respect (maximum debt, maximum total fee, minimum
+     rate drop, maximum LTV, slippage, deadline);
+   - **the execution plan**: one exact route, with amounts, receivers and refund path. It cannot
+     change after signing.
+3. **Executes in phases**, each backed by on-chain evidence:
+   1. a solver's USDC, held in the DebtShift liquidity vault, is **reserved** for the borrower;
+   2. the vault **repays the old loan** and the collateral is released;
+   3. the collateral **crosses chains through NEAR Intents** into an escrow fixed by the signed plan;
+   4. once delivery is verified, the collateral **opens the new loan**;
+   5. the new loan **repays the solver** (principal plus a capped fee) and the vault is reconciled;
+   6. the evidence bundle is **recorded in a receipt registry contract on NEAR**. Only then does the
+      migration count as `COMPLETED`.
+4. **Fails safe.** Cross-chain steps cannot be atomic, and DebtShift does not pretend they are. Before
+   the old loan closes, the borrower can cancel. After that, value returns along the refund path they
+   signed.
 
-Production route analysis no longer depends on a configured Morpho market ID. For a connected
-wallet, DebtShift enumerates the wallet's active Aave reserves at one canonical block, resolves the
-four exact transport assets from the live 1Click catalog, discovers listed Morpho markets for the
-supported loan/collateral pair, and verifies every retained market against onchain Morpho state.
-The existing deterministic optimizer then applies liquidity, financing, LTV, stress, freshness,
-cost, and APR gates before selecting a route. Unknown assets, multiple active Aave collateral/debt
-reserves, stable-rate debt, unapproved oracles, and index/onchain disagreements fail closed.
+## How NEAR is used
 
-The no-funds dual-mainnet-fork proof passed on 2026-11-14:
+| NEAR component                                    | What it does in DebtShift                                                                                                                                            | Where                                                                                                                                                       |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **NEAR Intents (1Click)**                         | Cross-chain transport of the collateral between the old and the new loan. Route discovery reads the live 1Click asset catalog to resolve the exact transport assets. | `packages/intents`, `packages/optimizer`                                                                                                                    |
+| **NEAR receipt registry** (own near-sdk contract) | Stores each migration's agreement and final evidence bundle. A migration is `COMPLETED` only after its NEAR receipt is verified; until then it is at most `SETTLED`. | `contracts/near/registry`, deployed as [`debtshift-registry-alaa-2026.testnet`](https://testnet.nearblocks.io/address/debtshift-registry-alaa-2026.testnet) |
 
-- source fork: [Base block 57,337,544](https://basescan.org/block/57337544), where the proof opened
-  and then fully closed a 10 WETH / 1,000 USDC Aave V3 position;
-- destination fork: [Arbitrum block 524,148,205](https://arbiscan.io/block/524148205);
-- automatically selected market:
-  `0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c`;
-- observed source APR: `6.90%`; projected destination APR after the borrow: `3.79%`;
-- resulting fork position: `9.99 WETH` collateral and `1,000.007970 USDC` debt;
-- source Aave position absent after execution, source vault settled, and all checked destination
-  adapter/escrow/module residual balances equal to zero.
+**What is simulated, stated plainly:** NEAR Intents has no testnet. On the local sandbox and on public
+testnets, the 1Click settlement step is simulated and labeled as such everywhere: in the API
+(`SIMULATED_1CLICK_BOUNDARY`), in the UI and in the evidence. The transfers around it are real
+transactions. Mainnet writes are disabled by default (`MAINNET_EXECUTION_ENABLED=false`).
 
-The complete machine-readable evidence is
-[`deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json`](deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json).
-Run it again with `npm run proof:mainnet-fork`; it needs Foundry and public RPC access, but no private
-key or real funds. The proof reads the live 1Click catalog, while the actual cross-chain 1Click
-settlement is explicitly labeled `SIMULATED_1CLICK_BOUNDARY` because an external provider cannot
-observe disposable local forks. Its transaction hashes are local-fork evidence, not mainnet
-explorer receipts. `MAINNET_EXECUTION_ENABLED` remains `false` throughout.
+## Try it in three commands (no wallet, no Docker)
 
-## Repository
+The web app includes a **recorded run**: real responses captured from the contract-backed sandbox
+(a real position, route analysis, prepared terms and a settled migration with its evidence),
+replayed in the browser. It needs no wallet, no backend and no chains, and every screen labels it as
+a recorded run. Requires Node.js 22.
 
-- `apps/web`: Next.js borrower dashboard.
-- `apps/api`: NestJS REST and SSE control-plane API.
-- `apps/worker`: durable command, evidence, and recovery worker.
-- `packages/*`: domain, persistence, optimizer, agent, protocol, transport, and SDK modules.
-- `contracts/evm`: Foundry workspace for bounded migration contracts and test markets.
-- `contracts/near`: near-sdk workspace for the agreement and receipt registry.
-- `infra`: local services, monitoring, and deployment assets.
-- `strategies-docs`: approved scope, architecture, security rules, roadmap, and completion gates.
+```sh
+npm ci
+npm run build --workspace @debtshift/domain
+npm run dev --workspace @debtshift/web
+```
 
-## Public testnet deployment
+Then, at **http://localhost:3000**:
+
+| Do                                                                         | See                                                                                                                                                                 |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Open the page                                                              | The landing page: a 3D picture of the move (Aave to Morpho through NEAR Intents) and the recorded run's real figures.                                               |
+| Click **Watch the recorded demo**                                          | Your position: "You owe 10,000.00 sUSDC at 7.00% a year", backed by 10 sWETH, with the block it was read at.                                                        |
+| Click **Compare routes**                                                   | "Moving saves 2.50 points. From 7.00% to 4.50%." One route passes; the rejected one lists the 3 checks it failed.                                                   |
+| Click **Prepare authorization**, then the **Prepare authorization** button | The exact terms: limits, amounts and deadlines, readable before signing.                                                                                            |
+| Click **Sign the policy**, then **Sign the execution plan**                | "Both signatures collected. Nothing has moved yet." (In the recorded run nothing is signed or sent.)                                                                |
+| Click **Replay the recorded migration**                                    | The migration phase by phase, from "Authorized." through "New loan open." to "Solver repaid" (`SETTLED`), with transaction hashes, blocks, evidence and the ledger. |
+
+## Run the full sandbox (real contracts, your own wallet)
+
+This starts PostgreSQL, Redis, two private EVM chains with the contracts deployed, the API, the
+worker and the web app. Requires Docker Engine with Compose v2.
+
+```sh
+cp .env.example .env
+npm ci
+npm run infra:up
+npm run smoke:local
+```
+
+- **Do:** open http://localhost:3000. **See:** the same app, now live against the sandbox. API docs
+  are at http://localhost:3001/docs.
+- **Do:** `npm run smoke:local` (above). **See:** a signed HTTP-to-chain migration run end to end,
+  ending financially final at `SETTLED`. Without NEAR registry credentials, receipt registration
+  stays retryable; a credentialed stack reaches `COMPLETED` only after the NEAR receipt is verified.
+- **Do:** connect a browser wallet on network `31337` (RPC `http://127.0.0.1:8545`) with Anvil's
+  public test account #1. **See:** your own sandbox position, routes, the two EIP-712 signatures in
+  your wallet, and the live migration. Each sandbox seed holds one loan.
+- **Do:** `npm run demo:happy` and `npm run demo:recovery`. **See:** the dual-chain contract flow, and
+  its recovery path, on two disposable Anvil chains.
+
+Stop the stack with `npm run infra:down`. Hot-reload development, observability and database drills
+are described under [Development](#development).
+
+## Verified on public testnets
 
 The submission route is deployed from Ethereum Sepolia Aave V3 to Base Sepolia. Its destination is
 a DebtShift-operated Morpho Blue-compatible deployment built from pinned canonical source; it is
@@ -146,7 +179,75 @@ All manifests bind source commit, route, identities, receipts, code/state eviden
 workflow-write switch. `MAINNET_EXECUTION_ENABLED` remained `false`; these deployments do not enable
 mainnet execution.
 
-## Prerequisites
+## Mainnet-fork proof: automatic route discovery
+
+Production route analysis no longer depends on a configured Morpho market ID. For a connected
+wallet, DebtShift enumerates the wallet's active Aave reserves at one canonical block, resolves the
+four exact transport assets from the live 1Click catalog, discovers listed Morpho markets for the
+supported loan/collateral pair, and verifies every retained market against onchain Morpho state.
+The existing deterministic optimizer then applies liquidity, financing, LTV, stress, freshness,
+cost, and APR gates before selecting a route. Unknown assets, multiple active Aave collateral/debt
+reserves, stable-rate debt, unapproved oracles, and index/onchain disagreements fail closed.
+
+The no-funds dual-mainnet-fork proof passed on 2026-11-14:
+
+- source fork: [Base block 57,337,544](https://basescan.org/block/57337544), where the proof opened
+  and then fully closed a 10 WETH / 1,000 USDC Aave V3 position;
+- destination fork: [Arbitrum block 524,148,205](https://arbiscan.io/block/524148205);
+- automatically selected market:
+  `0xca83d02be579485cc10945c9597a6141e772f1cf0e0aa28d09a327b6cbd8642c`;
+- observed source APR: `6.90%`; projected destination APR after the borrow: `3.79%`;
+- resulting fork position: `9.99 WETH` collateral and `1,000.007970 USDC` debt;
+- source Aave position absent after execution, source vault settled, and all checked destination
+  adapter/escrow/module residual balances equal to zero.
+
+The complete machine-readable evidence is
+[`deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json`](deployment/evidence/mainnet-fork-route-discovery-proof-20261114.json).
+Run it again with `npm run proof:mainnet-fork`; it needs Foundry and public RPC access, but no private
+key or real funds. The proof reads the live 1Click catalog, while the actual cross-chain 1Click
+settlement is explicitly labeled `SIMULATED_1CLICK_BOUNDARY` because an external provider cannot
+observe disposable local forks. Its transaction hashes are local-fork evidence, not mainnet
+explorer receipts. `MAINNET_EXECUTION_ENABLED` remains `false` throughout.
+
+## Runtime modes
+
+DebtShift has one provider-neutral refinance workflow. The contract-backed sandbox and public
+testnet exercise that workflow through mode-specific adapters; they are not separate simulated
+business implementations. The sandbox executes real private-chain contracts and transactions and
+simulates only the unavailable external 1Click testnet boundary. Mainnet targets the complete
+Aave-to-1Click-to-Morpho workflow, not an isolated transport canary.
+
+The four runtime modes are `sandbox`, `testnet`, `mainnet-readonly`, and `mainnet`.
+`mainnet-readonly` requires a complete runtime market registry and direct Aave, Morpho, Chainlink,
+and authenticated 1Click reads. Production modes cannot fall back to fixture values. Mainnet writes
+additionally require the restart-bound server switch `MAINNET_EXECUTION_ENABLED=true`; it defaults
+to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the enforced boundary.
+
+## Repository
+
+- `apps/web`: Next.js borrower dashboard.
+- `apps/api`: NestJS REST and SSE control-plane API.
+- `apps/worker`: durable command, evidence, and recovery worker.
+- `packages/*`: domain, persistence, optimizer, agent, protocol, transport, and SDK modules.
+- `contracts/evm`: Foundry workspace for bounded migration contracts and test markets.
+- `contracts/near`: near-sdk workspace for the agreement and receipt registry.
+- `infra`: local services, monitoring, and deployment assets.
+- `strategies-docs`: approved scope, architecture, security rules, roadmap, and completion gates.
+
+## Built during NEAR HACKATHON
+
+The repository's history starts on 2026-11-09, inside the hackathon window (from the announcement
+on 2026-10-19 to 2026-11-14); every commit is part of the judged work.
+
+Open-source libraries and tools used: Next.js, React, three.js, GSAP and Lenis (web); NestJS,
+BullMQ, ioredis, Drizzle ORM, node-postgres and zod (API and worker); viem (EVM);
+near-api-js and near-sdk (NEAR); Foundry (EVM contracts); PGlite and Vitest (tests); Turborepo
+(monorepo). The testnet Morpho-compatible market is built from pinned canonical Morpho Blue
+source.
+
+## Development
+
+### Prerequisites
 
 - Node.js 22.16.0 and npm 10.9.2.
 - Docker Engine with Docker Compose v2.
@@ -156,21 +257,11 @@ mainnet execution.
 Only Node and Docker are required for the initial TypeScript workspace. Contract-specific setup is
 documented in `docs/local-setup.md`.
 
-## Start
+### Full stack, hot reload and quality gates
 
-Run the complete contract-backed sandbox with one command:
-
-```sh
-cp .env.example .env
-npm ci
-npm run infra:up
-npm run smoke:local
-```
-
-This builds and starts PostgreSQL, Redis, both private chains, migrations, the API, worker, and web
-application. Open `http://localhost:3000`; API documentation is at
-`http://localhost:3001/docs`; Prometheus text metrics are at
-`http://localhost:3001/v1/metrics`. Stop the stack with `npm run infra:down`.
+The one-command sandbox is described in
+[Run the full sandbox](#run-the-full-sandbox-real-contracts-your-own-wallet). It also serves
+Prometheus text metrics at `http://localhost:3001/v1/metrics`.
 The checked-in OpenAPI 3.1 contract is `docs/openapi.json`; deterministic operation, request, and
 response types are exported by `@debtshift/sdk`. Run `npm run openapi:generate` after changing an API
 contract, or `npm run openapi:check` to reject generated-artifact drift.
@@ -275,3 +366,13 @@ defined in `strategies-docs/11-refinancing-feasibility-model.md` and remain part
 implementation and verification gates.
 
 See `strategies-docs/README.md` for the implementation source of truth.
+
+## Team
+
+- **Ala** ([@alaasouabni](https://github.com/alaasouabni)): protocol, contracts, API, worker,
+  public-testnet deployment.
+- **Firas** ([@firasbelhiba](https://github.com/firasbelhiba)): web app, landing page, demo and video.
+
+## License
+
+[MIT](LICENSE).
