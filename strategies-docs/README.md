@@ -60,6 +60,7 @@ Implementation must be understandable from this directory without relying on cha
 | [21-public-testnet-morpho-deployment.md](./21-public-testnet-morpho-deployment.md)         | Defines pinned canonical Morpho testnet deployment, funded-market evidence, and startup gates.    |
 | [22-public-testnet-funding-readiness.md](./22-public-testnet-funding-readiness.md)         | Defines credential-free borrower, operator, asset, gas, and NEAR account readiness before deploy. |
 | [23-testnet-vault-funding.md](./23-testnet-vault-funding.md)                               | Defines exact guarded source-vault funding, immutable evidence, cleanup, and readiness checks.    |
+| [24-public-testnet-workflow-execution.md](./24-public-testnet-workflow-execution.md)       | Records the funded public-testnet attempt, receipts, failed-safe recovery, and remaining gap.     |
 
 ## Work protocol
 
@@ -111,6 +112,8 @@ Implementation must be understandable from this directory without relying on cha
 | Application implementation  | IN_PROGRESS |
 | Contract implementation     | IN_PROGRESS |
 | Contract-backed sandbox     | IN_PROGRESS |
-| NEAR testnet deployment     | NOT_STARTED |
+| NEAR testnet deployment     | COMPLETE    |
+| Public-testnet recovery     | COMPLETE    |
+| Public-testnet happy path   | IN_PROGRESS |
 | Mainnet implementation      | IN_PROGRESS |
 | Mainnet writes              | DISABLED    |

@@ -19,6 +19,7 @@ describe('parseDebtShiftEnvironment', () => {
     expect(environment.MAINNET_EXECUTION_ENABLED).toBe(false);
     expect(environment.SOURCE_FINALITY_CONFIRMATIONS).toBe(1);
     expect(environment.SOURCE_DEBT_BUFFER_BPS).toBe(10);
+    expect(environment.EXECUTION_PLAN_TTL_SECONDS).toBe(240);
     expect(environment.SOURCE_DEPLOYMENT_BLOCK_NUMBER).toBe(0);
     expect(environment.DESTINATION_DEPLOYMENT_BLOCK_NUMBER).toBe(0);
     expect(environment.DESTINATION_FINALITY_CONFIRMATIONS).toBe(1);
@@ -51,6 +52,14 @@ describe('parseDebtShiftEnvironment', () => {
   it('requires at least one configured confirmation on each EVM chain', () => {
     expect(() => parseDebtShiftEnvironment({ SOURCE_FINALITY_CONFIRMATIONS: '0' })).toThrow();
     expect(() => parseDebtShiftEnvironment({ DESTINATION_FINALITY_CONFIRMATIONS: '0' })).toThrow();
+  });
+
+  it('bounds the signed execution-plan lifetime', () => {
+    expect(() => parseDebtShiftEnvironment({ EXECUTION_PLAN_TTL_SECONDS: '59' })).toThrow();
+    expect(() => parseDebtShiftEnvironment({ EXECUTION_PLAN_TTL_SECONDS: '3601' })).toThrow();
+    expect(parseDebtShiftEnvironment({ EXECUTION_PLAN_TTL_SECONDS: '900' })).toMatchObject({
+      EXECUTION_PLAN_TTL_SECONDS: 900,
+    });
   });
 
   it('rejects production transport in sandbox mode', () => {

@@ -2759,11 +2759,9 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     let transactionHash: Hex | undefined;
     try {
       const logs = await client.getLogs({ address, fromBlock: deploymentBlock, toBlock: 'latest' });
-      transactionHash = logs
-        .findLast((log) =>
-          expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
-        )
-        ?.transactionHash;
+      transactionHash = logs.findLast((log) =>
+        expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
+      )?.transactionHash;
     } catch (error) {
       if (!isRestrictedRpcLogRangeError(error)) throw error;
       const latestBlock = await client.getBlockNumber();
@@ -2773,11 +2771,9 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
         RESTRICTED_RPC_LOG_RANGE_BLOCKS,
       )) {
         const logs = await client.getLogs({ address, ...range });
-        transactionHash = logs
-          .findLast((log) =>
-            expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
-          )
-          ?.transactionHash;
+        transactionHash = logs.findLast((log) =>
+          expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
+        )?.transactionHash;
         if (transactionHash !== undefined) break;
       }
     }

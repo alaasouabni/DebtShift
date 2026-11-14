@@ -64,6 +64,7 @@ export const debtShiftEnvironmentSchema = z
     SOURCE_DEPLOYMENT_BLOCK_NUMBER: z.coerce.number().int().nonnegative().default(0),
     SOURCE_FINALITY_CONFIRMATIONS: z.coerce.number().int().min(1).max(2_048).default(1),
     SOURCE_DEBT_BUFFER_BPS: z.coerce.number().int().min(1).max(500).default(10),
+    EXECUTION_PLAN_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(240),
     DESTINATION_CHAIN_ID: z.coerce.number().int().positive().default(31_338),
     DESTINATION_RPC_URL: z.url().default('http://localhost:8546'),
     DESTINATION_DEPLOYMENT_BLOCK_NUMBER: z.coerce.number().int().nonnegative().default(0),

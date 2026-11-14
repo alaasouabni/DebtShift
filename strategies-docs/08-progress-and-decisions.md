@@ -1962,6 +1962,31 @@ operative source of truth.
   Anvil state and Foundry `1.9.0`; no public-chain transaction was broadcast. This removes the
   previously assumed need for a paid archival RPC at this checkpoint.
 
+### 2026-11-14 - Funded public-testnet source close and failed-safe recovery verified
+
+- Deployed and validated the seven DebtShift EVM contracts across Ethereum Sepolia and Base
+  Sepolia, the DebtShift-operated Morpho market, the funded 10 test-USDC source vault, and the NEAR
+  testnet receipt registry. Mainnet execution remained disabled.
+- Three signed attempts exposed and closed testnet integration defects. The final migration
+  `0x87ebf9802661988310800deccc59bb651e6431b0177fa6f025fc6ecfcb61c212` reserved liquidity,
+  atomically closed the Aave source, dispatched and delivered WETH to Base, and verified the
+  destination delivery.
+- A restricted `eth_getLogs` range delayed delivery discovery past the signed deadline. Target open
+  correctly failed closed. The authorized recovery returned `0.00999 WETH` to the borrower and
+  settled the vault's exact `5.000957 USDC` receivable from the isolated executor reserve.
+- Final state is `FAILED_SAFE` with recovery `RESOLVED_FAILED_SAFE`: borrower source debt `0`, both
+  escrows `0`, vault balance/free liquidity `10 USDC`, vault receivable/reserve `0`, and no Morpho
+  target position. This proves safety/recovery, not happy-path completion.
+- Added conservative feasibility timestamps, bounded Aave debt-accrual validation, chunked RPC log
+  scans, and a bounded configurable execution window. Default authorization remains 240 seconds;
+  public testnet uses 900 seconds without changing any existing signature.
+- Focused verification passes 126 domain tests, 31 API tests, and both package type checks. Exact
+  transaction links, balances, limitations, and rerun steps are in
+  `24-public-testnet-workflow-execution.md`.
+- Remaining public proof: create a fresh Aave source position, replenish executor recovery reserve,
+  then complete Morpho target opening, solver settlement, and final NEAR receipt registration in a
+  new signed run.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

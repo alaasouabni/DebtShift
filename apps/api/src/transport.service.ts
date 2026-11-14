@@ -20,16 +20,26 @@ export class TransportService {
   readonly #oneClickReadOnly?: OneClickReadOnlyClient;
   readonly #oneClickCommitted?: OneClickCommittedClient;
   readonly #environment: string;
+  readonly #quoteTtlSeconds: number;
 
   constructor(
     @Optional() @Inject(ConfigService) config?: ConfigService,
     @Optional() @Inject(DatabaseService) private readonly database?: DatabaseService,
   ) {
     this.#environment = config?.get<string>('DEBTSHIFT_MODE') ?? 'sandbox';
+    this.#quoteTtlSeconds = Math.max(
+      300,
+      (config?.get<number>('EXECUTION_PLAN_TTL_SECONDS') ?? 240) + 30,
+    );
     const provider = config?.get<string>('TRANSPORT_PROVIDER') ?? 'DEBTSHIFT_SIMULATOR';
     if (provider === 'DEBTSHIFT_SIMULATOR') {
-      this.#simulator = new DeterministicTransportSimulator();
-      this.#analysisSimulator = new DeterministicTransportSimulator({ feeBps: 0 });
+      this.#simulator = new DeterministicTransportSimulator({
+        quoteTtlSeconds: this.#quoteTtlSeconds,
+      });
+      this.#analysisSimulator = new DeterministicTransportSimulator({
+        feeBps: 0,
+        quoteTtlSeconds: this.#quoteTtlSeconds,
+      });
       return;
     }
     if (provider !== 'NEAR_INTENTS_1CLICK') {
@@ -70,7 +80,7 @@ export class TransportService {
       maxSlippageBps: request.maxSlippageBps,
       destinationReceiver: request.destinationReceiver,
       refundReceiver: request.refundReceiver,
-      deadline: new Date(Date.now() + 5 * 60 * 1_000).toISOString(),
+      deadline: new Date(Date.now() + this.#quoteTtlSeconds * 1_000).toISOString(),
     } as const;
     if (this.#oneClickCommitted !== undefined) {
       return this.#getAndStoreOneClickCommittedQuote(quoteRequest);

@@ -137,6 +137,11 @@ the original signed transaction to another provider or manually repeat a call ba
 error. Wrong-network endpoints, immutable conflicts, or divergent final state require containment
 and reconciliation rather than retry.
 
+For EVM event scans, validate the provider's maximum `eth_getLogs` range before funded execution.
+The worker recognizes restricted-range errors and scans backward in inclusive 200-block chunks, but
+the endpoint must still return canonical logs for every chunk. A provider change never extends an
+existing signed deadline; if discovery completes after expiry, recover or prepare a new plan.
+
 ## Redis loss and reconstruction from PostgreSQL
 
 1. Stop the worker. Keep reads available, but stop new execution when the outage could cross a
@@ -226,6 +231,24 @@ objective. For a deployment migration:
 Do not treat transactional DDL success as proof that an application migration is reversible. Do not
 run a generated `down` migration on production, overwrite the source database in place, or start a
 worker against a recovered database before independent reconciliation.
+
+## Funded public-testnet workflow preflight
+
+1. Prove `DEBTSHIFT_MODE=testnet`, `MAINNET_EXECUTION_ENABLED=false`, and exact EVM, Morpho, vault,
+   route, and NEAR manifest hashes before enabling the worker.
+2. Check chain IDs, deployment code, roles, finality, token identities, Morpho market state, NEAR
+   final state, and canonical log retrieval from each deployment block.
+3. Verify the borrower source position and required borrower authorizations against the newly
+   prepared plan. Never reuse a prior position snapshot or expired signature.
+4. Verify the source vault's free USDC and zero unexpected receivable. Separately verify executor
+   recovery USDC at least equals the signed source receivable; vault liquidity is not the recovery
+   reserve. Revoke any stale allowance before granting the exact new authorization.
+5. Use `EXECUTION_PLAN_TTL_SECONDS=900` for funded public testnet. The production default remains
+   240 seconds. Never change this value to extend a plan that has already been signed.
+6. Start one worker, follow every durable command and chain action, and stop forward execution on
+   any unexplained RPC, balance, feasibility, deadline, or evidence mismatch.
+7. At terminal state, independently reconcile source debt/collateral, both escrows, target position,
+   vault receivable/free liquidity, executor reserve, ledger, recovery case, and NEAR receipt.
 
 ## Interrupted public-testnet vault funding
 
