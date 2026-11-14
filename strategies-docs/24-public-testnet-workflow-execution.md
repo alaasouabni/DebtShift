@@ -98,7 +98,7 @@ of `5.000957 USDC` is historical settlement evidence, not a live receivable.
 4. EVM evidence scans recognize provider log-range errors and scan backward in inclusive 200-block
    chunks. The public-testnet runtime also uses a compatible Base Sepolia endpoint.
 5. `EXECUTION_PLAN_TTL_SECONDS` is now bounded to 60-3600 seconds. The production default remains
-   240 seconds; public testnet uses 900 seconds, and simulator quote lifetime automatically exceeds
+   240 seconds; public testnet uses 3,600 seconds, and simulator quote lifetime automatically exceeds
    the signed window. Existing signatures are never extended.
 
 ## Exact next run
@@ -106,7 +106,7 @@ of `5.000957 USDC` is historical settlement evidence, not a live receivable.
 1. Create a fresh borrower Aave Sepolia position; the tested source position is intentionally gone.
 2. Top up the executor's independent test USDC recovery reserve so it covers the new signed source
    receivable in addition to gas on both EVM networks.
-3. Start API and worker with `DEBTSHIFT_MODE=testnet`, `EXECUTION_PLAN_TTL_SECONDS=900`, a Base RPC
+3. Start API and worker with `DEBTSHIFT_MODE=testnet`, `EXECUTION_PLAN_TTL_SECONDS=3600`, a Base RPC
    that supports canonical logs, and `MAINNET_EXECUTION_ENABLED=false`.
 4. Prepare and sign a completely new intent and plan. Never reuse or extend the expired plan.
 5. Require public receipts for Morpho supply/borrow, solver settlement, and final NEAR registry state,
@@ -114,3 +114,36 @@ of `5.000957 USDC` is historical settlement evidence, not a live receivable.
 
 Until those five steps pass, the honest public-testnet claim is: **the funded workflow safely closed,
 transported, detected an expired target-open authorization, and recovered without a shortfall**.
+
+## 2026-11-14 rerun recovery and fresh readiness checkpoint
+
+A later funded migration,
+`0xbd8ff4991eb6829ee8270a0d090779c8a607c5a5af9c4963b6d990c05373f014`, reached a real
+destination receipt at Base block `58,566,996`. One load-balanced RPC response reported tip
+`58,566,995` while returning the correct block and receipt, which the worker conservatively treated
+as lost finality. Direct reconciliation subsequently observed the same canonical hash with 727
+confirmations. Because the signed plan expired during reconciliation, no target-open deadline was
+bypassed.
+
+The failed-safe path completed with these public receipts:
+
+- reserve:
+  [`0x6e64...88e3`](https://sepolia.etherscan.io/tx/0x6e6454c25ac73a9a1f3c3703ad4a15c555ed7f2daac02d46e64286ca158c88e3);
+- source close:
+  [`0xe27b...dccc`](https://sepolia.etherscan.io/tx/0xe27b5d3268baa18176b8b401bf7463d7c39b67193c393b83f2911d2e2431dccc);
+- destination registration:
+  [`0xfe93...8e2`](https://sepolia.basescan.org/tx/0xfe93ce324efff9f5a8c8677ae101357c9edfdc6015e0f6a78659bf9e46e828e2);
+- collateral return:
+  [`0x95e0...a408`](https://sepolia.basescan.org/tx/0x95e0b405d2fbd4ad9f8a74e42e007d004127d0fe612878b31d0195d7b4c7a408);
+- isolated-reserve settlement:
+  [`0x1345...236e`](https://sepolia.etherscan.io/tx/0x134525bed9256e3534cd6631468a97409d87cf15c4b4f26146f3ed9ead40236e).
+
+The runtime now retries matching-block `FINALITY_DEPTH_LOST` observations, while true block/receipt
+mismatches still open append-only recovery. All 90 worker tests pass. The public-testnet plan window
+is 3,600 seconds, and mainnet execution remains disabled.
+
+The recovered assets were recycled and a new run was staged. The final pre-UI audit passed every
+guard: borrower `0.01 aWETH` with about `5 USDC` variable debt; executor `10 USDC` on Sepolia and
+`0.02 WETH` on Base; vault `10 USDC` free with no locked reserve or receivable; zero vault
+allowance; empty destination escrow; empty Morpho position; disabled Morpho module authorization;
+and funded gas accounts on both networks.

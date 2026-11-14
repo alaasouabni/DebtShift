@@ -1987,6 +1987,31 @@ operative source of truth.
   then complete Morpho target opening, solver settlement, and final NEAR receipt registration in a
   new signed run.
 
+### 2026-11-14 - Second funded recovery completed and next run staged
+
+- Migration `0xbd8ff4991eb6829ee8270a0d090779c8a607c5a5af9c4963b6d990c05373f014`
+  reserved `5.005053 USDC`, closed the fresh Aave source, dispatched and registered `0.00999 WETH`
+  on Base Sepolia, then entered recovery when a load-balanced Base RPC reported a tip one block
+  behind the already-successful destination receipt.
+- Direct reconciliation later proved the receipt canonical with 727 confirmations. The plan expired
+  during that reconciliation, so its signature deadline was not bypassed. Recovery completed at
+  `FAILED_SAFE`: Base transaction
+  `0x95e0b405d2fbd4ad9f8a74e42e007d004127d0fe612878b31d0195d7b4c7a408` returned the collateral,
+  and Sepolia transaction
+  `0x134525bed9256e3534cd6631468a97409d87cf15c4b4f26146f3ed9ead40236e` settled the exact
+  `5.000100 USDC` receivable from the isolated reserve.
+- Canonicality handling now treats `FINALITY_DEPTH_LOST` with a matching canonical block as a
+  retryable RPC-lag condition. It still emits append-only recovery/retraction evidence for actual
+  missing blocks, hash mismatches, moved receipts, reverted receipts, and unsupported chains. All
+  90 worker tests pass, including the new lag regression and existing reorg tests.
+- Public-testnet signed plans now use 3,600 seconds. Production defaults and mainnet authorization
+  are unchanged; `MAINNET_EXECUTION_ENABLED=false` remains mandatory.
+- Recycled the recovered Base WETH and opened another source position. Readiness at Ethereum
+  Sepolia head `12,131,192` and Base Sepolia head `58,571,245`: borrower `0.01 aWETH` and
+  approximately `5 USDC` variable debt; executor `10 USDC` and `0.02 Base WETH`; vault exactly
+  `10 USDC` free with zero reserve/receivable; zero stale allowance; empty destination escrow and
+  Morpho target; module authorization disabled; all required gas balances funded.
+
 ## Work-session handoff template
 
 Copy and complete this section at the end of each material work session:

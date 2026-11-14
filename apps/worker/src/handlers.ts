@@ -616,7 +616,14 @@ function handler(
           command.migrationId,
         );
         const failures = await execution.verifyCanonicalEvidence(activeChainEvidence);
-        if (failures.length !== 0) return canonicalityFailureEvidence(context, failures);
+        if (failures.length !== 0) {
+          if (failures.every(isTransientCanonicalityLag)) {
+            throw new RetryableCommandError(
+              'Canonical evidence is valid but the RPC tip has not reached the required finality depth.',
+            );
+          }
+          return canonicalityFailureEvidence(context, failures);
+        }
       }
       return execute(context);
     },
@@ -627,6 +634,10 @@ function handler(
             onRetryExhausted(await store.get(command.migrationId), error),
         }),
   };
+}
+
+function isTransientCanonicalityLag(failure: ChainCanonicalityFailure): boolean {
+  return failure.reason === 'FINALITY_DEPTH_LOST';
 }
 
 function canonicalityFailureEvidence(
