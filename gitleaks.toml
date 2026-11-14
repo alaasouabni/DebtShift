@@ -19,9 +19,12 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "Official public Aave Sepolia reserve-token contract addresses"
+description = "Official public testnet token and Aave reserve-token contract addresses"
 regexTarget = "secret"
 regexes = [
+  '''C558DBdd856501FCd9aaF1E62eae57A9F0629a3c''',
+  '''94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8''',
+  '''036CbD53842c5426634e7929541eC2318f3dCF7e''',
   '''5b071b590a59395fE4025A0Ccc1FcC931AAc1830''',
   '''22a35DB253f4F6D0029025D6312A3BdAb20C2c6A''',
   '''16dA4541aD1807f4443d92D26044C1147406EB80''',
