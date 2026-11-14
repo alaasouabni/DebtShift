@@ -16,6 +16,7 @@ import { DatabaseService } from './database.service.js';
 @Injectable()
 export class TransportService {
   readonly #simulator?: DeterministicTransportSimulator;
+  readonly #analysisSimulator?: DeterministicTransportSimulator;
   readonly #oneClickReadOnly?: OneClickReadOnlyClient;
   readonly #oneClickCommitted?: OneClickCommittedClient;
   readonly #environment: string;
@@ -28,6 +29,7 @@ export class TransportService {
     const provider = config?.get<string>('TRANSPORT_PROVIDER') ?? 'DEBTSHIFT_SIMULATOR';
     if (provider === 'DEBTSHIFT_SIMULATOR') {
       this.#simulator = new DeterministicTransportSimulator();
+      this.#analysisSimulator = new DeterministicTransportSimulator({ feeBps: 0 });
       return;
     }
     if (provider !== 'NEAR_INTENTS_1CLICK') {
@@ -116,12 +118,12 @@ export class TransportService {
   }
 
   getAnalysisQuote(request: OneClickDryQuoteRequest) {
-    if (this.#simulator !== undefined) return this.#getSimulatorAnalysisQuote(request);
+    if (this.#analysisSimulator !== undefined) return this.#getSimulatorAnalysisQuote(request);
     return this.#getAndStoreOneClickDryQuote(request);
   }
 
   async #getSimulatorAnalysisQuote(request: OneClickDryQuoteRequest) {
-    if (this.#simulator === undefined) {
+    if (this.#analysisSimulator === undefined) {
       throw new Error('The simulated analysis quote provider is unavailable.');
     }
     const quoteRequest = transportQuoteRequestSchema.parse({
@@ -132,14 +134,16 @@ export class TransportService {
       destinationReceiver: request.destinationReceiver,
       refundReceiver: request.refundReceiver,
     });
-    if (request.amountKind === 'EXACT_INPUT') return this.#simulator.getQuote(quoteRequest);
+    if (request.amountKind === 'EXACT_INPUT') {
+      return this.#analysisSimulator.getQuote(quoteRequest);
+    }
 
     const targetOutputUnits = BigInt(request.amountUnits);
-    const probe = await this.#simulator.getQuote(quoteRequest);
+    const probe = await this.#analysisSimulator.getQuote(quoteRequest);
     const probeOutputUnits = BigInt(probe.expectedAmountOutUnits);
     const requiredInputUnits =
       (targetOutputUnits * targetOutputUnits + probeOutputUnits - 1n) / probeOutputUnits;
-    return this.#simulator.getQuote(
+    return this.#analysisSimulator.getQuote(
       transportQuoteRequestSchema.parse({
         ...quoteRequest,
         amountInUnits: requiredInputUnits.toString(),

@@ -80,9 +80,8 @@ describe('transport quote API service', () => {
 
     expect(exactInput).toMatchObject({ provider: 'DEBTSHIFT_SIMULATOR', mode: 'SIMULATED' });
     expect(exactOutput).toMatchObject({ provider: 'DEBTSHIFT_SIMULATOR', mode: 'SIMULATED' });
-    expect(BigInt(exactOutput.amountInUnits)).toBeGreaterThan(BigInt(request.amountUnits));
-    expect(BigInt(exactOutput.expectedAmountOutUnits)).toBeGreaterThanOrEqual(
-      BigInt(request.amountUnits),
-    );
+    expect(exactInput.expectedAmountOutUnits).toBe(request.amountUnits);
+    expect(exactOutput.amountInUnits).toBe(request.amountUnits);
+    expect(exactOutput.expectedAmountOutUnits).toBe(request.amountUnits);
   });
 });
