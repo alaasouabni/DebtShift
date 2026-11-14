@@ -8,11 +8,30 @@ the deadline plan survives chat compaction, a new work session, or a contributor
 - **Plan revised:** 2026-11-13
 - **Time remaining:** one final development/deployment day, as confirmed by the project owner
 - **Portal cutoff:** exact date, time, and timezone still require confirmation
-- **Verified implementation checkpoint:** `f0a807e` on `main`, containing a repository-wide Foundry
-  `1.9.0` pin, corrected reproducible Docker image, and exact contract-backed sandbox
-  transaction/evidence example. GitHub quality run `43409003610` passed every job.
-- **Verified handoff checkpoint:** `b7413ec`; GitHub quality run `43409934145` passed every job and
-  the pinned Base block `55,600,000` fork passed against the official free RPC.
+- **Verified public-testnet foundation:** `7b59a4f` on `main`; GitHub quality run `43459443566`
+  passed every TypeScript, EVM, NEAR, security/container, and runtime-SBOM job for exact commit
+  `7b59a4fffb94ceeec333b430be8baa35f5e3c9cf`.
+- **Verified hardened public-testnet route checkpoint:** `f73b9df` on `main`; GitHub quality run
+  `43465347172` passed every job for exact commit
+  `f73b9df5e1c915a619c94128e28e207569228647`. The candidate uses official Ethereum Sepolia Aave
+  plus independent official Chainlink source planning feeds to a Base Sepolia canonical-source
+  Morpho deployment. The byte-exact dependency hash is
+  `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`. A deterministic,
+  source-commit-bound generator now creates the executable route only after the Morpho manifest
+  exists and rejects every dependency/manifest/policy mismatch. Testnet omits unavailable 1Click
+  asset IDs; mainnet modes still require official IDs.
+- **Verified public-testnet funding preflight checkpoint:** `50699af` on `main`; GitHub quality run
+  `43471678265` passed every job for exact commit
+  `50699afa6e18c026aea59b70633482122b5ed41a`. The credential-free gate reads finalized Aave,
+  EVM-balance, and NEAR account/key state, enforces distinct roles, and reports every unmet
+  prerequisite without loading a key or broadcasting.
+- **Verified source-vault funding checkpoint:** `b13c467` on `main`; GitHub quality run
+  `43480858737` passed every job for exact commit
+  `b13c467ad388ca44246eb4d856e25d181ad72bd4`. Exact approval/deposit/revocation evidence,
+  emergency cleanup, keyless funded readiness, and worker startup attestation are implemented and
+  validated without a public write.
+- **Verified production/fork foundation:** checkpoint `b7413ec`; GitHub quality run `43409934145`
+  passed every job and the pinned Base block `55,600,000` fork passed against the official free RPC.
 - **Primary objective:** finish normal, functional production-oriented code for one complete
   Aave-to-Morpho refinance through official NEAR Intents/1Click, prove that code with contract-backed
   sandbox, testnet, fork, and integration tests, then deploy and attempt one small mainnet refinance
@@ -181,7 +200,14 @@ while a safe actionable item remains in this list.
    - Pinned Aave/Morpho fork tests, official 1Click schema/fixture tests, live dry quote, and
      non-broadcast transaction simulation.
 7. **Deploy public validation environments**
-   - Deploy and exercise testnet contracts/registry.
+   - Run the credential-free funding/account gate and require every borrower, deployer, vault,
+     executor, gas, transport, and NEAR prerequisite to pass before loading any deployment key.
+   - Deploy and attest the pinned canonical-source, DebtShift-operated Morpho destination and real
+     public-testnet market before deploying the DebtShift testnet contracts.
+   - Fund the manifested source vault through the separate exact approval/deposit/revocation
+     command and require its immutable evidence plus independent funded-readiness verifier.
+   - Deploy and exercise the testnet contracts/registry; only the unavailable 1Click boundary may
+     use the explicitly labeled testnet transport adapter.
    - Deploy the hosted contract-backed sandbox and web/API surfaces.
 8. **Run the complete acceptance gate**
    - Clean checkout, CI, security checks, deployment manifests, balances, roles, pause state,

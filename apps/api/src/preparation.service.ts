@@ -40,6 +40,7 @@ export class PreparationService {
   readonly #mode: 'sandbox' | 'testnet' | 'mainnet-readonly' | 'mainnet';
   readonly #fundedExecutionEnabled: boolean;
   readonly #sourceDebtBufferBps: number;
+  readonly #executionPlanTtlSeconds: bigint;
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -57,6 +58,7 @@ export class PreparationService {
     this.#fundedExecutionEnabled =
       this.#mode !== 'mainnet' || config.getOrThrow<boolean>('MAINNET_EXECUTION_ENABLED');
     this.#sourceDebtBufferBps = config.get<number>('SOURCE_DEBT_BUFFER_BPS') ?? 10;
+    this.#executionPlanTtlSeconds = BigInt(config.get<number>('EXECUTION_PLAN_TTL_SECONDS') ?? 240);
   }
 
   async getPosition(wallet: string) {
@@ -135,15 +137,15 @@ export class PreparationService {
           maximumLtvBps: 7000,
           stressMaximumLtvBps: 6500,
         },
-        maxDurationSeconds: 600,
-        expiration: (nowSeconds + 600n).toString(),
+        maxDurationSeconds: Number(this.#executionPlanTtlSeconds),
+        expiration: (nowSeconds + this.#executionPlanTtlSeconds).toString(),
         nonce: intentNonce.toString(),
       });
       const intentHash = hashRefinanceIntent(intent, this.#verifyingContract);
       const planNonce = randomNonce();
       const migrationId = computeMigrationId(intentHash, quote.quoteHash, planNonce);
       const quoteExpiry = BigInt(Math.floor(Date.parse(quote.expiresAt) / 1000));
-      const deadline = minBigInt(nowSeconds + 240n, quoteExpiry - 5n);
+      const deadline = minBigInt(nowSeconds + this.#executionPlanTtlSeconds, quoteExpiry - 5n);
       if (deadline <= nowSeconds) throw new Error('Transport quote expires too soon to authorize.');
       if (quote.depositAddress === undefined) {
         throw new Error('Prepared transport quote has no deposit address.');

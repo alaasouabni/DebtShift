@@ -77,10 +77,13 @@ function provider(
       block_height: 200,
     }),
     viewAccount: async () => ({ storage_usage: 1200 }),
-    callFunction: async ({ method }) => {
+    callFunction: async ({ method, args }) => {
       if (method === 'owner_id') return manifest.ownerAccount;
       if (method === 'pending_owner_id') return pendingOwner;
-      if (method === 'list_verifiers') return manifest.verifierAccounts;
+      if (method === 'list_verifiers') {
+        assert.deepEqual(args, { from_index: 0, limit: 50 });
+        return manifest.verifierAccounts;
+      }
       throw new Error(`Unexpected method ${method}.`);
     },
     viewTransactionStatus: async () => ({

@@ -622,6 +622,48 @@ describe('simulated workflow handlers', () => {
     );
   });
 
+  it('retries when a consistent canonical block is ahead of a lagging RPC tip', async () => {
+    const simulator = new DeterministicTransportSimulator();
+    const store = new MemoryContextStore(await buildContext(simulator, true));
+    const originalEvidence = evidenceSchema.parse({
+      evidenceId: `0x${'93'.repeat(32)}`,
+      migrationId: MIGRATION_ID,
+      type: 'TRANSPORT_DESTINATION',
+      schemaVersion: 1,
+      provider: 'DEBTSHIFT_SIMULATOR',
+      network: 'eip155:31338',
+      chainId: 31_338,
+      blockNumber: '121',
+      blockHash: BLOCK_HASH,
+      transactionHash: ORIGIN_TRANSACTION,
+      rawObservationHash: `0x${'94'.repeat(32)}`,
+      normalizedPayload: {},
+      observedAt: '2026-11-11T00:00:00.000Z',
+      verificationState: 'FINALIZED',
+      verificationMethod: 'RECEIPT_AND_STATE',
+      verifierVersion: 'debtshift-worker-v1',
+    });
+    store.chainEvidence.push(originalEvidence);
+    const execution = fakeExecution();
+    vi.mocked(execution.verifyCanonicalEvidence).mockResolvedValue([
+      {
+        evidence: originalEvidence,
+        reason: 'FINALITY_DEPTH_LOST',
+        observedAt: '2026-11-11T00:01:00.000Z',
+        requiredConfirmations: 1,
+        observedTipBlockNumber: '120',
+        observedBlockHash: BLOCK_HASH,
+      },
+    ]);
+    const handlers = createSandboxWorkflowHandlers(store, execution, simulator);
+
+    await expect(
+      getHandler(handlers, 'OPEN_TARGET').execute(command('OPEN_TARGET')),
+    ).rejects.toThrow('RPC tip has not reached the required finality depth');
+
+    expect(execution.openTarget).not.toHaveBeenCalled();
+  });
+
   it('turns finalized post-source capacity failure into revalidation and recovery evidence', async () => {
     const simulator = new DeterministicTransportSimulator();
     const store = new MemoryContextStore(await buildContext(simulator, true));

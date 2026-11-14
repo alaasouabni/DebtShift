@@ -7,6 +7,8 @@ import {
   hashCanonicalText,
   parseDebtShiftEvmDeploymentManifest,
   parseLiveMarketConfiguration,
+  parseTestnetMorphoDeploymentManifest,
+  parseTestnetVaultFundingManifest,
   type DebtShiftEnvironment,
   type Evidence,
 } from '@debtshift/domain';
@@ -18,6 +20,8 @@ import {
   loadFoundryArtifact,
   readAaveReserveTokenAddresses,
   verifyProductionDebtShiftDeployment,
+  verifyTestnetLiquidityVaultFunding,
+  verifyTestnetMorphoDeployment,
   type FoundryArtifact,
 } from '@debtshift/protocols';
 import {
@@ -55,6 +59,8 @@ import {
 
 type EvmPublicClient = PublicClient<Transport, Chain>;
 type EvmWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
+const FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS = 30n;
+const RESTRICTED_RPC_LOG_RANGE_BLOCKS = 200n;
 
 class PreBroadcastSimulationError extends Error {
   override readonly name = 'PreBroadcastSimulationError';
@@ -112,6 +118,7 @@ interface FinancingRevalidation extends Readonly<Record<string, unknown>> {
   readonly confirmedExternalFundingUnits: string;
   readonly solverPrincipalUnits: string;
   readonly solverFeeUnits: string;
+  readonly capitalizedCostUnits: string;
   readonly totalRequiredUnits: string;
   readonly requiredDestinationBorrowUnits: string;
   readonly fundingShortfallUnits: string;
@@ -145,6 +152,10 @@ interface FeasibilityInput {
   readonly evaluatedAt: bigint;
   readonly validUntil: bigint;
 }
+
+const FEASIBILITY_HASH_PARAMETERS = parseAbiParameters(
+  'bytes32, (bytes32, bytes32, bytes32, address, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint64, uint64, uint64)',
+);
 
 class FinancingCapacityFailure extends Error {
   override readonly name = 'FinancingCapacityFailure';
@@ -863,7 +874,24 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       { action: 'settleLiquidity', reconciled: true },
     );
     if (existing !== undefined) {
-      return withRevalidation(existing, await this.#revalidate(context, 'AFTER_SETTLEMENT'));
+      const revalidation = await this.#revalidate(context, 'AFTER_SETTLEMENT');
+      const exposure = await this.#readSolverExposure(artifacts.vault, migrationId);
+      return withRevalidation(
+        {
+          ...existing,
+          payload: {
+            ...existing.payload,
+            ...settlementReconciliationPayload(
+              this.#account.address,
+              exposure.principalUnits,
+              exposure.feeUnits,
+              exposure.recoveryReserveProvider,
+              exposure.recoveryReserveUnits,
+            ),
+          },
+        },
+        revalidation,
+      );
     }
     const revalidation = await this.#revalidate(context, 'BEFORE_SETTLEMENT');
     const proof = await this.#recordSourceFeasibility(context, artifacts, revalidation);
@@ -1330,6 +1358,7 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       confirmedExternalFundingUnits: '0',
       solverPrincipalUnits: solverPrincipal.toString(),
       solverFeeUnits: solverFee.toString(),
+      capitalizedCostUnits: plan.financing.capitalizedCostUnits,
       totalRequiredUnits: totalRequired.toString(),
       requiredDestinationBorrowUnits: requiredBorrow.toString(),
       fundingShortfallUnits: shortfall.toString(),
@@ -1380,12 +1409,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       'recordFeasibility',
       [context.migration.migrationId, evidence],
     );
-    const feasibilityHash = await this.#readHex(
-      this.#sourcePublic,
-      artifacts.vault,
-      this.#environment.SOURCE_VAULT_ADDRESS,
-      'latestFeasibilityHash',
-      [context.migration.migrationId],
+    const feasibilityHash = financingFeasibilityHash(
+      context.migration.migrationId as Hex,
+      evidence.liquidityAsset,
+      base,
     );
     return { feasibilityHash, transactionHash };
   }
@@ -1414,12 +1441,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       'recordFeasibility',
       [context.migration.migrationId, evidence],
     );
-    const feasibilityHash = await this.#readHex(
-      this.#destinationPublic,
-      artifacts.destinationAdapter,
-      this.#environment.DESTINATION_ADAPTER_ADDRESS,
-      'latestFeasibilityHash',
-      [context.migration.migrationId],
+    const feasibilityHash = financingFeasibilityHash(
+      context.migration.migrationId as Hex,
+      evidence.settlementAsset,
+      base,
     );
     return { feasibilityHash, transactionHash };
   }
@@ -1436,7 +1461,9 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       (await this.#readBigInt(client, artifact, address, 'latestFeasibilitySequence', [
         context.migration.migrationId,
       ])) + 1n;
-    const evaluatedAt = (await client.getBlock({ blockTag: 'latest' })).timestamp;
+    const evaluatedAt = conservativeFeasibilityTimestamp(
+      (await client.getBlock({ blockTag: 'latest' })).timestamp,
+    );
     return {
       planHash: context.signedPlan.planHash,
       analysisHash: keccak256(stringToHex(JSON.stringify(revalidation))),
@@ -1801,11 +1828,18 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       ],
     ]);
 
-    const reserveTokens = await readAaveReserveTokenAddresses(
-      this.#sourcePublic,
-      this.#configuration.source.dataProvider,
-      this.#environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
-    );
+    const [collateralReserveTokens, debtReserveTokens] = await Promise.all([
+      readAaveReserveTokenAddresses(
+        this.#sourcePublic,
+        this.#configuration.source.dataProvider,
+        this.#environment.SOURCE_COLLATERAL_TOKEN_ADDRESS,
+      ),
+      readAaveReserveTokenAddresses(
+        this.#sourcePublic,
+        this.#configuration.source.dataProvider,
+        this.#environment.SOURCE_DEBT_TOKEN_ADDRESS,
+      ),
+    ]);
     const [
       sourceAdapterVault,
       sourceAdapterLending,
@@ -1984,10 +2018,10 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
         'source adapter collateral token',
       ],
       [sourceLendingPool, this.#configuration.source.pool, 'Aave source pool'],
-      [sourceLendingAToken, reserveTokens.aToken, 'Aave source aToken'],
+      [sourceLendingAToken, collateralReserveTokens.aToken, 'Aave source aToken'],
       [
         sourceLendingVariableDebtToken,
-        reserveTokens.variableDebtToken,
+        debtReserveTokens.variableDebtToken,
         'Aave source variable debt token',
       ],
       [
@@ -2196,9 +2230,11 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
 
   async #verifyDeploymentManifest(): Promise<void> {
     if (this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH.length === 0) return;
-    const manifest = parseDebtShiftEvmDeploymentManifest(
-      await readFile(resolve(this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH), 'utf8'),
+    const manifestJson = await readFile(
+      resolve(this.#environment.EVM_DEPLOYMENT_MANIFEST_PATH),
+      'utf8',
     );
+    const manifest = parseDebtShiftEvmDeploymentManifest(manifestJson);
     if (manifest.environment !== this.#environment.DEBTSHIFT_MODE) {
       throw new Error('EVM deployment manifest environment does not match the runtime mode.');
     }
@@ -2308,6 +2344,146 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
       manifest,
       sourcePublicClient: this.#sourcePublic,
       destinationPublicClient: this.#destinationPublic,
+    });
+    if (this.#environment.DEBTSHIFT_MODE === 'testnet') {
+      await this.#verifyTestnetMorphoManifest(manifest);
+      await this.#verifyTestnetVaultFundingManifest(manifest, manifestJson);
+    }
+  }
+
+  async #verifyTestnetVaultFundingManifest(
+    evmManifest: ReturnType<typeof parseDebtShiftEvmDeploymentManifest>,
+    evmManifestJson: string,
+  ): Promise<void> {
+    const fundingManifest = parseTestnetVaultFundingManifest(
+      await readFile(resolve(this.#environment.TESTNET_VAULT_FUNDING_MANIFEST_PATH), 'utf8'),
+    );
+    if (
+      fundingManifest.sourceCommit !== evmManifest.sourceCommit ||
+      fundingManifest.routeId !== evmManifest.routeId ||
+      fundingManifest.routeConfigurationHash.toLowerCase() !==
+        evmManifest.routeConfigurationHash.toLowerCase() ||
+      evmManifest.routeDependenciesHash === null ||
+      fundingManifest.routeDependenciesHash.toLowerCase() !==
+        evmManifest.routeDependenciesHash.toLowerCase() ||
+      fundingManifest.evmDeploymentManifestHash.toLowerCase() !==
+        keccak256(stringToHex(evmManifestJson)).toLowerCase() ||
+      fundingManifest.chainId !== evmManifest.source.chainId ||
+      !isAddressEqual(fundingManifest.vault, evmManifest.source.contracts.liquidityVault.address) ||
+      !isAddressEqual(fundingManifest.asset, evmManifest.source.debtToken)
+    ) {
+      throw new Error('Testnet vault funding manifest does not bind the EVM deployment.');
+    }
+    await verifyTestnetLiquidityVaultFunding({
+      manifest: fundingManifest,
+      publicClient: this.#sourcePublic,
+    });
+  }
+
+  async #verifyTestnetMorphoManifest(
+    evmManifest: ReturnType<typeof parseDebtShiftEvmDeploymentManifest>,
+  ): Promise<void> {
+    const dependencyManifest = parseTestnetMorphoDeploymentManifest(
+      await readFile(resolve(this.#environment.TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH), 'utf8'),
+    );
+    if (
+      dependencyManifest.chainId !== this.#environment.DESTINATION_CHAIN_ID ||
+      dependencyManifest.routeId !== evmManifest.routeId ||
+      evmManifest.routeDependenciesHash === null ||
+      dependencyManifest.routeDependenciesHash.toLowerCase() !==
+        evmManifest.routeDependenciesHash.toLowerCase() ||
+      BigInt(dependencyManifest.deploymentBlockNumber) >
+        BigInt(evmManifest.destination.deploymentBlockNumber)
+    ) {
+      throw new Error('Testnet Morpho dependency manifest chain or deployment bound is invalid.');
+    }
+    assertAddressBindings([
+      [
+        dependencyManifest.contracts.morpho.address,
+        evmManifest.destination.protocol.morpho,
+        'testnet canonical Morpho deployment',
+      ],
+      [
+        dependencyManifest.contracts.oracle.address,
+        evmManifest.destination.protocol.oracle,
+        'testnet Morpho oracle',
+      ],
+      [
+        dependencyManifest.contracts.irm.address,
+        evmManifest.destination.protocol.irm,
+        'testnet Morpho IRM',
+      ],
+      [
+        dependencyManifest.tokens.collateral.address,
+        evmManifest.destination.collateralToken,
+        'testnet Morpho collateral token',
+      ],
+      [
+        dependencyManifest.tokens.loan.address,
+        evmManifest.destination.debtToken,
+        'testnet Morpho loan token',
+      ],
+    ]);
+    if (
+      dependencyManifest.market.id.toLowerCase() !==
+        evmManifest.destination.protocol.marketId.toLowerCase() ||
+      dependencyManifest.market.lltv !== evmManifest.destination.protocol.lltv
+    ) {
+      throw new Error('Testnet Morpho market ID or LLTV does not match the EVM deployment.');
+    }
+    const configuredFeeds = new Set(
+      this.#configuration.destination.morphoOracleFeeds.map(({ address }) =>
+        getAddress(address).toLowerCase(),
+      ),
+    );
+    const manifestedFeeds = new Set([
+      dependencyManifest.feeds.collateral.address.toLowerCase(),
+      dependencyManifest.feeds.loan.address.toLowerCase(),
+    ]);
+    if (
+      configuredFeeds.size !== manifestedFeeds.size ||
+      [...manifestedFeeds].some((address) => !configuredFeeds.has(address))
+    ) {
+      throw new Error('Testnet Morpho Chainlink feeds do not match the allowlisted route.');
+    }
+    const manifestedFreshness = [
+      {
+        address: dependencyManifest.feeds.collateral.address,
+        maximumAgeSeconds: dependencyManifest.feeds.collateralMaxPriceAgeSeconds,
+      },
+      {
+        address: dependencyManifest.feeds.loan.address,
+        maximumAgeSeconds: dependencyManifest.feeds.loanMaxPriceAgeSeconds,
+      },
+    ];
+    for (const manifested of manifestedFreshness) {
+      const configured = this.#configuration.destination.morphoOracleFeeds.find(({ address }) =>
+        isAddressEqual(address, manifested.address),
+      );
+      if (
+        configured === undefined ||
+        BigInt(manifested.maximumAgeSeconds) > BigInt(configured.maximumAgeSeconds)
+      ) {
+        throw new Error('Testnet Morpho onchain oracle freshness is weaker than route policy.');
+      }
+    }
+    const configuredSequencer = this.#configuration.destination.sequencerUptimeFeed;
+    const manifestedSequencer = dependencyManifest.feeds.sequencerUptime;
+    if (
+      (configuredSequencer === undefined) !== (manifestedSequencer === null) ||
+      (configuredSequencer !== undefined &&
+        manifestedSequencer !== null &&
+        (!isAddressEqual(configuredSequencer.address, manifestedSequencer.address) ||
+          configuredSequencer.recoveryGraceSeconds.toString() !==
+            dependencyManifest.feeds.sequencerGracePeriodSeconds))
+    ) {
+      throw new Error('Testnet Morpho sequencer safety configuration does not match the route.');
+    }
+    await verifyTestnetMorphoDeployment({
+      manifest: dependencyManifest,
+      publicClient: this.#destinationPublic,
+      expectedRouteId: evmManifest.routeId,
+      expectedRouteDependenciesHash: evmManifest.routeDependenciesHash ?? undefined,
     });
   }
 
@@ -2597,23 +2773,37 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     indexedTopics: readonly Hex[],
     payload: Record<string, unknown>,
   ): Promise<FinalizedChainAction | undefined> {
-    const logs = await client.getLogs({
-      address,
-      fromBlock: this.#deploymentBlockForClient(client),
-      toBlock: 'latest',
-    });
     const expected = [eventSignature, ...indexedTopics].map((topic) => topic.toLowerCase());
-    const found = logs.findLast((log) =>
-      expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
-    );
-    if (found === undefined) return undefined;
+    const deploymentBlock = this.#deploymentBlockForClient(client);
+    let transactionHash: Hex | undefined;
+    try {
+      const logs = await client.getLogs({ address, fromBlock: deploymentBlock, toBlock: 'latest' });
+      transactionHash = logs.findLast((log) =>
+        expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
+      )?.transactionHash;
+    } catch (error) {
+      if (!isRestrictedRpcLogRangeError(error)) throw error;
+      const latestBlock = await client.getBlockNumber();
+      for (const range of descendingInclusiveBlockRanges(
+        deploymentBlock,
+        latestBlock,
+        RESTRICTED_RPC_LOG_RANGE_BLOCKS,
+      )) {
+        const logs = await client.getLogs({ address, ...range });
+        transactionHash = logs.findLast((log) =>
+          expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
+        )?.transactionHash;
+        if (transactionHash !== undefined) break;
+      }
+    }
+    if (transactionHash === undefined) return undefined;
     const confirmations = this.#confirmationsForClient(client);
     const receipt = await client.waitForTransactionReceipt({
-      hash: found.transactionHash,
+      hash: transactionHash,
       confirmations,
     });
     if (receipt.status !== 'success') {
-      throw new Error(`Previously observed transaction reverted: ${found.transactionHash}`);
+      throw new Error(`Previously observed transaction reverted: ${transactionHash}`);
     }
     return finalizedAction(chainId, receipt, confirmations, payload);
   }
@@ -2647,6 +2837,81 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
         : this.#environment.DESTINATION_DEPLOYMENT_BLOCK_NUMBER,
     );
   }
+}
+
+export function conservativeFeasibilityTimestamp(latestBlockTimestamp: bigint): bigint {
+  return latestBlockTimestamp > FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
+    ? latestBlockTimestamp - FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
+    : 0n;
+}
+
+export function financingFeasibilityHash(
+  migrationId: Hex,
+  asset: Address,
+  evidence: FeasibilityInput,
+): Hex {
+  return keccak256(
+    encodeAbiParameters(FEASIBILITY_HASH_PARAMETERS, [
+      migrationId,
+      [
+        evidence.planHash,
+        evidence.analysisHash,
+        evidence.externalFundingEvidenceHash,
+        asset,
+        evidence.solverPrincipalUnits,
+        evidence.solverFeeUnits,
+        evidence.capitalizedCostUnits,
+        evidence.totalRequiredUnits,
+        evidence.confirmedExternalFundingUnits,
+        evidence.maximumSafeBorrowingCapacityUnits,
+        evidence.requiredDestinationBorrowUnits,
+        evidence.fundingShortfallUnits,
+        evidence.sequence,
+        evidence.evaluatedAt,
+        evidence.validUntil,
+      ],
+    ]),
+  );
+}
+
+export function settlementReconciliationPayload(
+  payer: Address,
+  principalUnits: bigint,
+  feeUnits: bigint,
+  recoveryReserveProvider: Address,
+  recoveryReserveMaximumUnits: bigint,
+): Readonly<Record<string, unknown>> {
+  return {
+    payer,
+    principalUnits: principalUnits.toString(),
+    feeUnits: feeUnits.toString(),
+    repaymentUnits: (principalUnits + feeUnits).toString(),
+    recoveryReserveProvider,
+    recoveryReserveMaximumUnits: recoveryReserveMaximumUnits.toString(),
+  };
+}
+
+export function* descendingInclusiveBlockRanges(
+  deploymentBlock: bigint,
+  latestBlock: bigint,
+  maximumRangeBlocks: bigint,
+): Generator<{ readonly fromBlock: bigint; readonly toBlock: bigint }> {
+  if (deploymentBlock < 0n || latestBlock < deploymentBlock || maximumRangeBlocks <= 0n) {
+    throw new Error('Invalid bounded log-scan range.');
+  }
+  let toBlock = latestBlock;
+  while (true) {
+    const candidate = toBlock - maximumRangeBlocks + 1n;
+    const fromBlock = candidate > deploymentBlock ? candidate : deploymentBlock;
+    yield { fromBlock, toBlock };
+    if (fromBlock === deploymentBlock) return;
+    toBlock = fromBlock - 1n;
+  }
+}
+
+export function isRestrictedRpcLogRangeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /eth_getLogs.*limit|maximum block range|block range.*(?:limit|exceed)/i.test(message);
 }
 
 function finalizedAction(

@@ -14,14 +14,14 @@ export const liveTokenConfigurationSchema = z
     address: evmAddressSchema,
     decimals: tokenDecimalsSchema,
     symbol: z.string().trim().min(1).max(32),
-    providerAssetId: canonicalTextSchema,
+    providerAssetId: canonicalTextSchema.optional(),
   })
   .strict();
 
 export const chainlinkFeedConfigurationSchema = z
   .object({
     address: evmAddressSchema,
-    maximumAgeSeconds: z.number().int().min(30).max(86_400),
+    maximumAgeSeconds: z.number().int().min(30).max(604_800),
   })
   .strict();
 

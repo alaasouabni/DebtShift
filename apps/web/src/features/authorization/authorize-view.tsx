@@ -53,6 +53,7 @@ import {
 } from '../../lib/environment';
 import { MIGRATION_STORAGE_KEY } from '../../lib/storage-keys';
 import { useEnvironment } from '../environment/environment-context';
+import { NetworkHelp } from '../wallet/network-help';
 import { isConnected, useWallet } from '../wallet/wallet-context';
 import { glanceRows, groupReviewRows, type ReviewKind } from './review-groups';
 import { intentRows, planRows, type ReviewRow } from './review-rows';
@@ -572,6 +573,9 @@ export function AuthorizeView() {
                 The signature is bound to the source chain. Your wallet reports chain{' '}
                 {wallet.chainId ?? 'unknown'}. DebtShift will ask — it never switches by itself.
               </Alert>
+            ) : null}
+            {!chainMatches && (state.step === 'policy' || state.step === 'execution') ? (
+              <NetworkHelp chainId={requiredChain} />
             ) : null}
 
             {state.error ? (

@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "environment": "testnet",
+  "routeId": "ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue-weth-usdc-v1",
+  "routeConfigurationHash": "0x06ebbe8efe775d122f37afe04d970d557751d6fc0e8d3ae29d4e3cf50582f39b",
+  "routeDependenciesHash": "0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17",
+  "createdAt": "2026-11-14T03:23:46.788Z",
+  "sourceCommit": "7d6fd5c756b626cb791efbcf39c9662eee9e0262",
+  "owner": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+  "executor": "0x662C3218f0f2bE4f40f06a4f4Bc730dCe1996233",
+  "workflowWriteSwitchEnabled": false,
+  "source": {
+    "chainId": 11155111,
+    "deploymentBlockNumber": "12130364",
+    "protocol": {
+      "kind": "AAVE_V3",
+      "pool": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
+      "dataProvider": "0x3e9708d80f7B3e43118013075F7e95CE3AB31F31",
+      "aToken": "0x5b071b590a59395fE4025A0Ccc1FcC931AAc1830",
+      "variableDebtToken": "0x36B5dE936eF1710E1d22EabE5231b28581a92ECc"
+    },
+    "collateralToken": "0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c",
+    "debtToken": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
+    "contracts": {
+      "liquidityVault": {
+        "artifact": "LiquidityVault",
+        "address": "0xDC52C1980c2F69c1152e05D3812d752A0D238f3E",
+        "deploymentTransactionHash": "0x53ba3d88a7962da0c1923100df5b11844001cc6160af4f0d19466c56313b646e",
+        "deploymentBlockNumber": "12130364",
+        "deploymentBlockHash": "0x46bb6fe35a8f689594510451d6151c4388d5ad9f15c029ef0af2a08616ab3853",
+        "runtimeCodeHash": "0x36ea76eb86f5f36305bfa83e7af156400bfed1f99d131b59122a3aeb22ddd629"
+      },
+      "migrationEscrow": {
+        "artifact": "MigrationEscrow",
+        "address": "0x61d32dFFDEA14cef1474A930495235cF8C8512BE",
+        "deploymentTransactionHash": "0x7c3e3ab911b9b23d9c601e831b4d32734680939dcdaa14b9da2596290641a60f",
+        "deploymentBlockNumber": "12130367",
+        "deploymentBlockHash": "0x5d7d8c4259034bf50906083b8ec878a5c14626e4104eef2cc21857b5732ba4f7",
+        "runtimeCodeHash": "0xd519671cd2b99f3844745fff77c57f9e4b9ec9a8cb847863ff6a5e6fcd3bc8c8"
+      },
+      "sourceLending": {
+        "artifact": "AaveV3SourceLending",
+        "address": "0x060410b3e7ef61D83fA0Dde092B00b2E0f7e226F",
+        "deploymentTransactionHash": "0x85a15a8daab6b6290ad1e291fcdcb306ef8aba6efeffd2ad842997029c0e60f4",
+        "deploymentBlockNumber": "12130370",
+        "deploymentBlockHash": "0xcbcad1a3d9d08f50cb255e0556279b37172f49a4bf7936bfa8b774f36298c8e5",
+        "runtimeCodeHash": "0x36026afc629a136747c82189085bf9bc126d44f9bfc14b7ab6ec0a5196a8b510"
+      },
+      "sourceAdapter": {
+        "artifact": "SourceAdapter",
+        "address": "0x0fd9ABcb48bD76c4aCEb07Baad5c4d58f7a39aD5",
+        "deploymentTransactionHash": "0x9b34f2b6a822ba0d33b2735340fb78576ce993f63d7fb5fda26fdccd72572516",
+        "deploymentBlockNumber": "12130373",
+        "deploymentBlockHash": "0xf84debeb20e5fb9adc3803118603e35927b4f9922f0dd397712e57701edd1efc",
+        "runtimeCodeHash": "0x66b51b61d9adc7226ad8fc7b91235bb22a1b1d3f2d855f0bcd28a24393b64f0a"
+      }
+    },
+    "configurationTransactions": [
+      {
+        "action": "bind Aave source module to source adapter",
+        "transactionHash": "0x5fbe61799812389e15ac26133557c9a0f28920a249be6f5f1b2c17f5432804c4",
+        "blockNumber": "12130376",
+        "blockHash": "0x36ba867f950e7e317054d5969a7f14da4662d5f7e91dd9a8fe2bcaf7cbedac84"
+      },
+      {
+        "action": "allow source debt asset in liquidity vault",
+        "transactionHash": "0x03f951b4e5ac80ad05bd2a11a36f0746a9863c0f75b31406465261605771c87a",
+        "blockNumber": "12130379",
+        "blockHash": "0x6010ad5b5ccf54c56f4fe3658be85f6cc20569cf796b7309b553e20b216f7ec5"
+      },
+      {
+        "action": "allow source adapter in liquidity vault",
+        "transactionHash": "0x1c7f4662c825479eafab4a1847641f7145291be06fb0e93f3ad2b5d4832fe04d",
+        "blockNumber": "12130382",
+        "blockHash": "0xdc71d7b77c9cbd57dd5e4374d943d080a42827cd83458cb082a2447fb4281298"
+      },
+      {
+        "action": "allow source adapter deposits into source escrow",
+        "transactionHash": "0xe59ee678f141cfc0c6ef74aae3e90ed8cdefa14d56a80bf2977198d39bb7b3b3",
+        "blockNumber": "12130385",
+        "blockHash": "0x6e7c3e395b2ca4ef6411f32961e182128ff2ca45da1bc3468f9e6b602747dcd7"
+      },
+      {
+        "action": "allow executor as liquidity vault operator",
+        "transactionHash": "0x39393a3a9c4ba31108d2c4472b7fe1fc44ef67a3a988ede6c32328dc82fe0b84",
+        "blockNumber": "12130389",
+        "blockHash": "0xd789211e4370cb603ae2ec03c0d881885c22efa41dfc68dfd867570bef3dd9bd"
+      },
+      {
+        "action": "allow executor as liquidity vault verifier",
+        "transactionHash": "0x4be83227ee1d5544466f5fb9908f906cfd0a4bdb0f7e6867825fbff83a0bcda6",
+        "blockNumber": "12130392",
+        "blockHash": "0x439efe83f8bc7a3772b9382b2358956cd15cfa257764e2827e3364c82fbb5063"
+      },
+      {
+        "action": "allow executor on source adapter",
+        "transactionHash": "0xaaf6c1352cb426faa9c035de133b5e8cadc01ed2da3a58bd234c369c22f0805b",
+        "blockNumber": "12130395",
+        "blockHash": "0xac0859548fc46c1900b0b3a93c86713788f3c21ee42b9b547d9ce646dc480464"
+      },
+      {
+        "action": "allow executor on source escrow",
+        "transactionHash": "0x64a9049fe2b7d5a664dd5fca09a0545c0419b2a88be9b996b5f932392c602ba3",
+        "blockNumber": "12130398",
+        "blockHash": "0x2c49a5380cb16ad504f9cd9bf696f88073e000b8006854bdfabe4d07ed427859"
+      }
+    ]
+  },
+  "destination": {
+    "chainId": 84532,
+    "deploymentBlockNumber": "58523586",
+    "protocol": {
+      "kind": "MORPHO_BLUE",
+      "morpho": "0x072FB33E63f76479DF0C145F3ebdcc3C241f0771",
+      "marketId": "0x4505167c540e27ecdb28aacf9977a68e2b3d760022be14a686cbb0f737b3564e",
+      "oracle": "0xDE8d95076931C5Ed84e57705b53c1dA81a04Af09",
+      "irm": "0x89c69c31BCc11Ac050Eb42EC0Ae90BE250FFe96b",
+      "lltv": "800000000000000000"
+    },
+    "collateralToken": "0x4200000000000000000000000000000000000006",
+    "debtToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "contracts": {
+      "migrationEscrow": {
+        "artifact": "MigrationEscrow",
+        "address": "0x524619Bbbf63a8fC5C12F46f0406D16b5f733772",
+        "deploymentTransactionHash": "0x7830a63f499ddab6252442f5f236fbe649a47e1ceba953c9269fe1a1bf0761c3",
+        "deploymentBlockNumber": "58523586",
+        "deploymentBlockHash": "0x458f8948c867b45b4d8d0c7fb06ee77e388ad7c479493be27d1b7f91ef917057",
+        "runtimeCodeHash": "0xd519671cd2b99f3844745fff77c57f9e4b9ec9a8cb847863ff6a5e6fcd3bc8c8"
+      },
+      "targetLending": {
+        "artifact": "MorphoBlueTargetLending",
+        "address": "0x2eeC4cF64c3f152D80333896dFC77D7FF1029B19",
+        "deploymentTransactionHash": "0x027abe4e8524ea99126428dc053c2b13f3e38d0df778de3b61aafe8d979976ee",
+        "deploymentBlockNumber": "58523611",
+        "deploymentBlockHash": "0x49ec12759e0ebd76ad32900bbf6e5f7b2c374a2efc51b161209f09613b4a3122",
+        "runtimeCodeHash": "0x7da51e9b0020ae101fa75591ce9751b98ff4829923f3086286b89c0227d9c556"
+      },
+      "destinationAdapter": {
+        "artifact": "DestinationAdapter",
+        "address": "0xCE84C13aC794e169A81bDe8560a626eb5F708fAc",
+        "deploymentTransactionHash": "0x413929908dfd650e6f4dd448856b1edeccc17f9c17beb7ad84d166282a055d9c",
+        "deploymentBlockNumber": "58523635",
+        "deploymentBlockHash": "0xdb8d6fb1dc2e80818002eca9462127bd237937eff67f86f002178e767813c7c4",
+        "runtimeCodeHash": "0xa4e671b14891e30974c50899ddde464bfb0f22a7cfa9421fc1771a6a90cf4260"
+      }
+    },
+    "configurationTransactions": [
+      {
+        "action": "bind Morpho target module to destination adapter",
+        "transactionHash": "0xb496ed70b0eb6d4ba157ece513e4be49ffb4b79579f3d0ee5b85ed315b6c2c37",
+        "blockNumber": "58523658",
+        "blockHash": "0x8bc8a34e2a08c3853591c7ed1f46e0d602fe0ba1510ab4e932de8b36112c31d3"
+      },
+      {
+        "action": "allow destination adapter on destination escrow",
+        "transactionHash": "0x06133663e2bacfc33d0ff22569daa45d155237d4b4d1a41eb4b4c1277a981962",
+        "blockNumber": "58523681",
+        "blockHash": "0x32bf9a7923145b9658fc5918676fe82cf55edd467e46111129c343bf2a171fe5"
+      },
+      {
+        "action": "allow signed source plan domain on destination adapter",
+        "transactionHash": "0x96a3927bc14c63f1ba5ec9344789d91ebee1bb25854e0d98a34aa868222ddf9a",
+        "blockNumber": "58523703",
+        "blockHash": "0xdb3e2db80c7ff60e4d623e30dd673ff8f7323ad6c5de8fbf1388a50821e3a022"
+      },
+      {
+        "action": "allow executor on destination adapter",
+        "transactionHash": "0x02f4afc8f5098f0d0755385d3127b33a2a88e074589713da892763456b3f9e4d",
+        "blockNumber": "58523727",
+        "blockHash": "0x73168e3a18e0342606390a2262df551215431f898d30bafc3d1eae4de5bbdb57"
+      },
+      {
+        "action": "allow executor as destination feasibility verifier",
+        "transactionHash": "0x67da68cd289b60591958d1d0c45726d6a74b8d041c8be6c3bf8c35950a4b02ac",
+        "blockNumber": "58523750",
+        "blockHash": "0x0ec85537b7eb88d4a06168660e3ed4221818e53f12c7d6c13b28d0c7e0c6f2b2"
+      },
+      {
+        "action": "allow executor on destination escrow",
+        "transactionHash": "0xff1016c190c0292f1f7fed115cbe5d5f52139492f7e8c8ec7ba1ab1f806bf5f8",
+        "blockNumber": "58523772",
+        "blockHash": "0xb62cc7165959a82a69b5dd60a527b2c4fbec11b2fa505e8900692698b3a4b224"
+      }
+    ]
+  }
+}

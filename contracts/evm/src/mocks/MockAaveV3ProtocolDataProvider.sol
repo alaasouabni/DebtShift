@@ -4,17 +4,35 @@ pragma solidity 0.8.30;
 contract MockAaveV3ProtocolDataProvider {
     error UnsupportedAsset();
 
-    address public immutable asset;
-    address public immutable aToken;
-    address public immutable variableDebtToken;
+    address public immutable collateralAsset;
+    address public immutable collateralAToken;
+    address public immutable collateralVariableDebtToken;
+    address public immutable debtAsset;
+    address public immutable debtAToken;
+    address public immutable debtVariableDebtToken;
 
-    constructor(address asset_, address aToken_, address variableDebtToken_) {
-        if (asset_ == address(0) || aToken_ == address(0) || variableDebtToken_ == address(0)) {
+    constructor(
+        address collateralAsset_,
+        address collateralAToken_,
+        address collateralVariableDebtToken_,
+        address debtAsset_,
+        address debtAToken_,
+        address debtVariableDebtToken_
+    ) {
+        if (
+            collateralAsset_ == address(0) || collateralAToken_ == address(0)
+                || collateralVariableDebtToken_ == address(0) || debtAsset_ == address(0)
+                || debtAToken_ == address(0) || debtVariableDebtToken_ == address(0)
+                || collateralAsset_ == debtAsset_
+        ) {
             revert UnsupportedAsset();
         }
-        asset = asset_;
-        aToken = aToken_;
-        variableDebtToken = variableDebtToken_;
+        collateralAsset = collateralAsset_;
+        collateralAToken = collateralAToken_;
+        collateralVariableDebtToken = collateralVariableDebtToken_;
+        debtAsset = debtAsset_;
+        debtAToken = debtAToken_;
+        debtVariableDebtToken = debtVariableDebtToken_;
     }
 
     function getReserveTokensAddresses(address requestedAsset)
@@ -26,7 +44,12 @@ contract MockAaveV3ProtocolDataProvider {
             address variableDebtTokenAddress
         )
     {
-        if (requestedAsset != asset) revert UnsupportedAsset();
-        return (aToken, address(0), variableDebtToken);
+        if (requestedAsset == collateralAsset) {
+            return (collateralAToken, address(0), collateralVariableDebtToken);
+        }
+        if (requestedAsset == debtAsset) {
+            return (debtAToken, address(0), debtVariableDebtToken);
+        }
+        revert UnsupportedAsset();
     }
 }

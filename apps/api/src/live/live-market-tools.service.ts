@@ -26,8 +26,8 @@ const MORPHO_ORACLE_SCALE = 10n ** 36n;
 
 /**
  * Live, read-only route intelligence. It uses direct Aave/Morpho/Chainlink
- * reads and authenticated 1Click dry quotes. The result is intentionally not
- * execution-approved; funded mainnet lending remains outside this release.
+ * reads and environment-gated transport analysis quotes: explicitly simulated
+ * on testnet and authenticated 1Click dry quotes in mainnet read-only mode.
  */
 @Injectable()
 export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligencePort {
@@ -125,21 +125,21 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
       deadline,
     } as const;
     const [collateralQuote, debtForwardQuote, debtReverseQuote] = await Promise.all([
-      this.transport.getOneClickDryQuote({
+      this.transport.getAnalysisQuote({
         inputAsset: route.sourceCollateralAsset,
         outputAsset: route.destinationCollateralAsset,
         amountUnits: position.collateralUnits,
         amountKind: 'EXACT_INPUT',
         ...quoteBase,
       }),
-      this.transport.getOneClickDryQuote({
+      this.transport.getAnalysisQuote({
         inputAsset: route.sourceDebtAsset,
         outputAsset: route.destinationDebtAsset,
         amountUnits: sourceDebtMaximumUnits.toString(),
         amountKind: 'EXACT_INPUT',
         ...quoteBase,
       }),
-      this.transport.getOneClickDryQuote({
+      this.transport.getAnalysisQuote({
         inputAsset: route.destinationDebtAsset,
         outputAsset: route.sourceDebtAsset,
         amountUnits: sourceDebtMaximumUnits.toString(),
@@ -319,7 +319,10 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
             settlementAmountUnits: settlementPayoffUnits.toString(),
             conversion: {
               quoteHash: conversionHash,
-              provider: 'NEAR_INTENTS_1CLICK_BID_ASK_BOUND',
+              provider:
+                debtForwardQuote.mode === 'SIMULATED'
+                  ? 'DEBTSHIFT_SIMULATOR_BID_ASK_BOUND'
+                  : 'NEAR_INTENTS_1CLICK_BID_ASK_BOUND',
               inputAsset: route.sourceDebtAsset,
               outputAsset: route.destinationDebtAsset,
               amountInUnits: sourceDebtMaximumUnits.toString(),
@@ -327,21 +330,23 @@ export class LiveMarketToolsService implements RouteRiskTools, MarketIntelligenc
               expiresAt: earliestExpiry(debtForwardQuote, debtReverseQuote),
             },
           },
-          costs: financingCosts.map(([name, kind, usdMicro]) => {
-            const amount = usdMicroToTokenUnitsCeil(
-              usdMicro,
-              route.destinationDebtAsset.decimals,
-              destinationDebtUsd,
-            );
-            return {
-              componentId: `${candidateId}:${name}`,
-              kind,
-              financingClass: 'SEPARATELY_PAID' as const,
-              asset: route.destinationDebtAsset,
-              amountUnits: amount.toString(),
-              settlementAmountUnits: amount.toString(),
-            };
-          }),
+          costs: financingCosts
+            .filter(([, , usdMicro]) => usdMicro > 0n)
+            .map(([name, kind, usdMicro]) => {
+              const amount = usdMicroToTokenUnitsCeil(
+                usdMicro,
+                route.destinationDebtAsset.decimals,
+                destinationDebtUsd,
+              );
+              return {
+                componentId: `${candidateId}:${name}`,
+                kind,
+                financingClass: 'SEPARATELY_PAID' as const,
+                asset: route.destinationDebtAsset,
+                amountUnits: amount.toString(),
+                settlementAmountUnits: amount.toString(),
+              };
+            }),
           solverFee: {
             asset: route.destinationDebtAsset,
             amountUnits: '0',

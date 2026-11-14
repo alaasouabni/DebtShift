@@ -85,6 +85,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run check:evm
+      - run: npm run check:morpho-testnet
       - run: npm run check:evm-deployment
       - run: npm run test --workspace @debtshift/api
       - run: npm run test --workspace @debtshift/worker

@@ -14,10 +14,10 @@ This file is updated throughout implementation. It is the first place to inspect
 | M4 Market intelligence              | IN_PROGRESS | 2026-11-09 | -          | Deterministic optimizer, Route/Risk Agent, local onchain comparison, explanation providers, SSRF boundary, and memory-only provider UI pass package/API/web checks.                                                                                                                                                                                                                                                                   |
 | M5 Orchestration and recovery       | IN_PROGRESS | 2026-11-09 | -          | Durable command/outbox workflow, restart/replay coverage, financing checkpoints, asset-safe pre-source expiry/cancellation/revert release, refund/timeout/deterioration recovery, reorg guards, exact settlement ledger, all required durable alert classes, and terminal retry-exhaustion/manual financial reconciliation pass; broader operator recovery drills remain.                                                             |
 | M6 Complete API and web product     | IN_PROGRESS | 2026-11-13 | -          | Authenticated borrower discovery/signing, deterministic route comparison, exact authorization review, financing proof, owner-scoped intent/plan/migration reads, safe cancellation, cursor-resumable SSE, reload recovery, verified/provider timeline, durable ledger, and recovery views pass API/web/database tests. Final browser acceptance across every failure journey remains.                                                 |
-| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | Production-shaped registry, storage accounting, role controls, ordered attestations, immutable receipt lookup, guarded source-bound manifests/deployment/readiness CLIs, startup code/role attestation, network-validated safe RPC failover, eight Rust unit tests, WASM build, and the Linux sandbox test pass in CI; credentialed public testnet deployment remains.                                                                |
-| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes, default-off mainnet gate, provider-neutral worker handlers, official committed 1Click lifecycle, real EVM execution, testnet transport, safe NEAR registry adapters, and manifest-bound EVM/NEAR startup attestation pass focused tests. Live credentialed validation remains.                                                                                                                                  |
+| M7 NEAR registry                    | IN_PROGRESS | 2026-11-11 | -          | The registry is deployed and independently ready on NEAR testnet with the reviewed owner/verifier and exact manifested WASM. Application-to-registry receipt-hash parity in the public workflow remains.                                                                                                                                                                                                                              |
+| M8 Production execution modes       | IN_PROGRESS | 2026-11-10 | -          | Four validated modes and default-off mainnet gate remain enforced. Canonical-source Morpho-compatible Base Sepolia infrastructure, all seven DebtShift EVM contracts, 10 test-USDC destination liquidity, 10 test-USDC source-vault funding, and NEAR registry state are live and manifested; the public workflow/transport exercise remains.                                                                                         |
 | M9 Security and operations          | IN_PROGRESS | 2026-11-13 | -          | Required alert/security gates, PostgreSQL-backed Prometheus metrics, credential-safe distributed traces, provisioned operations dashboards, structured workflow logs, recovery/key-rotation runbooks, isolated exact restore plus forward-migration recovery drills, runtime SBOM, and local image provenance pass. External alert delivery, operator acknowledgement, and provenance publication acceptance remain deployment gates. |
-| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Source-commit-bound EVM and NEAR manifests, guarded clean-worktree deployment/readiness CLIs, pre-consumption runtime attestation, green CI, and a clean-volume Docker sandbox with receipt-linked durable ledger reconciliation pass locally. Public hosted URLs, external manifests, and release evidence remain.                                                                                                                   |
+| M10 Reproducible release            | IN_PROGRESS | 2026-11-12 | -          | Source-commit-bound Morpho, EVM, funding, and NEAR public-testnet manifests now exist with incident records and independent readiness evidence. Green CI, the Docker sandbox, and receipt-linked ledger reconciliation already pass; final public workflow evidence, hosted URLs, and the submission package remain.                                                                                                                  |
 
 ## Submission-critical mode
 
@@ -35,14 +35,53 @@ This file is updated throughout implementation. It is the first place to inspect
 
 ## Current active task
 
-- **Task:** P0.5/P0.7 - finish safe operational and recovery gates that do not require external
-  credentials, then deploy the verified full sandbox image and registry and collect public evidence.
+- **Task:** P0.7 - finish the reproducible public-testnet dependency/deployment path, then deploy the
+  verified public validation environments and collect evidence.
 - **Status:** IN_PROGRESS
-- **Next verification:** Complete the repository and clean-stack gate for each internal checkpoint.
-  When hosting and NEAR credentials are available, deploy the hosted sandbox and NEAR testnet
-  registry, run the public testnet workflow, perform an authenticated official 1Click dry quote when
-  a token is available, then execute acceptance. The Linux NEAR CI, pinned Base fork, live route,
-  official schema, security audit, and clean Docker gates already pass.
+- **Next verification:** Configure the runtime only from the four independently verified immutable
+  manifests and run the complete public workflow with the unavailable 1Click testnet boundary
+  explicitly simulated. Mainnet writes remain disabled.
+
+## 2026-11-14 public-testnet deployment evidence
+
+- The twenty-check credential-free account/funding inventory passed for the four distinct EVM roles
+  and three distinct NEAR roles before any deployment key was loaded.
+- The DebtShift-operated, canonical-source Morpho Blue-compatible Base Sepolia singleton is
+  `0x072FB33E63f76479DF0C145F3ebdcc3C241f0771`. Market
+  `0x4505167c540e27ecdb28aacf9977a68e2b3d760022be14a686cbb0f737b3564e` has 10 test USDC
+  available liquidity, zero borrow assets, preserved seed shares, a current oracle price, and zero
+  deployer allowance. This is public-testnet protocol-compatible infrastructure, not an official
+  Morpho testnet deployment.
+- The successful EVM manifest is
+  `deployment/manifests/testnet-evm-sepolia-base-sepolia-20261114-v3.json`. Independent readiness
+  verified seven contracts and fourteen configuration transactions with workflow writes disabled.
+  Ethereum Sepolia contracts are vault `0xDC52C1980c2F69c1152e05D3812d752A0D238f3E`, escrow
+  `0x61d32dFFDEA14cef1474A930495235cF8C8512BE`, Aave module
+  `0x060410b3e7ef61D83fA0Dde092B00b2E0f7e226F`, and adapter
+  `0x0fd9ABcb48bD76c4aCEb07Baad5c4d58f7a39aD5`. Base Sepolia contracts are escrow
+  `0x524619Bbbf63a8fC5C12F46f0406D16b5F733772`, Morpho module
+  `0x2eeC4cF64c3f152D80333896dFC77D7FF1029B19`, and adapter
+  `0xCE84C13aC794e169A81bDe8560a626eb5F708fAc`.
+- The successful funding manifest is
+  `deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json`. The guarded sequence
+  approved exactly 10 test USDC, deposited exactly 10 into the source vault, revoked allowance to
+  zero, and proved 10 test USDC free liquidity. Independent readiness passed at finalized Sepolia
+  block `12130480`, verifying all three transaction inputs/receipts, historical balance deltas,
+  current zero allowance, seven contracts, fourteen configuration transactions, executor gas, and
+  both 10 test-USDC liquidity floors.
+- NEAR transaction `Fjtfg2derYBQ7Mt2wmyh5XnHUQGkwCw4WmqBPxZFaQnQ` atomically deployed and
+  initialized `debtshift-registry-alaa-2026.testnet`. Independent readiness verifies WASM SHA-256
+  `0x4a9adf1ed8f95b047b2f99e9ec296484540f3571147af3e761d1ecabdc0ef56d`, deployed-code hash
+  `62E942bp8fnX38QhB552175SKUGr7WmAkachMzno4toW`, owner
+  `debtshift-owner-alaa-2026.testnet`, and verifier `debtshift-verifier-alaa-2026.testnet`.
+- Interrupted attempts are not hidden or reused. Their zero-byte manifests and reconciled receipts,
+  roles, balances, causes, and abandonment state are preserved under `deployment/incidents/`.
+- The complete repository gate passed after the operational fixes: OpenAPI generation drift,
+  formatting, script syntax, lint, type checks, every package test, and all eleven builds. The nine
+  EVM deployment/funding integration tests and the permanent live NEAR deployment readiness gate
+  also pass.
+- `MAINNET_EXECUTION_ENABLED` remained `false` throughout. No mainnet transaction or public 1Click
+  testnet claim was made.
 
 ## Decision log
 
@@ -358,6 +397,84 @@ This file is updated throughout implementation. It is the first place to inspect
   DebtShift manifests, verify both runtime bytecode and market parameters, and refuse external
   deployment until the route, oracle, funding, signer, RPC, gas, and recovery balances are reviewed.
 
+### ADR-025 - Isolated canonical Morpho build and chained startup attestation
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Decision:** Compile canonical Morpho core and AdaptiveCurveIrm in the isolated
+  `contracts/morpho-testnet` project using upstream's Solidity 0.8.19/Paris/via-IR/999999-run
+  settings. Vendor only the exact transitive upstream blobs at commit
+  `339a885801972740eb27f51da110a4675b839d42`, retain both licenses, and verify the complete blob
+  inventory locally and in CI. Do not alter upstream pragmas or merge this compiler domain into the
+  DebtShift 0.8.30 project.
+- **Oracle:** Deploy a testnet-only DebtShift Chainlink oracle bound immutably to the exact two
+  tokens, two feeds, independent per-feed maximum ages, and optional L2 sequencer/grace policy. It
+  rejects incomplete, stale, future, non-positive, and unsafe sequencer observations. Mainnet
+  continues to use the allowlisted established market oracle.
+- **Funding:** The guarded deployer creates the real market, supplies an exact positive amount of a
+  real public-testnet loan token through Morpho, records the resulting supply shares, and revokes the
+  deployer allowance. It never mints assets or deploys token/feed mocks.
+- **Attestation:** A separate version-1 dependency manifest binds upstream/local source, creation
+  bytecode, constructor calldata, receipts, canonical blocks, runtime code, token/feed identities,
+  market state, liquidity, allowance revocation, and ownership. Testnet worker startup requires this
+  manifest plus the later DebtShift EVM manifest and cross-checks both against the route before queue
+  consumption.
+- **Reason:** Separate compiler domains preserve byte-for-byte upstream provenance. Chained
+  manifests prevent a valid DebtShift adapter deployment from silently pointing at an unproven
+  self-hosted protocol dependency.
+
+### ADR-026 - Byte-exact public-testnet route dependencies and three-way manifest binding
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Decision:** Freeze the submission-critical public candidate as official Aave V3 on Ethereum
+  Sepolia to a DebtShift-operated canonical-source Morpho deployment on Base Sepolia. The reviewed
+  dependency file is
+  `config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json`,
+  route ID `ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue-weth-usdc-v1`, with byte-exact
+  Keccak-256 `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`.
+- **Oracle policy:** Ethereum Sepolia planning reads use the official Chainlink ETH/USD and USDC/USD
+  proxies with independent `10800`/`90000`-second maximum ages. Base Sepolia ETH/USD and USDC/USD
+  use separate `3600`/`90000`-second maximum ages. The checked official Chainlink sequencer
+  directory does not list Base Sepolia, so version 1 requires a null sequencer feed and zero grace
+  period; any change requires a new reviewed dependency version.
+- **Asset boundary:** Source Aave test USDC and destination Circle test USDC are distinct no-value
+  test representations. The route does not claim a native bridge or identical issuer contract. The
+  unavailable provider boundary remains simulated, while source custody and destination delivery
+  must be real public-chain transfers.
+- **Attestation:** The canonical Morpho manifest records the dependency-file hash. The later
+  DebtShift EVM deployer re-reads that exact file and Morpho manifest, validates route/chains/assets,
+  feeds/ages/LLTV, and current onchain state, and records the same hash. Independent readiness and
+  worker startup reject any route ID or hash disagreement before queue consumption.
+- **Aave binding:** The DebtShift deployer and verifier independently resolve the collateral
+  reserve's aToken and the debt reserve's variable-debt token. They must never reuse the collateral
+  reserve's variable-debt identity for a WETH-collateral/USDC-debt position.
+- **Reason:** Human-readable route IDs and environment variables alone cannot prove that deployment
+  used the reviewed public dependencies. Byte-exact chained evidence prevents silent address,
+  oracle-policy, token-representation, and reserve-identity drift.
+
+### ADR-027 - Exact manifested source-vault funding with mandatory allowance cleanup
+
+- **Status:** APPROVED
+- **Date:** 2026-11-13
+- **Decision:** Fund the public-testnet permissioned source vault only through a separate guarded
+  command after canonical Morpho and DebtShift EVM deployment readiness pass. Require a clean source
+  commit, the exact four public role addresses, explicit gas/liquidity/amount floors, byte-exact
+  route/dependency/deployment hashes, an exclusively created output path, and a dedicated funder key
+  that is parsed only after read-only preflight succeeds.
+- **Transaction boundary:** Send only exact token approval, exact vault deposit, and approval-to-zero
+  transactions. Require exact finalized funder/vault/free-liquidity deltas and zero current
+  allowance, undrawn reservations, and recovery reserves. If failure occurs after allowance is
+  visible, attempt and verify emergency allowance cleanup; ambiguous cleanup halts for manual
+  reconciliation.
+- **Evidence:** Record the three unique transactions, calldata hashes, canonical receipts/blocks,
+  senders/targets/nonces/gas, historical before/after balances, exact amount, and all upstream hashes
+  in a strict version-1 funding manifest. A separate keyless verifier must reconstruct that evidence
+  and rerun Morpho plus funded EVM readiness.
+- **Reason:** A generic balance check cannot prove who funded the vault, which deployment received
+  the assets, whether a residual token approval remains, or whether a timeout caused a partial or
+  duplicate deposit. Exact chained evidence keeps temporary liquidity auditable and retry-safe.
+
 ## Open decisions
 
 | ID   | Decision                                  | Needed by            | Resolution method                                                              |
@@ -372,6 +489,157 @@ This file is updated throughout implementation. It is the first place to inspect
 The journal preserves historical implementation context. Entries before ADR-022 may mention the
 superseded canary architecture; approved ADR statuses and the current strategy documents are the
 operative source of truth.
+
+### 2026-11-13 - Guarded source-vault funding and independent evidence verification implemented
+
+- Added a strict testnet funding manifest bound to the clean source commit, normalized executable
+  route, byte-exact dependency file, and byte-exact DebtShift EVM manifest. It requires exact
+  funder/vault/free-liquidity deltas, three unique ordered transactions, canonical sender/target
+  identities, and zero pre/post allowance and reservation balances.
+- Added `npm run fund:testnet-vault`. Before loading the dedicated key it verifies the canonical
+  Morpho market, all seven DebtShift contracts, finalized funder gas/token balances, four distinct
+  EVM roles, current commit, route/manifests, and explicit reviewed amount/gas/liquidity floors. It
+  sends exact approval, deposit, and allowance revocation only; failure after a visible allowance
+  invokes proof-checked emergency cleanup.
+- Added keyless `npm run check:testnet-vault-funding`. It verifies all three canonical transactions
+  and historical balances, current zero allowance, current vault liquidity/executor gas, and current
+  canonical Morpho liquidity without accepting a wallet key.
+- Closed a preflight gap by adding the separate vault funder's Ethereum Sepolia gas balance to
+  `npm run check:public-testnet-funding`; the complete inventory now evaluates twenty predicates.
+- A live read-only exercise of the updated gate through the three free default RPCs returned all
+  twenty expected placeholder deficiencies at Ethereum Sepolia finalized block `12127558` and Base
+  Sepolia finalized block `58351157`; no key or write was involved.
+- Domain tests pass 125 cases and the dual-Anvil EVM/Morpho/funding deployment suite passes all nine
+  cases, including input-hash tamper and newly introduced residual-allowance rejection. No public
+  transaction, external deployment, token movement, registry write, or mainnet action occurred.
+- GitHub Actions quality run `43480858737` passed TypeScript, pinned EVM/Morpho/deployment and demo,
+  Linux NEAR, production dependency, changed/full-history secret, production-container, and runtime
+  SBOM gates for exact checkpoint `b13c467ad388ca44246eb4d856e25d181ad72bd4`.
+
+### 2026-11-13 - Credential-free public-testnet funding gate implemented
+
+- Added a strict domain model for the distinct borrower, EVM deployer, source-vault funder,
+  executor, NEAR registry, owner, and verifier identities plus every positive release-sized asset,
+  gas, and yoctoNEAR floor. It rejects identity reuse, vault/Morpho funding below the borrower debt
+  floor, and transport collateral above the borrower collateral floor.
+- Added `npm run check:public-testnet-funding`. It never accepts a private key or broadcasts. It
+  hashes the exact frozen dependency file; reads the Aave position, native balances, and ERC-20
+  balances at finalized Ethereum/Base Sepolia blocks; and reads final NEAR account, code, balance,
+  and deployment-key permission state through free default RPCs.
+- That checkpoint evaluated nineteen predicates without short-circuiting; the later vault-funding
+  increment added the missing funder-gas predicate, bringing the current gate to twenty. RPC
+  ambiguity remains an error rather than being mislabeled as missing funds. Output contains no RPC
+  URL or deployment key.
+- A live read-only exercise with deliberately unfunded placeholder identities correctly returned
+  `PUBLIC_TESTNET_FUNDING_NOT_READY` at Ethereum Sepolia block `12127276` and Base Sepolia block
+  `58333379`, bound to dependency hash
+  `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`. No key, transaction,
+  public-chain write, or token movement occurred.
+- The complete repository gate passes OpenAPI drift, formatting, script validation, all workspace
+  lint/type checks, 123 domain tests, every remaining package suite, the real dual-Anvil workflow,
+  and all eleven production builds.
+
+### 2026-11-13 - Public-testnet source feeds and deterministic route generation hardened
+
+- The post-deployment audit found that the dependency candidate pinned Aave's per-asset oracle
+  source contracts but did not yet pin AggregatorV3 planning feeds for the executable route. Those
+  Aave source contracts reject the Chainlink feed interface and cannot safely back live planning.
+- Added official Chainlink Ethereum Sepolia ETH/USD
+  (`0x694AA1769357215DE4FAC081bf1f309aDC325306`) and USDC/USD
+  (`0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E`) registry bindings, published heartbeats, independent
+  `10800`/`90000`-second maximum ages, finalized-block round validation, and response hashes. The
+  byte-exact dependency hash is now
+  `0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17`.
+- Added the reviewed write-disabled route-policy file and `npm run generate:public-testnet-route`.
+  After canonical Morpho deployment, the generator exclusively creates the executable route from
+  the exact dependency file, the source-commit-bound Morpho manifest, and the policy file. It
+  rejects drift in route/hash/chain/token/feed/age/sequencer/market/oracle/IRM/LLTV/liquidity
+  bindings and reports the derived route configuration hash.
+- Testnet routes now omit unavailable 1Click provider asset IDs instead of inventing testnet
+  catalog values. Environment validation continues to require all four official provider asset IDs
+  in `mainnet-readonly` and `mainnet` modes.
+- Evidence passes the complete repository gate, including 119 domain tests and all package
+  lint/type/test/build jobs, seven EVM/Morpho deployment integration tests, four oracle tests under
+  checksum-verified Foundry 1.9.0, and the live dependency validator at finalized Ethereum Sepolia
+  block `12127052` and Base Sepolia block `58318762`. No transaction, token movement, provider
+  request, registry write, or external deployment occurred.
+- GitHub Actions quality run `43465347172` passed every TypeScript, EVM/Morpho/deployment/demo,
+  NEAR, production dependency, changed/full-history secret, production-container, and runtime-SBOM
+  gate for exact checkpoint `f73b9df5e1c915a619c94128e28e207569228647`.
+
+### 2026-11-13 - Public-testnet route dependencies frozen and deployment chain hardened
+
+- Added the write-disabled Ethereum Sepolia Aave V3 to Base Sepolia canonical-source Morpho WETH/
+  USDC dependency candidate at byte-exact hash
+  `0x323c89c5a9ee623eba0087e9ad25fe45b146d91bbaf073d03ab90c13125939ca`. It pins the official Aave
+  address-book commit/module hashes, official Base WETH and Circle test USDC, official Chainlink
+  feed registry paths, independent `3600`/`90000`-second freshness limits, null Base Sepolia
+  sequencer policy, `80%` LLTV, and a `10` test-USDC seed floor.
+- Added `npm run check:public-testnet-route`. The credential-free validator re-hashes every official
+  reference response and reads finalized public blocks, runtime code, token metadata, Aave
+  provider/reserve configuration and liquidity, and Chainlink descriptions/rounds/freshness. The
+  latest observation passed at Ethereum Sepolia block `12126829` and Base Sepolia block `58306935`.
+- Split the testnet Morpho oracle's collateral and loan maximum ages and attested both constructor
+  inputs/immutables. Four Foundry oracle tests now prove cross-price, independent-age, stale-feed,
+  and sequencer behavior.
+- Chained the byte-exact dependency hash through the Morpho manifest, guarded DebtShift EVM
+  deployment, independent readiness check, and worker startup. Testnet EVM deployment now verifies
+  the dependency file, canonical Morpho manifest, live market, and matching route values before its
+  first broadcast. The executable live-route schema now accepts the reviewed `90000`-second daily
+  heartbeat safety window.
+- Corrected a production Aave deployment/verifier error discovered during final review: the source
+  module now receives the collateral reserve's aToken and the debt reserve's variable-debt token,
+  each resolved independently. The dual-Anvil provider fixture and deployment test assert this
+  exact distinction.
+- Current local evidence passes the full repository gate with 114 domain and 85 worker tests, 33
+  DebtShift Foundry tests, four Morpho-oracle tests, seven deployment integration tests, zero
+  production npm vulnerabilities, and live public-route validation. The rebuilt non-root production
+  image is `sha256:f69bfc845c63b11a4dae3146b27c88f11e8d0494cf18dc0e8e67405d4d56ea0a`
+  (`342193679` bytes), contains the corrected artifacts, and excludes npm, npx, and Forge.
+- Checkpoint `6e3fa7a` exposed four Gitleaks generic-key false positives for public Aave reserve-token
+  addresses. A narrow exact-address allowlist in `7b59a4f` passes Gitleaks 8.30.1 against the changed
+  commit and all 60 commits. No file-wide or rule-wide bypass was added.
+- GitHub Actions quality run `43459443566` passed every TypeScript, EVM, NEAR, security, production
+  dependency, changed/full-history secret, production-container, and runtime-SBOM gate for exact
+  checkpoint `7b59a4fffb94ceeec333b430be8baa35f5e3c9cf`.
+- No public RPC write, public-testnet deployment, token transfer, 1Click request, NEAR registry
+  write, mainnet write, or real-fund movement occurred.
+
+### 2026-11-13 - Canonical public-testnet Morpho deployment path implemented
+
+- Added an isolated Solidity 0.8.19 project containing 28 byte-for-byte verified upstream Morpho
+  blobs at commit `339a885801972740eb27f51da110a4675b839d42`, both upstream licenses, exact Git-blob
+  provenance, and upstream-equivalent Paris/via-IR/999999-run compilation settings.
+- Added a testnet-only Chainlink oracle with token/feed scale derivation, complete-round, age,
+  future-timestamp, price, L2 sequencer, and recovery-grace validation. Pinned Foundry 1.9.0 compiled
+  25 files and all three oracle tests passed.
+- Added a guarded clean-source testnet deployer that deploys canonical Morpho/AdaptiveCurveIrm and
+  the oracle, enables one LLTV, creates the derived market, uses an exact temporary allowance,
+  supplies real testnet loan-token liquidity, revokes the allowance, transfers ownership, and writes
+  no manifest until every observed state passes. The output remains explicitly write-disabled.
+- Added a strict dependency manifest and read-only verifier covering exact creation bytecode and
+  constructor input, canonical deployment/configuration receipts, runtime hashes, token/feed code
+  and decimals, owner, IRM/LLTV, market, oracle/sequencer immutables, current price, seed shares,
+  available liquidity, and zero allowance. Tampered deployment-input provenance is rejected.
+- Testnet runtime now requires `TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH` and
+  `TESTNET_VAULT_FUNDING_MANIFEST_PATH`, and cross-checks the dependency and funding manifests
+  against the route and later DebtShift EVM manifest before queue consumption.
+  The production image builds/carries the canonical artifacts, source provenance, and licenses.
+- The two-Anvil deployment suites passed six tests: the existing seven-contract DebtShift
+  deployment plus canonical Morpho market deployment/readiness, deployment-input and semantic
+  configuration tamper rejection, and proof that a stale feed aborts before any deployment nonce is
+  consumed. The full repository gate passes
+  OpenAPI drift, formatting, scripts, all workspaces, 111 domain tests, 22 database tests, 85 worker
+  tests, the remaining package suites, and all 11 builds. The pinned Foundry gate passes 33
+  DebtShift Solidity tests and three canonical-Morpho-oracle tests. Rust format, eight unit tests,
+  Clippy, and the WASM build pass on Windows; the near-workspaces sandbox case remains intentionally
+  delegated to Linux CI because its installer does not support Windows.
+- A fresh production image builds both isolated Solidity projects, carries the three required
+  canonical deployment artifacts plus pinned source provenance, retains Anvil 1.9.0, and excludes
+  npm and Forge from the runtime. `npm audit --omit=dev --audit-level=high` reports zero production
+  vulnerabilities. The Linux CI and image scan remain to pass for the pushed checkpoint.
+- No public RPC write, public-testnet deployment, token transfer, 1Click request, NEAR registry
+  write, mainnet write, or real-fund movement occurred.
 
 ### 2026-11-13 - Funded public-testnet transport startup gate added
 
@@ -1693,6 +1961,73 @@ operative source of truth.
   `55,600,000`. The complete production Aave/Morpho adapter workflow passed using disposable local
   Anvil state and Foundry `1.9.0`; no public-chain transaction was broadcast. This removes the
   previously assumed need for a paid archival RPC at this checkpoint.
+
+### 2026-11-14 - Funded public-testnet source close and failed-safe recovery verified
+
+- Deployed and validated the seven DebtShift EVM contracts across Ethereum Sepolia and Base
+  Sepolia, the DebtShift-operated Morpho market, the funded 10 test-USDC source vault, and the NEAR
+  testnet receipt registry. Mainnet execution remained disabled.
+- Three signed attempts exposed and closed testnet integration defects. The final migration
+  `0x87ebf9802661988310800deccc59bb651e6431b0177fa6f025fc6ecfcb61c212` reserved liquidity,
+  atomically closed the Aave source, dispatched and delivered WETH to Base, and verified the
+  destination delivery.
+- A restricted `eth_getLogs` range delayed delivery discovery past the signed deadline. Target open
+  correctly failed closed. The authorized recovery returned `0.00999 WETH` to the borrower and
+  settled the vault's exact `5.000957 USDC` receivable from the isolated executor reserve.
+- Final state is `FAILED_SAFE` with recovery `RESOLVED_FAILED_SAFE`: borrower source debt `0`, both
+  escrows `0`, vault balance/free liquidity `10 USDC`, vault receivable/reserve `0`, and no Morpho
+  target position. This proves safety/recovery, not happy-path completion.
+- Added conservative feasibility timestamps, bounded Aave debt-accrual validation, chunked RPC log
+  scans, and a bounded configurable execution window. Default authorization remains 240 seconds;
+  public testnet uses 900 seconds without changing any existing signature.
+- Focused verification passes 126 domain tests, 31 API tests, and both package type checks. Exact
+  transaction links, balances, limitations, and rerun steps are in
+  `24-public-testnet-workflow-execution.md`.
+- Remaining public proof: create a fresh Aave source position, replenish executor recovery reserve,
+  then complete Morpho target opening, solver settlement, and final NEAR receipt registration in a
+  new signed run.
+
+### 2026-11-14 - Second funded recovery completed and next run staged
+
+- Migration `0xbd8ff4991eb6829ee8270a0d090779c8a607c5a5af9c4963b6d990c05373f014`
+  reserved `5.005053 USDC`, closed the fresh Aave source, dispatched and registered `0.00999 WETH`
+  on Base Sepolia, then entered recovery when a load-balanced Base RPC reported a tip one block
+  behind the already-successful destination receipt.
+- Direct reconciliation later proved the receipt canonical with 727 confirmations. The plan expired
+  during that reconciliation, so its signature deadline was not bypassed. Recovery completed at
+  `FAILED_SAFE`: Base transaction
+  `0x95e0b405d2fbd4ad9f8a74e42e007d004127d0fe612878b31d0195d7b4c7a408` returned the collateral,
+  and Sepolia transaction
+  `0x134525bed9256e3534cd6631468a97409d87cf15c4b4f26146f3ed9ead40236e` settled the exact
+  `5.000100 USDC` receivable from the isolated reserve.
+- Canonicality handling now treats `FINALITY_DEPTH_LOST` with a matching canonical block as a
+  retryable RPC-lag condition. It still emits append-only recovery/retraction evidence for actual
+  missing blocks, hash mismatches, moved receipts, reverted receipts, and unsupported chains. All
+  90 worker tests pass, including the new lag regression and existing reorg tests.
+- Public-testnet signed plans now use 3,600 seconds. Production defaults and mainnet authorization
+  are unchanged; `MAINNET_EXECUTION_ENABLED=false` remains mandatory.
+- Recycled the recovered Base WETH and opened another source position. Readiness at Ethereum
+  Sepolia head `12,131,192` and Base Sepolia head `58,571,245`: borrower `0.01 aWETH` and
+  approximately `5 USDC` variable debt; executor `10 USDC` and `0.02 Base WETH`; vault exactly
+  `10 USDC` free with zero reserve/receivable; zero stale allowance; empty destination escrow and
+  Morpho target; module authorization disabled; all required gas balances funded.
+
+### 2026-11-14 - Public-testnet happy path completed
+
+- Migration `0xece17b2ff0fc8c28c5878e5fccef6cfaf108b3ef99d66f719b1165d151db8475`
+  completed the full public-testnet workflow: reserve, Aave close, two-chain transport, destination
+  verification, Morpho target open, exact vault settlement, balanced ledger, and NEAR receipt.
+- Final state is `COMPLETED`. The Aave source is empty; the Morpho target holds `0.00999 WETH`
+  collateral and about `5.000106 USDC` debt; both escrows are empty; the source vault is restored to
+  exactly `10 USDC` free liquidity with zero receivable and zero locked recovery reserve.
+- The canonical settlement transaction had already succeeded when an immediate RPC state read
+  returned stale data. Reconciliation now computes feasibility hashes locally and reconstructs the
+  complete settlement-accounting payload from the canonical event plus finalized contract state.
+- The NEAR testnet receipt finalized with bundle hash
+  `0x46bcf82c8e04a4fdabefadb8c90c03e75c2136a1bfe200c1b2204e4122169166` in transaction
+  `G9f91sonXUNaLEB5t15hPoehXT38WTUwmYa4wez2VCCS`.
+- Exact Ethereum, Base, and NEAR explorer links and final balances are recorded in
+  `24-public-testnet-workflow-execution.md`. Mainnet execution remained disabled throughout.
 
 ## Work-session handoff template
 

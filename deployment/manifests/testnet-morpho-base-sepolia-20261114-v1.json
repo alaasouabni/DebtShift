@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "environment": "testnet",
+  "createdAt": "2026-11-14T02:58:04.163Z",
+  "sourceCommit": "49c34c19c0b9ed0b8220c233ef06f37289a8f67d",
+  "routeId": "ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue-weth-usdc-v1",
+  "routeDependenciesHash": "0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17",
+  "workflowWriteSwitchEnabled": false,
+  "upstream": {
+    "repository": "https://github.com/morpho-org/morpho-blue",
+    "commit": "339a885801972740eb27f51da110a4675b839d42",
+    "sourceManifestHash": "0xbeb513f8cea7063e3e7195066d04be46b8c7bd6452b77279fa5c1f16f8ab8ca2",
+    "compilerVersion": "0.8.19",
+    "evmVersion": "paris",
+    "viaIr": true,
+    "optimizerRuns": 999999
+  },
+  "chainId": 84532,
+  "deploymentBlockNumber": "58516021",
+  "deployer": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+  "owner": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+  "contracts": {
+    "morpho": {
+      "artifact": "Morpho",
+      "address": "0x072FB33E63f76479DF0C145F3ebdcc3C241f0771",
+      "artifactCreationCodeHash": "0xdcb9e02b20ae51a00b431973f1d683fdbcb9d4bc2fa7af31ba291a53960420f0",
+      "deploymentTransactionHash": "0xab3d0599d7c40d7ef127b979912c48634a9462c0a7c117748823cc955606ca89",
+      "deploymentTransactionInputHash": "0x2e45e17d48f079157f2660f32da89c95bd481753c1e00084de1115d33ac740b7",
+      "deploymentBlockNumber": "58516021",
+      "deploymentBlockHash": "0xab16a16254f573c878c7566541ed72a481fcdb3de3df5a047ff0ecd039a6d9ed",
+      "runtimeCodeHash": "0x617d2532f04c5646cc7f3483da023e0a42ceb6f5ec68669ced283d70ed56c699"
+    },
+    "irm": {
+      "artifact": "AdaptiveCurveIrm",
+      "address": "0x89c69c31BCc11Ac050Eb42EC0Ae90BE250FFe96b",
+      "artifactCreationCodeHash": "0x355627f67f6e16bde0c6d36281fccda0ab1f8f869d6048b0db393d41dea0b624",
+      "deploymentTransactionHash": "0xb1b4f7e1752373f542928877a2ad3fdd19d4c96b2b2a95d5c9067df85f0d804a",
+      "deploymentTransactionInputHash": "0x14bb4815f874fa3234a4ffd0483cbf43de58bcbc765ce1a1abe07dfaf18acfae",
+      "deploymentBlockNumber": "58516028",
+      "deploymentBlockHash": "0x2eb35b296667ea39cae836cdb2bdd353c85cb4250e5995ed11856b10f02b73e8",
+      "runtimeCodeHash": "0x1e5881cefd8eb241264e132f582f7d36497d56e2a8b0a7e6d837226ae42bb977"
+    },
+    "oracle": {
+      "artifact": "DebtShiftChainlinkOracle",
+      "address": "0xDE8d95076931C5Ed84e57705b53c1dA81a04Af09",
+      "artifactCreationCodeHash": "0x5963ac9bd7dfc66012e53a2ea073975f9fbf08c452997832daac574a1e2b3df8",
+      "deploymentTransactionHash": "0x98489fddba3eb2c4a0a0ce42cfc8d99aa7a37ff91a43f776b662411993c62977",
+      "deploymentTransactionInputHash": "0x52a668dfe3a5daefbb69428ffc81aecbf82c88039a8eb3dcc952e7234c443c4a",
+      "deploymentBlockNumber": "58516035",
+      "deploymentBlockHash": "0x476a2e81d3f9ee216301533f5968fe88ce76fd784f527774a78b34baed63fc0d",
+      "runtimeCodeHash": "0x41a83fc22e8370f511648a4377b12aff198c54936eaceb0d66e6faecd145d569"
+    }
+  },
+  "tokens": {
+    "collateral": {
+      "address": "0x4200000000000000000000000000000000000006",
+      "decimals": 18,
+      "runtimeCodeHash": "0x83f731a17e6c0cdd04bc6f60b15d3e789e215b71403087b84b48650a1e5cbb21"
+    },
+    "loan": {
+      "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "decimals": 6,
+      "runtimeCodeHash": "0xedc5281a85c0efecd49999a1ef668390c59b88702f2d4a07029d7f5d63059d6c"
+    }
+  },
+  "feeds": {
+    "collateral": {
+      "address": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+      "decimals": 8,
+      "runtimeCodeHash": "0xbd6f524cdc4268b6bd1bb6f77a8821faeea9c52ee9e0afa0b6d948ce82c966c2"
+    },
+    "loan": {
+      "address": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+      "decimals": 8,
+      "runtimeCodeHash": "0xbd6f524cdc4268b6bd1bb6f77a8821faeea9c52ee9e0afa0b6d948ce82c966c2"
+    },
+    "sequencerUptime": null,
+    "collateralMaxPriceAgeSeconds": "3600",
+    "loanMaxPriceAgeSeconds": "90000",
+    "sequencerGracePeriodSeconds": "0"
+  },
+  "market": {
+    "id": "0x4505167c540e27ecdb28aacf9977a68e2b3d760022be14a686cbb0f737b3564e",
+    "loanToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "collateralToken": "0x4200000000000000000000000000000000000006",
+    "oracle": "0xDE8d95076931C5Ed84e57705b53c1dA81a04Af09",
+    "irm": "0x89c69c31BCc11Ac050Eb42EC0Ae90BE250FFe96b",
+    "lltv": "800000000000000000",
+    "seedLiquidityOwner": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+    "seedLiquidityAssets": "10000000",
+    "seedLiquidityShares": "10000000000000",
+    "oraclePriceAtDeployment": "1909417937206965642954735539",
+    "totalSupplyAssetsAtDeployment": "10000000",
+    "availableLiquidityAtDeployment": "10000000"
+  },
+  "configurationTransactions": [
+    {
+      "action": "enable canonical AdaptiveCurveIrm",
+      "transactionHash": "0xd70c724dbe93e78270a2fd77e518e1e204c1a7e05b07a43a1bb72cd47e2a4d0c",
+      "transactionInputHash": "0x20a62d3eee0d7e65a8bb35829a4008a30a8999868b37f142e5443d27e4a45cc4",
+      "sender": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+      "target": "0x072FB33E63f76479DF0C145F3ebdcc3C241f0771",
+      "blockNumber": "58516043",
+      "blockHash": "0x950188eb751965060180c5108b55543e29c700062ea0dbdb39e5323f723849b8"
+    },
+    {
+      "action": "enable configured LLTV",
+      "transactionHash": "0xa868488dac7e50ce63a1b5a367b680516f95aa4730283400a4b28572297c7d29",
+      "transactionInputHash": "0xfa2d4f2a8085afea3e378aef86ccf923f2ddcb8fdd9adc6e0c4f51a3d27e96ca",
+      "sender": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+      "target": "0x072FB33E63f76479DF0C145F3ebdcc3C241f0771",
+      "blockNumber": "58516050",
+      "blockHash": "0xe40a947198fa43b6e7698aab055b2936edeb708451fc0b56d0abc454c45b9958"
+    },
+    {
+      "action": "create funded testnet market",
+      "transactionHash": "0x93e9712a65c2d08fa0166c28e7585c87e94ce8a85fdfef5e33fad4c584c9c624",
+      "transactionInputHash": "0x46f4f97be0deb5dcdbd247a289db8336e56ee8b1266c449cd6669ef619026970",
+      "sender": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+      "target": "0x072FB33E63f76479DF0C145F3ebdcc3C241f0771",
+      "blockNumber": "58516057",
+      "blockHash": "0x5f9643d0385feff29184b5677b949e9b303da9891a082dd60b8c80267895b999"
+    },
+    {
+      "action": "approve exact Morpho seed liquidity",
+      "transactionHash": "0x68cade73b325d6a27190af4c783fe1d6f2d7e0e3581b88a22a2e1f4b52c1e2da",
+      "transactionInputHash": "0xffdcf6db8a0a253d950fc4fcca38e76b3afd46731750d146f8c46c884e270883",
+      "sender": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+      "target": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "blockNumber": "58516063",
+      "blockHash": "0x0025264e17f3dc63d62f7ab5ab00212173500176cf227d57c1530cc5da67dba2"
+    },
+    {
+      "action": "supply real testnet loan-token liquidity",
+      "transactionHash": "0x2618d4f88151886d5cf0869abc4f837a78687031f0fce12e20cbf03b96a918b9",
+      "transactionInputHash": "0x55e95dd3bb3a57e6f852d9a3a74a2642b0d9114754a987d831cadbf122676210",
+      "sender": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+      "target": "0x072FB33E63f76479DF0C145F3ebdcc3C241f0771",
+      "blockNumber": "58516069",
+      "blockHash": "0x7dab8da1eec6a023657b5cb57e4b5919a47f0c10af8fe22a4fd87d28fe6bbc9d"
+    },
+    {
+      "action": "revoke Morpho seed allowance",
+      "transactionHash": "0xdee2cba9295f0546bc0ddbeed437b6d6f99ceea339562b6a9a758549cc8c785f",
+      "transactionInputHash": "0xc0f3a8a3ab15930b32c087655786bb34d2c052ae7745f8415dd3ddae374517f8",
+      "sender": "0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2",
+      "target": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "blockNumber": "58516076",
+      "blockHash": "0x6fbeb86e0d81f1335bf8daadc00dd3b9aaa9e6247700c3dae3868372b438b00c"
+    }
+  ]
+}

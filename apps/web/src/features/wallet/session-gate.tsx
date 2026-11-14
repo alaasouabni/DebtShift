@@ -18,6 +18,7 @@ import type { ReactNode } from 'react';
 
 import { Alert, Button, PageLoading } from '../../components/ui';
 import { truncateHex } from '../../lib/formatting';
+import { NetworkHelp } from './network-help';
 import { isConnected, useWallet } from './wallet-context';
 
 /** Screens whose data the API serves only to a signed-in borrower. */
@@ -158,6 +159,11 @@ function SignInPanel() {
             </Alert>
           ) : null}
         </div>
+
+        {/* Shown when signing in stopped because the wallet lacks the network. */}
+        {wallet.chainIssue?.kind === 'unknown-addable' ? (
+          <NetworkHelp chainId={wallet.chainIssue.chainId} />
+        ) : null}
 
         <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
           <Button onClick={() => void wallet.signIn()} disabled={signing} aria-busy={signing}>

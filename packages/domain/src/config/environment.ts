@@ -49,6 +49,8 @@ export const debtShiftEnvironmentSchema = z
     MARKET_DATA_PROVIDER: z.enum(['SIMULATOR', 'LIVE_READ_ONLY', 'DISABLED']).default('SIMULATOR'),
     LIVE_MARKET_CONFIG_JSON: optionalString,
     EVM_DEPLOYMENT_MANIFEST_PATH: optionalString,
+    TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH: optionalString,
+    TESTNET_VAULT_FUNDING_MANIFEST_PATH: optionalString,
     WEB_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     API_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
     WEB_PUBLIC_URL: z.url().default('http://localhost:3000'),
@@ -62,6 +64,7 @@ export const debtShiftEnvironmentSchema = z
     SOURCE_DEPLOYMENT_BLOCK_NUMBER: z.coerce.number().int().nonnegative().default(0),
     SOURCE_FINALITY_CONFIRMATIONS: z.coerce.number().int().min(1).max(2_048).default(1),
     SOURCE_DEBT_BUFFER_BPS: z.coerce.number().int().min(1).max(500).default(10),
+    EXECUTION_PLAN_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(240),
     DESTINATION_CHAIN_ID: z.coerce.number().int().positive().default(31_338),
     DESTINATION_RPC_URL: z.url().default('http://localhost:8546'),
     DESTINATION_DEPLOYMENT_BLOCK_NUMBER: z.coerce.number().int().nonnegative().default(0),
@@ -208,6 +211,26 @@ export const debtShiftEnvironmentSchema = z
         path: ['API_PUBLIC_URL'],
       });
     }
+    if (
+      environment.DEBTSHIFT_MODE === 'testnet' &&
+      environment.TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Funded testnet execution requires TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH.',
+        path: ['TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH'],
+      });
+    }
+    if (
+      environment.DEBTSHIFT_MODE === 'testnet' &&
+      environment.TESTNET_VAULT_FUNDING_MANIFEST_PATH.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Funded testnet execution requires TESTNET_VAULT_FUNDING_MANIFEST_PATH.',
+        path: ['TESTNET_VAULT_FUNDING_MANIFEST_PATH'],
+      });
+    }
 
     if (environment.INTENTS_RETRY_MAX_DELAY_MS < environment.INTENTS_RETRY_BASE_DELAY_MS) {
       context.addIssue({
@@ -240,7 +263,23 @@ export const debtShiftEnvironmentSchema = z
 
     if (environment.MARKET_DATA_PROVIDER === 'LIVE_READ_ONLY') {
       try {
-        parseLiveMarketConfiguration(environment.LIVE_MARKET_CONFIG_JSON);
+        const liveMarket = parseLiveMarketConfiguration(environment.LIVE_MARKET_CONFIG_JSON);
+        if (
+          (environment.DEBTSHIFT_MODE === 'mainnet-readonly' ||
+            environment.DEBTSHIFT_MODE === 'mainnet') &&
+          [
+            liveMarket.source.collateralAsset,
+            liveMarket.source.debtAsset,
+            liveMarket.destination.collateralAsset,
+            liveMarket.destination.debtAsset,
+          ].some((asset) => asset.providerAssetId === undefined)
+        ) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Mainnet live routes require provider asset IDs for every route asset.',
+            path: ['LIVE_MARKET_CONFIG_JSON'],
+          });
+        }
       } catch (error) {
         context.addIssue({
           code: 'custom',

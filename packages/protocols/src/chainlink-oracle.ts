@@ -24,6 +24,13 @@ export const CHAINLINK_AGGREGATOR_V3_ABI = [
     inputs: [],
     outputs: [{ name: 'decimals', type: 'uint8' }],
   },
+  {
+    type: 'function',
+    name: 'description',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: 'description', type: 'string' }],
+  },
 ] as const;
 
 export interface ChainlinkFeedPolicy {

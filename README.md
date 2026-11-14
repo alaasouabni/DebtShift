@@ -27,6 +27,86 @@ to `false`. See `strategies-docs/12-production-provider-boundaries.md` for the e
 - `infra`: local services, monitoring, and deployment assets.
 - `strategies-docs`: approved scope, architecture, security rules, roadmap, and completion gates.
 
+## Public testnet deployment
+
+The submission route is deployed from Ethereum Sepolia Aave V3 to Base Sepolia. Its destination is
+a DebtShift-operated Morpho Blue-compatible deployment built from pinned canonical source; it is
+not represented as an official Morpho testnet deployment. The unavailable NEAR Intents/1Click
+testnet boundary remains explicitly simulated while the surrounding source/destination transfers
+and protocol evidence use real public-chain transactions.
+
+### Verified debt shift: old Aave position to new Morpho position
+
+The completed public-testnet migration is
+`0xece17b2ff0fc8c28c5878e5fccef6cfaf108b3ef99d66f719b1165d151db8475` for borrower
+[`0xF4cb...d0d2`](https://sepolia.etherscan.io/address/0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2).
+It reached durable phase `COMPLETED` and finalized receipt bundle
+`0x46bcf82c8e04a4fdabefadb8c90c03e75c2136a1bfe200c1b2204e4122169166` on NEAR testnet.
+
+The source protocol is the public
+[`Aave V3 Sepolia Pool`](https://sepolia.etherscan.io/address/0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951).
+The target is the DebtShift-operated
+[`Morpho-compatible Base Sepolia contract`](https://sepolia.basescan.org/address/0x072FB33E63f76479DF0C145F3ebdcc3C241f0771)
+and market `0x4505167c540e27ecdb28aacf9977a68e2b3d760022be14a686cbb0f737b3564e`.
+The borrower is independently visible on
+[`Base Sepolia`](https://sepolia.basescan.org/address/0xF4cbc06C5295C15f5E308507269dE6fC6Fb9d0d2).
+
+Here, the “old” and “new” sides are borrower lending positions. The separate DebtShift liquidity
+vault temporarily advances USDC to close the old debt and is reconciled independently below.
+
+| State               | Old position: Aave V3 on Ethereum Sepolia                                                                                                                                                                                                                                                                                                                                                                                                         | New position: Morpho-compatible market on Base Sepolia                                                                                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Before DebtShift    | Supplied exactly `0.01 WETH` in [`0x283d...e44e`](https://sepolia.etherscan.io/tx/0x283d14034977e432e67012d3761b6eed2ba92f50a05c135808b4444cdc51e44e), then borrowed exactly `5 USDC` in [`0xd3d2...9d24`](https://sepolia.etherscan.io/tx/0xd3d2eb49d48f3cc5fa5c1b32016508c489d4f8c4d7d219c1884ce89ba0599d24). The signed source snapshot at block `12,131,216` observed `0.01 WETH` collateral and `5.000058 USDC` variable debt after accrual. | No borrower position was used as the source of funds. The destination market was independently seeded with `10 USDC` in [`0x2618...18b9`](https://sepolia.basescan.org/tx/0x2618d4f88151886d5cf0869abc4f837a78687031f0fce12e20cbf03b96a918b9).                                                                      |
+| DebtShift execution | [`0xe1e0...d51`](https://sepolia.etherscan.io/tx/0xe1e0122bfd1e8dcd482567def9134cd1b5d9c0c0eff5fda0a66a8f21afc0bd51) emitted `AavePositionClosed` and `SourceClosed`: `5.000106 USDC` repaid after final accrual and exactly `0.01 WETH` released.                                                                                                                                                                                                | [`0xe803...1a65`](https://sepolia.basescan.org/tx/0xe803e0ab9fbc75b8e801fabda5fce4f2e752bd636412e18c2044e4e70a711a65) emitted `MorphoPositionOpened`: `0.00999 WETH` collateral, `5.000106 USDC` debt, and `5,000,106,000,000` borrow shares. It also emitted the exact `5.000106 USDC` solver payout and zero fee. |
+| After DebtShift     | Aave aWETH collateral balance: `0`. Aave variable-USDC debt balance: `0`. The close transaction above is the canonical receipt proving both the repayment and collateral release.                                                                                                                                                                                                                                                                 | Morpho collateral: `0.00999 WETH`. Morpho borrow shares: `5,000,106,000,000`. Destination escrow WETH: `0`; the target-open receipt above proves the collateral supply, borrow, payout, migration ID, plan hash, borrower, and market ID together.                                                                  |
+
+The source debt rose from `5.000058 USDC` at the signed snapshot to `5.000106 USDC` at execution
+because Aave variable debt continued accruing. DebtShift repaid that exact live amount and opened
+the target with the same `5.000106 USDC` principal. The verified transport delivered `0.00999 WETH`
+from the released `0.01 WETH` within the signed route bound.
+
+#### DebtShift liquidity-vault reconciliation
+
+The source liquidity vault is
+[`0xDC52...8f3E`](https://sepolia.etherscan.io/address/0xDC52C1980c2F69c1152e05D3812d752A0D238f3E).
+It is not the borrower’s old or new lending position.
+
+| Checkpoint            | Vault state                                                                                                                | Public proof                                                                                                                                                                                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Before migration      | `10 USDC` balance, `10 USDC` free, `0` reserved, `0` receivable, `0` locked recovery reserve                               | Exact vault deposit in [`0xaff0...31c2`](https://sepolia.etherscan.io/tx/0xaff060fb5e753bdbc78245a38ff581cd213a8e8cf0cacc9b8c9381c6476c31c2)                                                                                                                                     |
+| Reserved/source close | Maximum principal `5.005059 USDC`; actual draw `5.000106 USDC`; unused `0.004953 USDC` returned after exact Aave repayment | Reservation [`0x7524...c86`](https://sepolia.etherscan.io/tx/0x7524a461e58243bb478f0626cf54228968d0ee580158212b3db765619e456c86) and source-close events in [`0xe1e0...d51`](https://sepolia.etherscan.io/tx/0xe1e0122bfd1e8dcd482567def9134cd1b5d9c0c0eff5fda0a66a8f21afc0bd51) |
+| After settlement      | `10 USDC` balance, `10 USDC` free, `0` reserved, `0` receivable, `0` locked reserve, and zero executor allowance           | [`0xd2b8...b07e`](https://sepolia.etherscan.io/tx/0xd2b82d9f7d81bd0515e5cad887e9c71015ac91d924005341521115648f88b07e) emitted `RecoveryReserveConsumed` and `LiquiditySettled` for exactly `5.000106 USDC`, refunding `0.004953 USDC`                                            |
+
+#### Canonical receipt sequence
+
+| Step | Result                                                                  | Explorer receipt                                                                                                      |
+| ---: | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+|    1 | Aave source authorization                                               | [`0x4ec5...1b9f`](https://sepolia.etherscan.io/tx/0x4ec5b122d9a1877a74bbfcdf6c01e5ad113ce973c0bdf6ca55b1007b556d1b9f) |
+|    2 | Reserve source liquidity                                                | [`0x7524...c86`](https://sepolia.etherscan.io/tx/0x7524a461e58243bb478f0626cf54228968d0ee580158212b3db765619e456c86)  |
+|    3 | Repay Aave debt and release source collateral                           | [`0xe1e0...d51`](https://sepolia.etherscan.io/tx/0xe1e0122bfd1e8dcd482567def9134cd1b5d9c0c0eff5fda0a66a8f21afc0bd51)  |
+|    4 | Dispatch source collateral                                              | [`0xd63c...41e1`](https://sepolia.etherscan.io/tx/0xd63c68bdb46ec7f59ce38ec3605cada97b3b5d641dfc77f0156a5727c8a241e1) |
+|    5 | Register verified destination delivery                                  | [`0x50e4...008c`](https://sepolia.basescan.org/tx/0x50e4b4038e67459f6cc081028216447b76ff660cb84da4f02178e67a64c1008c) |
+|    6 | Supply target collateral, borrow target debt, and pay solver atomically | [`0xe803...1a65`](https://sepolia.basescan.org/tx/0xe803e0ab9fbc75b8e801fabda5fce4f2e752bd636412e18c2044e4e70a711a65) |
+|    7 | Settle and fully reconcile the source liquidity vault                   | [`0xd2b8...b07e`](https://sepolia.etherscan.io/tx/0xd2b82d9f7d81bd0515e5cad887e9c71015ac91d924005341521115648f88b07e) |
+|    8 | Finalize the complete evidence bundle on NEAR testnet                   | [`G9f91...VCCS`](https://testnet.nearblocks.io/txns/G9f91sonXUNaLEB5t15hPoehXT38WTUwmYa4wez2VCCS)                     |
+
+The complete block hashes, evidence IDs, incident history, and final state reconciliation are in
+[`strategies-docs/24-public-testnet-workflow-execution.md`](strategies-docs/24-public-testnet-workflow-execution.md).
+
+- Morpho-compatible deployment and 10 test-USDC seed:
+  [`deployment/manifests/testnet-morpho-base-sepolia-20261114-v1.json`](deployment/manifests/testnet-morpho-base-sepolia-20261114-v1.json)
+- Seven write-disabled DebtShift EVM contracts:
+  [`deployment/manifests/testnet-evm-sepolia-base-sepolia-20261114-v3.json`](deployment/manifests/testnet-evm-sepolia-base-sepolia-20261114-v3.json)
+- Exact 10 test-USDC source-vault funding with zero residual allowance:
+  [`deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json`](deployment/manifests/testnet-vault-funding-ethereum-sepolia-20261114-v2.json)
+- Initialized NEAR testnet receipt registry:
+  [`deployment/manifests/near-testnet-registry-20261114-v1.json`](deployment/manifests/near-testnet-registry-20261114-v1.json)
+- Reconciled interrupted attempts: [`deployment/incidents`](deployment/incidents)
+
+All manifests bind source commit, route, identities, receipts, code/state evidence, and a disabled
+workflow-write switch. `MAINNET_EXECUTION_ENABLED` remained `false`; these deployments do not enable
+mainnet execution.
+
 ## Prerequisites
 
 - Node.js 22.16.0 and npm 10.9.2.
@@ -105,6 +185,14 @@ With Foundry, Rust, and cargo-near installed, run the complete workspace gate wi
 ```sh
 npm run check:all
 ```
+
+Public-testnet release operations are separately gated. Run the keyless account/funding inventory
+with `npm run check:public-testnet-funding`; after canonical Morpho and DebtShift EVM deployment,
+use the exact guarded `npm run fund:testnet-vault` operation and remove its key before running
+`npm run check:testnet-vault-funding`. These commands do not enable workflow or mainnet writes. The
+required ordering, manifests, approvals, recovery rules, and evidence are documented in
+`strategies-docs/22-public-testnet-funding-readiness.md` and
+`strategies-docs/23-testnet-vault-funding.md`.
 
 Run the reproducible dual-chain contract demonstrations with:
 

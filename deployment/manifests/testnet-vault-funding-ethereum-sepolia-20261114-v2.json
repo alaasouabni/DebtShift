@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "environment": "testnet",
+  "createdAt": "2026-11-14T03:35:39.624Z",
+  "sourceCommit": "7d6fd5c756b626cb791efbcf39c9662eee9e0262",
+  "routeId": "ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue-weth-usdc-v1",
+  "routeConfigurationHash": "0x06ebbe8efe775d122f37afe04d970d557751d6fc0e8d3ae29d4e3cf50582f39b",
+  "routeDependenciesHash": "0x2186a31423918d16f0e712a233d3dd5dd392eaeb4604ddc2b138e12a297d7f17",
+  "evmDeploymentManifestHash": "0xa6fcdad8caff8611ef11623460229b8675d0c2eb488b034688350aef5900470f",
+  "workflowWriteSwitchEnabled": false,
+  "chainId": 11155111,
+  "confirmations": 10,
+  "funder": "0x3235c155D8b5eB561339F37112A49c5ef8DcB3Bf",
+  "vault": "0xDC52C1980c2F69c1152e05D3812d752A0D238f3E",
+  "asset": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
+  "amountUnits": "10000000",
+  "before": {
+    "blockNumber": "12130431",
+    "blockHash": "0x263f3cd1e988f5ae1cca51ec5c345ccaef26ffaa151dc8e06aab1ec95e61c421",
+    "funderBalanceUnits": "10000000",
+    "vaultBalanceUnits": "0",
+    "vaultFreeLiquidityUnits": "0",
+    "vaultAllowanceUnits": "0",
+    "reservedUndrawnUnits": "0",
+    "lockedRecoveryReserveUnits": "0"
+  },
+  "transactions": {
+    "approveExact": {
+      "transactionHash": "0x63ea26ee59dee30491a5333ea882eef29dd2166a1cd5b7846c6566134d32eed7",
+      "transactionInputHash": "0xb81fc653bff7321d72dde152a88d0613311859630ea4d809472a2fede9a99f35",
+      "sender": "0x3235c155D8b5eB561339F37112A49c5ef8DcB3Bf",
+      "target": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
+      "nonce": "2",
+      "blockNumber": "12130432",
+      "blockHash": "0xcf2792aa579baeca1af909c51af014e76ecae60db79657f2fac649ce2f537a3f",
+      "gasUsed": "128135",
+      "action": "APPROVE_EXACT_VAULT_FUNDING"
+    },
+    "deposit": {
+      "transactionHash": "0xaff060fb5e753bdbc78245a38ff581cd213a8e8cf0cacc9b8c9381c6476c31c2",
+      "transactionInputHash": "0x8a07e6f3ad77838486fe3cc601c0768641d9eac9d4d15931bd2a700468df1a76",
+      "sender": "0x3235c155D8b5eB561339F37112A49c5ef8DcB3Bf",
+      "target": "0xDC52C1980c2F69c1152e05D3812d752A0D238f3E",
+      "nonce": "3",
+      "blockNumber": "12130444",
+      "blockHash": "0xe2e7c92ac1c29178b3cac735a8cbfa869f2887a7d44505cb8955a6b3c15efd29",
+      "gasUsed": "143144",
+      "action": "DEPOSIT_EXACT_VAULT_FUNDING"
+    },
+    "revokeAllowance": {
+      "transactionHash": "0xf60e6562dfe3721b6b04c108050dcf48a1f45e7fa4bc3ba3bc3a432a4b0436b5",
+      "transactionInputHash": "0xfd9c81a396ffd9d0b9c2c0d342f87d8c80357edb06dc2d8a5ff5e847718c7451",
+      "sender": "0x3235c155D8b5eB561339F37112A49c5ef8DcB3Bf",
+      "target": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
+      "nonce": "4",
+      "blockNumber": "12130454",
+      "blockHash": "0x1bb7d0082d5efc6e0d8e61afa88b0ea323bfb0059b7653758e37a2858d9b6c67",
+      "gasUsed": "20179",
+      "action": "REVOKE_VAULT_ALLOWANCE"
+    }
+  },
+  "after": {
+    "blockNumber": "12130454",
+    "blockHash": "0x1bb7d0082d5efc6e0d8e61afa88b0ea323bfb0059b7653758e37a2858d9b6c67",
+    "funderBalanceUnits": "0",
+    "vaultBalanceUnits": "10000000",
+    "vaultFreeLiquidityUnits": "10000000",
+    "vaultAllowanceUnits": "0",
+    "reservedUndrawnUnits": "0",
+    "lockedRecoveryReserveUnits": "0"
+  }
+}

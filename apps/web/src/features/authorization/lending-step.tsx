@@ -21,6 +21,7 @@ import {
   type LendingProgress,
   type MorphoAuthorization,
 } from './lending-authorization';
+import { NetworkHelp } from '../wallet/network-help';
 
 function Fact({
   label,
@@ -53,18 +54,21 @@ function NetworkGate({
 }) {
   if (current === required) return null;
   return (
-    <Alert
-      tone="warning"
-      title={`This permission is given on ${chainName(required)}`}
-      action={
-        <Button size="sm" variant="secondary" onClick={onSwitch}>
-          Switch network
-        </Button>
-      }
-    >
-      Your wallet reports chain {current ?? 'unknown'}. DebtShift will ask — it never switches by
-      itself.
-    </Alert>
+    <>
+      <Alert
+        tone="warning"
+        title={`This permission is given on ${chainName(required)}`}
+        action={
+          <Button size="sm" variant="secondary" onClick={onSwitch}>
+            Switch network
+          </Button>
+        }
+      >
+        Your wallet reports chain {current ?? 'unknown'}. DebtShift will ask — it never switches by
+        itself.
+      </Alert>
+      <NetworkHelp chainId={required} />
+    </>
   );
 }
 

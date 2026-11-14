@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "environment": "testnet",
+  "network": "testnet",
+  "createdAt": "2026-11-14T03:40:55.673Z",
+  "sourceCommit": "7d6fd5c756b626cb791efbcf39c9662eee9e0262",
+  "registryAccount": "debtshift-registry-alaa-2026.testnet",
+  "deployerAccount": "debtshift-registry-alaa-2026.testnet",
+  "ownerAccount": "debtshift-owner-alaa-2026.testnet",
+  "verifierAccounts": ["debtshift-verifier-alaa-2026.testnet"],
+  "artifact": "contracts/near/target/near/debtshift_registry/debtshift_registry.wasm",
+  "wasmSha256": "0x4a9adf1ed8f95b047b2f99e9ec296484540f3571147af3e761d1ecabdc0ef56d",
+  "deployedCodeHash": "62E942bp8fnX38QhB552175SKUGr7WmAkachMzno4toW",
+  "deploymentTransaction": {
+    "transactionHash": "Fjtfg2derYBQ7Mt2wmyh5XnHUQGkwCw4WmqBPxZFaQnQ",
+    "signerAccount": "debtshift-registry-alaa-2026.testnet",
+    "receiverAccount": "debtshift-registry-alaa-2026.testnet",
+    "blockHeight": "277602998",
+    "blockHash": "Cu5hXsCMEo4JrMoBFDxNRy7wSauVSeNW5myjxikxxkxG"
+  },
+  "initializationTransaction": {
+    "transactionHash": "Fjtfg2derYBQ7Mt2wmyh5XnHUQGkwCw4WmqBPxZFaQnQ",
+    "signerAccount": "debtshift-registry-alaa-2026.testnet",
+    "receiverAccount": "debtshift-registry-alaa-2026.testnet",
+    "blockHeight": "277602998",
+    "blockHash": "Cu5hXsCMEo4JrMoBFDxNRy7wSauVSeNW5myjxikxxkxG"
+  },
+  "initialStorageUsage": "232100",
+  "workflowWriteSwitchEnabled": false
+}

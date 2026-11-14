@@ -4,8 +4,13 @@ import { resolve } from 'node:path';
 import {
   parseDebtShiftEvmDeploymentManifest,
   parseLiveMarketConfiguration,
+  parsePublicTestnetRouteDependencies,
+  parseTestnetMorphoDeploymentManifest,
 } from '../packages/domain/dist/index.js';
-import { verifyProductionDebtShiftDeployment } from '../packages/protocols/dist/index.js';
+import {
+  verifyProductionDebtShiftDeployment,
+  verifyTestnetMorphoDeployment,
+} from '../packages/protocols/dist/index.js';
 import { createPublicClient, defineChain, http, keccak256, stringToHex } from 'viem';
 
 if (process.env.MAINNET_EXECUTION_ENABLED === 'true') {
@@ -27,6 +32,7 @@ if (manifest.routeConfigurationHash !== routeHash) {
   throw new Error('Deployment manifest route hash does not match the selected route file.');
 }
 assertRouteBindings(manifest, route);
+const testnetDependency = await loadTestnetDependency(manifest);
 
 const sourceRpcUrl = requiredUrl('SOURCE_RPC_URL');
 const destinationRpcUrl = requiredUrl('DESTINATION_RPC_URL');
@@ -40,6 +46,15 @@ const destinationClient = publicClient(
   'DebtShift destination readiness',
   destinationRpcUrl,
 );
+const testnetMorphoReport =
+  testnetDependency === null
+    ? null
+    : await verifyTestnetMorphoDeployment({
+        manifest: testnetDependency.morphoManifest,
+        publicClient: destinationClient,
+        expectedRouteId: manifest.routeId,
+        expectedRouteDependenciesHash: testnetDependency.routeDependenciesHash,
+      });
 const report = await verifyProductionDebtShiftDeployment({
   manifest,
   sourcePublicClient: sourceClient,
@@ -53,9 +68,42 @@ console.log(
     manifestPath,
     routePath,
     routeConfigurationHash: routeHash,
+    routeDependenciesHash: manifest.routeDependenciesHash,
+    testnetMorphoReport,
     ...report,
   }),
 );
+
+async function loadTestnetDependency(manifest) {
+  if (manifest.environment !== 'testnet') return null;
+  const morphoManifestPath = resolve(required('TESTNET_MORPHO_DEPLOYMENT_MANIFEST_PATH'));
+  const routeDependenciesPath = resolve(
+    process.env.PUBLIC_TESTNET_ROUTE_DEPENDENCIES_PATH ??
+      'config/testnet-routes/ethereum-sepolia-aave-v3-to-base-sepolia-morpho-blue.dependencies.v1.json',
+  );
+  const [morphoManifestJson, routeDependenciesJson] = await Promise.all([
+    readFile(morphoManifestPath, 'utf8'),
+    readFile(routeDependenciesPath, 'utf8'),
+  ]);
+  const morphoManifest = parseTestnetMorphoDeploymentManifest(morphoManifestJson);
+  const routeDependencies = parsePublicTestnetRouteDependencies(routeDependenciesJson);
+  const routeDependenciesHash = keccak256(stringToHex(routeDependenciesJson));
+  if (
+    manifest.routeDependenciesHash === null ||
+    manifest.routeId !== routeDependencies.routeId ||
+    morphoManifest.routeId !== routeDependencies.routeId ||
+    manifest.routeDependenciesHash.toLowerCase() !== routeDependenciesHash.toLowerCase() ||
+    morphoManifest.routeDependenciesHash.toLowerCase() !== routeDependenciesHash.toLowerCase() ||
+    manifest.source.chainId !== routeDependencies.source.chainId ||
+    manifest.destination.chainId !== routeDependencies.destination.chainId ||
+    manifest.destination.protocol.morpho.toLowerCase() !==
+      morphoManifest.contracts.morpho.address.toLowerCase() ||
+    manifest.destination.protocol.marketId.toLowerCase() !== morphoManifest.market.id.toLowerCase()
+  ) {
+    throw new Error('Deployment manifests do not bind the selected testnet dependencies.');
+  }
+  return { morphoManifest, routeDependenciesHash, morphoManifestPath, routeDependenciesPath };
+}
 
 function assertRouteBindings(manifest, route) {
   const equal = (left, right) => left.toLowerCase() === right.toLowerCase();

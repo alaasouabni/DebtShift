@@ -203,6 +203,23 @@ describe('signing in', () => {
     expect(screen.queryByText('the borrower screen')).toBeNull();
   });
 
+  it('offers to add a public testnet the wallet does not know, and signs nothing', async () => {
+    const provider = installWallet({
+      chain: '0x1',
+      switchChain: () =>
+        Promise.reject(Object.assign(new Error('Unrecognized chain ID'), { code: 4902 })),
+    });
+    challengeMock.mockResolvedValue({ ...challenge, chainId: 11155111 });
+    await renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /sign in with wallet/i }));
+
+    expect(await screen.findByRole('button', { name: 'Add Sepolia' })).toBeDefined();
+    expect(screen.getByText('https://ethereum-sepolia-rpc.publicnode.com')).toBeDefined();
+    expect(calls(provider, 'personal_sign')).toHaveLength(0);
+    expect(calls(provider, 'wallet_addEthereumChain')).toHaveLength(0);
+    expect(verifyMock).not.toHaveBeenCalled();
+  });
+
   it('says so and stays signed out when the signature is declined', async () => {
     installWallet({
       sign: () => Promise.reject(Object.assign(new Error('User rejected'), { code: 4001 })),

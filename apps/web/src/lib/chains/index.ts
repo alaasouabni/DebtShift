@@ -16,6 +16,12 @@ interface KnownChain {
   readonly name: string;
   /** Explorer origin, without a trailing slash. Absent for private chains. */
   readonly explorer?: string;
+  /**
+   * A public RPC endpoint a wallet can be given for this chain. Present only
+   * for the public testnets this app may ask a wallet to add; see
+   * `walletChainParameters`.
+   */
+  readonly publicRpc?: string;
 }
 
 const KNOWN_CHAINS: Readonly<Record<number, KnownChain>> = {
@@ -24,9 +30,21 @@ const KNOWN_CHAINS: Readonly<Record<number, KnownChain>> = {
   137: { name: 'Polygon', explorer: 'https://polygonscan.com' },
   8453: { name: 'Base', explorer: 'https://basescan.org' },
   42161: { name: 'Arbitrum One', explorer: 'https://arbiscan.io' },
-  11155111: { name: 'Sepolia', explorer: 'https://sepolia.etherscan.io' },
-  84532: { name: 'Base Sepolia', explorer: 'https://sepolia.basescan.org' },
-  421614: { name: 'Arbitrum Sepolia', explorer: 'https://sepolia.arbiscan.io' },
+  11155111: {
+    name: 'Sepolia',
+    explorer: 'https://sepolia.etherscan.io',
+    publicRpc: 'https://ethereum-sepolia-rpc.publicnode.com',
+  },
+  84532: {
+    name: 'Base Sepolia',
+    explorer: 'https://sepolia.basescan.org',
+    publicRpc: 'https://sepolia.base.org',
+  },
+  421614: {
+    name: 'Arbitrum Sepolia',
+    explorer: 'https://sepolia.arbiscan.io',
+    publicRpc: 'https://sepolia-rollup.arbitrum.io/rpc',
+  },
   // Private sandbox chains: real transactions, no public explorer.
   31337: { name: 'Sandbox source chain' },
   31338: { name: 'Sandbox destination chain' },
@@ -64,6 +82,46 @@ export function explorerTransactionUrl(
   }
   const explorer = KNOWN_CHAINS[chainId]?.explorer;
   return explorer === undefined ? undefined : `${explorer}/tx/${transactionHash}`;
+}
+
+/** What `wallet_addEthereumChain` (EIP-3085) is given for one chain. */
+export interface WalletChainParameters {
+  readonly chainId: string;
+  readonly chainName: string;
+  readonly nativeCurrency: {
+    readonly name: string;
+    readonly symbol: string;
+    readonly decimals: 18;
+  };
+  readonly rpcUrls: readonly string[];
+  readonly blockExplorerUrls: readonly string[];
+}
+
+/**
+ * The network details this app may offer to add to a wallet, or `undefined`.
+ *
+ * Only public testnets are offered. A mainnet is something a wallet already
+ * has, and pointing one at an RPC endpoint of this app's choosing is not a
+ * decision to make for the user. The private sandbox chains exist only on a
+ * developer's machine, so there is nothing meaningful to add for them.
+ *
+ * Every value comes from the fixed map above. Nothing the backend sends is
+ * ever passed to a wallet as a network.
+ */
+export function walletChainParameters(
+  chainId: number | null | undefined,
+): WalletChainParameters | undefined {
+  if (chainId === null || chainId === undefined) return undefined;
+  const known = KNOWN_CHAINS[chainId];
+  if (known?.publicRpc === undefined || known.explorer === undefined) return undefined;
+  return {
+    chainId: `0x${chainId.toString(16)}`,
+    chainName: known.name,
+    // Every testnet offered here pays gas in test ETH.
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: [known.publicRpc],
+    blockExplorerUrls: [known.explorer],
+  };
 }
 
 /**

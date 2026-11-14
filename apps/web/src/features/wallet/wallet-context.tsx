@@ -8,6 +8,11 @@
  *   - connect without a user action;
  *   - switch or add a network without a user action.
  *
+ * When a wallet does not know a network, the app may OFFER to add it, for the
+ * public testnets listed in `lib/chains` and no others. The offer is a button
+ * that shows the exact details first; the wallet then asks for approval
+ * itself. A failed switch never turns into an add on its own.
+ *
  * It also exposes `accountEpoch`, which increments on every account or chain
  * change. The authorization flow watches it and throws away any prepared
  * payload and signature when it moves, so a signature can never be submitted
@@ -40,7 +45,7 @@ import {
 } from 'react';
 
 import { ApiError, api, onSessionLost } from '../../lib/api/client';
-import { chainName } from '../../lib/chains';
+import { chainName, walletChainParameters } from '../../lib/chains';
 import { DEMO_ACCOUNT, DEMO_CHAIN_ID, isDemoActive, startDemo, stopDemo } from '../../lib/demo';
 
 /** What "signing" returns in the recorded demo. Deliberately not a signature. */
@@ -67,6 +72,62 @@ export interface SessionState {
   readonly expiresAt?: string | undefined;
   /** Why there is no session, when there is something to say. */
   readonly notice?: string | undefined;
+}
+
+/**
+ * Why the wallet is not on the network a step needs, after the user asked it
+ * to switch.
+ *
+ *   unknown-addable  the wallet does not know the network, and it is one this
+ *                    app can offer to add
+ *   unknown          the wallet does not know it, and it must be added by hand
+ *   declined         the user said no in the wallet
+ *   failed           anything else, in the wallet's own words
+ */
+export interface ChainIssue {
+  readonly chainId: number;
+  readonly kind: 'unknown-addable' | 'unknown' | 'declined' | 'failed';
+  readonly message: string;
+}
+
+/** EIP-3326: the wallet has no network with this id. */
+function isUnknownChain(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const record = error as {
+    code?: unknown;
+    message?: unknown;
+    data?: { originalError?: { code?: unknown } };
+  };
+  if (record.code === 4902 || record.data?.originalError?.code === 4902) return true;
+  const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
+  return message.includes('unrecognized chain') || message.includes('unknown chain');
+}
+
+function chainIssueFor(target: number, caught: unknown): ChainIssue {
+  if (isUserRejection(caught)) {
+    return { chainId: target, kind: 'declined', message: 'You declined the network switch.' };
+  }
+  if (isUnknownChain(caught)) {
+    return walletChainParameters(target) !== undefined
+      ? {
+          chainId: target,
+          kind: 'unknown-addable',
+          message: `Your wallet does not have ${chainName(target)} yet.`,
+        }
+      : {
+          chainId: target,
+          kind: 'unknown',
+          message: `Your wallet does not have chain ${String(target)}. Add it in your wallet, then try again.`,
+        };
+  }
+  return {
+    chainId: target,
+    kind: 'failed',
+    message: describe(
+      caught,
+      `The wallet could not switch to chain ${String(target)}. Select it in your wallet, then try again.`,
+    ),
+  };
 }
 
 function sameAccount(left: string | undefined, right: string | undefined): boolean {
@@ -105,6 +166,14 @@ export interface WalletState {
   recheckSession(): void;
   /** Ask the wallet to move to `chainId`. Only ever called from a user action. */
   requestChain(chainId: number): Promise<void>;
+  /** Why the last requested switch did not happen, until the wallet moves. */
+  readonly chainIssue?: ChainIssue | undefined;
+  /**
+   * Ask the wallet to add a public testnet it does not know, then to switch
+   * to it. Only ever called from a user action, and only for a network
+   * `lib/chains` lists as addable; the wallet asks for approval itself.
+   */
+  addChain(chainId: number): Promise<void>;
   /** Sign EIP-712 typed data. Returns the signature; throws on rejection. */
   signTypedData(typedData: unknown): Promise<string>;
   /**
@@ -166,6 +235,7 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
   const [error, setError] = useState<string | undefined>(undefined);
   const providerRef = useRef<Eip1193Provider | undefined>(undefined);
   const [isDemo, setIsDemo] = useState(false);
+  const [chainIssue, setChainIssue] = useState<ChainIssue | undefined>(undefined);
   const [session, setSession] = useState<SessionState>({ status: 'unknown' });
   const [sessionTick, setSessionTick] = useState(0);
   // True while a sign-in is in flight. Signing in can switch the wallet's
@@ -231,6 +301,8 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       const chain = args[0] as unknown as string | undefined;
       setAccountEpoch((epoch) => epoch + 1);
       if (typeof chain === 'string') setChainId(Number.parseInt(chain, 16));
+      // The wallet moved: whatever stopped the last switch no longer applies.
+      setChainIssue(undefined);
     };
 
     const onDisconnect = () => {
@@ -361,12 +433,9 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
             params: [{ chainId: `0x${challenge.chainId.toString(16)}` }],
           });
         } catch (caught) {
-          setSession({
-            status: 'none',
-            notice: isUserRejection(caught)
-              ? 'You declined the network switch. Nothing was signed.'
-              : `Signing in needs your wallet on ${chainName(challenge.chainId)} (chain ${String(challenge.chainId)}). Add or select it in your wallet, then try again.`,
-          });
+          const issue = chainIssueFor(challenge.chainId, caught);
+          setChainIssue(issue);
+          setSession({ status: 'none', notice: `${issue.message} Nothing was signed.` });
           return;
         }
       }
@@ -498,19 +567,48 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
         params: [{ chainId: hex }],
       });
       setError(undefined);
+      setChainIssue(undefined);
     } catch (caught) {
-      if (isUserRejection(caught)) {
-        setError('You declined the network switch.');
-        return;
-      }
-      // 4902: the chain is unknown to the wallet. We do NOT add it silently —
-      // adding a network is the user's decision, made in their wallet.
-      setError(
-        describe(
-          caught,
-          `This wallet is not on chain ${String(target)}. Add it in your wallet, then try again.`,
-        ),
+      // An unknown network is NOT added here. Adding one is the user's
+      // decision: the screen offers it, with the details, as its own step.
+      const issue = chainIssueFor(target, caught);
+      setChainIssue(issue);
+      setError(issue.message);
+    }
+  }, []);
+
+  const addChain = useCallback(async (target: number) => {
+    const provider = providerRef.current;
+    if (provider === undefined) return;
+    // Only ever the fixed details from `lib/chains`, never a value from a
+    // response or a URL.
+    const parameters = walletChainParameters(target);
+    if (parameters === undefined) return;
+    try {
+      await provider.request({ method: 'wallet_addEthereumChain', params: [parameters] });
+      // Most wallets switch after adding. One that does not is asked to, in
+      // the same user action.
+      const current = Number.parseInt(
+        (await provider.request({ method: 'eth_chainId' })) as string,
+        16,
       );
+      if (current !== target) {
+        await provider.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: parameters.chainId }],
+        });
+      }
+      setChainId(target);
+      setError(undefined);
+      setChainIssue(undefined);
+    } catch (caught) {
+      const declined = isUserRejection(caught);
+      const message = declined
+        ? `You declined adding ${chainName(target)}. Nothing was added.`
+        : describe(caught, `The wallet could not add ${chainName(target)}.`);
+      // Still addable: the offer stays, with what happened.
+      setChainIssue({ chainId: target, kind: 'unknown-addable', message });
+      setError(message);
     }
   }, []);
 
@@ -629,6 +727,8 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       signIn,
       recheckSession,
       requestChain,
+      chainIssue,
+      addChain,
       signTypedData,
       sendTransaction,
       waitForTransaction,
@@ -648,6 +748,8 @@ export function WalletProvider({ children }: { readonly children: ReactNode }) {
       signIn,
       recheckSession,
       requestChain,
+      chainIssue,
+      addChain,
       signTypedData,
       sendTransaction,
       waitForTransaction,

@@ -16,18 +16,30 @@ import { DatabaseService } from './database.service.js';
 @Injectable()
 export class TransportService {
   readonly #simulator?: DeterministicTransportSimulator;
+  readonly #analysisSimulator?: DeterministicTransportSimulator;
   readonly #oneClickReadOnly?: OneClickReadOnlyClient;
   readonly #oneClickCommitted?: OneClickCommittedClient;
   readonly #environment: string;
+  readonly #quoteTtlSeconds: number;
 
   constructor(
     @Optional() @Inject(ConfigService) config?: ConfigService,
     @Optional() @Inject(DatabaseService) private readonly database?: DatabaseService,
   ) {
     this.#environment = config?.get<string>('DEBTSHIFT_MODE') ?? 'sandbox';
+    this.#quoteTtlSeconds = Math.max(
+      300,
+      (config?.get<number>('EXECUTION_PLAN_TTL_SECONDS') ?? 240) + 30,
+    );
     const provider = config?.get<string>('TRANSPORT_PROVIDER') ?? 'DEBTSHIFT_SIMULATOR';
     if (provider === 'DEBTSHIFT_SIMULATOR') {
-      this.#simulator = new DeterministicTransportSimulator();
+      this.#simulator = new DeterministicTransportSimulator({
+        quoteTtlSeconds: this.#quoteTtlSeconds,
+      });
+      this.#analysisSimulator = new DeterministicTransportSimulator({
+        feeBps: 0,
+        quoteTtlSeconds: this.#quoteTtlSeconds,
+      });
       return;
     }
     if (provider !== 'NEAR_INTENTS_1CLICK') {
@@ -68,7 +80,7 @@ export class TransportService {
       maxSlippageBps: request.maxSlippageBps,
       destinationReceiver: request.destinationReceiver,
       refundReceiver: request.refundReceiver,
-      deadline: new Date(Date.now() + 5 * 60 * 1_000).toISOString(),
+      deadline: new Date(Date.now() + this.#quoteTtlSeconds * 1_000).toISOString(),
     } as const;
     if (this.#oneClickCommitted !== undefined) {
       return this.#getAndStoreOneClickCommittedQuote(quoteRequest);
@@ -113,6 +125,40 @@ export class TransportService {
       throw new Error('Live 1Click dry quotes are unavailable in simulator mode.');
     }
     return this.#getAndStoreOneClickDryQuote(request);
+  }
+
+  getAnalysisQuote(request: OneClickDryQuoteRequest) {
+    if (this.#analysisSimulator !== undefined) return this.#getSimulatorAnalysisQuote(request);
+    return this.#getAndStoreOneClickDryQuote(request);
+  }
+
+  async #getSimulatorAnalysisQuote(request: OneClickDryQuoteRequest) {
+    if (this.#analysisSimulator === undefined) {
+      throw new Error('The simulated analysis quote provider is unavailable.');
+    }
+    const quoteRequest = transportQuoteRequestSchema.parse({
+      inputAsset: request.inputAsset,
+      outputAsset: request.outputAsset,
+      amountInUnits: request.amountUnits,
+      maxSlippageBps: request.maxSlippageBps,
+      destinationReceiver: request.destinationReceiver,
+      refundReceiver: request.refundReceiver,
+    });
+    if (request.amountKind === 'EXACT_INPUT') {
+      return this.#analysisSimulator.getQuote(quoteRequest);
+    }
+
+    const targetOutputUnits = BigInt(request.amountUnits);
+    const probe = await this.#analysisSimulator.getQuote(quoteRequest);
+    const probeOutputUnits = BigInt(probe.expectedAmountOutUnits);
+    const requiredInputUnits =
+      (targetOutputUnits * targetOutputUnits + probeOutputUnits - 1n) / probeOutputUnits;
+    return this.#analysisSimulator.getQuote(
+      transportQuoteRequestSchema.parse({
+        ...quoteRequest,
+        amountInUnits: requiredInputUnits.toString(),
+      }),
+    );
   }
 
   async #getAndStoreOneClickDryQuote(request: OneClickDryQuoteRequest) {
