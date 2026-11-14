@@ -60,6 +60,7 @@ import {
 type EvmPublicClient = PublicClient<Transport, Chain>;
 type EvmWalletClient = WalletClient<Transport, Chain, PrivateKeyAccount>;
 const FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS = 30n;
+const RESTRICTED_RPC_LOG_RANGE_BLOCKS = 200n;
 
 class PreBroadcastSimulationError extends Error {
   override readonly name = 'PreBroadcastSimulationError';
@@ -2753,23 +2754,41 @@ export class ProductionEvmExecutionPort implements MigrationExecutionPort {
     indexedTopics: readonly Hex[],
     payload: Record<string, unknown>,
   ): Promise<FinalizedChainAction | undefined> {
-    const logs = await client.getLogs({
-      address,
-      fromBlock: this.#deploymentBlockForClient(client),
-      toBlock: 'latest',
-    });
     const expected = [eventSignature, ...indexedTopics].map((topic) => topic.toLowerCase());
-    const found = logs.findLast((log) =>
-      expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
-    );
-    if (found === undefined) return undefined;
+    const deploymentBlock = this.#deploymentBlockForClient(client);
+    let transactionHash: Hex | undefined;
+    try {
+      const logs = await client.getLogs({ address, fromBlock: deploymentBlock, toBlock: 'latest' });
+      transactionHash = logs
+        .findLast((log) =>
+          expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
+        )
+        ?.transactionHash;
+    } catch (error) {
+      if (!isRestrictedRpcLogRangeError(error)) throw error;
+      const latestBlock = await client.getBlockNumber();
+      for (const range of descendingInclusiveBlockRanges(
+        deploymentBlock,
+        latestBlock,
+        RESTRICTED_RPC_LOG_RANGE_BLOCKS,
+      )) {
+        const logs = await client.getLogs({ address, ...range });
+        transactionHash = logs
+          .findLast((log) =>
+            expected.every((topic, index) => log.topics[index]?.toLowerCase() === topic),
+          )
+          ?.transactionHash;
+        if (transactionHash !== undefined) break;
+      }
+    }
+    if (transactionHash === undefined) return undefined;
     const confirmations = this.#confirmationsForClient(client);
     const receipt = await client.waitForTransactionReceipt({
-      hash: found.transactionHash,
+      hash: transactionHash,
       confirmations,
     });
     if (receipt.status !== 'success') {
-      throw new Error(`Previously observed transaction reverted: ${found.transactionHash}`);
+      throw new Error(`Previously observed transaction reverted: ${transactionHash}`);
     }
     return finalizedAction(chainId, receipt, confirmations, payload);
   }
@@ -2809,6 +2828,29 @@ export function conservativeFeasibilityTimestamp(latestBlockTimestamp: bigint): 
   return latestBlockTimestamp > FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
     ? latestBlockTimestamp - FEASIBILITY_TIMESTAMP_SAFETY_LAG_SECONDS
     : 0n;
+}
+
+export function* descendingInclusiveBlockRanges(
+  deploymentBlock: bigint,
+  latestBlock: bigint,
+  maximumRangeBlocks: bigint,
+): Generator<{ readonly fromBlock: bigint; readonly toBlock: bigint }> {
+  if (deploymentBlock < 0n || latestBlock < deploymentBlock || maximumRangeBlocks <= 0n) {
+    throw new Error('Invalid bounded log-scan range.');
+  }
+  let toBlock = latestBlock;
+  while (true) {
+    const candidate = toBlock - maximumRangeBlocks + 1n;
+    const fromBlock = candidate > deploymentBlock ? candidate : deploymentBlock;
+    yield { fromBlock, toBlock };
+    if (fromBlock === deploymentBlock) return;
+    toBlock = fromBlock - 1n;
+  }
+}
+
+export function isRestrictedRpcLogRangeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /eth_getLogs.*limit|maximum block range|block range.*(?:limit|exceed)/i.test(message);
 }
 
 function finalizedAction(
